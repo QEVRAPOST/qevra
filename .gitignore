@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Foundry artifacts
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+
+# Local secrets and machine state
+.env
+.env.*
+!.env.example
+.DS_Store
