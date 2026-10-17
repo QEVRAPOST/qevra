@@ -1,0 +1,270 @@
+<a class="sr" href="#main">Skip to the content</a>
+
+<header id="shell">
+  <div class="sh-in">
+    <div class="sh-brand"><b>QEVRA</b><span>Aperture · approved direction, refined</span></div>
+    <div class="seg" role="tablist" aria-label="View">
+      <button role="tab" id="tab-landing" data-view="landing" aria-selected="true">Landing</button>
+      <button role="tab" id="tab-app" data-view="app" aria-selected="false"><span class="lg">App preview</span><span class="sm">App</span></button>
+      <button role="tab" id="tab-design" data-view="design" aria-selected="false"><span class="lg">Design system</span><span class="sm">System</span></button>
+    </div>
+  </div>
+</header>
+
+<div id="curtain" aria-hidden="true"><div class="cm"><span class="mat outline"></span><span>Opening the app preview</span></div></div>
+
+<main id="main">
+
+<!-- ============================================================ LANDING ============================================================ -->
+<div class="view" id="view-landing">
+  <div class="statusbar"><div class="wrap wide js-status"></div></div>
+  <nav class="lnav" aria-label="QEVRA">
+    <div class="wrap wide">
+      <button class="wordmark" data-goto-top aria-label="QEVRA, back to top">
+        <svg viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><ellipse cx="13" cy="6.5" rx="8" ry="3.2" stroke-dasharray="2.2 1.6" style="color:#E3A93B"/><ellipse cx="13" cy="12" rx="9" ry="3.6"/><ellipse cx="13" cy="17" rx="10" ry="4"/><path d="M13 12.3v9.4" stroke="#FFE9B8"/></svg>
+        QEVRA
+      </button>
+      <div class="links"><a href="#story" data-step="0">How it works</a><a href="#swarm" data-step="4">Security Swarm</a><a href="#status" data-scroll="status">Status</a></div>
+      <button class="btn primary" data-launch>Launch App <svg class="arrow" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 7h9M7.5 3.5L11 7l-3.5 3.5"/></svg></button>
+    </div>
+  </nav>
+
+  <section class="story" id="story" aria-label="How QEVRA works">
+    <div class="wrap wide"><div class="sgrid">
+      <div class="scol" id="scol">
+        <header class="frame hero" data-k="0" id="hero">
+          <p class="eyebrow">A wallet and simple swap on Robinhood Chain</p>
+          <h1>Authorize every detail of every swap.</h1>
+          <p class="lede">QEVRA is a wallet and a simple swap for Robinhood Chain. It is designed to lock every swap detail you reviewed, and it explores post-quantum authorization in the open.</p>
+          <div class="ctas">
+            <button class="btn primary" data-launch>Launch App <svg class="arrow" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 7h9M7.5 3.5L11 7l-3.5 3.5"/></svg></button>
+            <a class="btn ghost" href="#swarm" data-step="4">Explore Security</a>
+          </div>
+          <ul class="facts" id="facts" aria-label="What QEVRA is"></ul>
+          <p class="core"><span class="mat outline"></span><span>The Security Swarm researches, tests, and reports. It does not control your wallet.</span></p>
+        </header>
+        <!-- steps are written here by the controller -->
+      </div>
+      <figure class="pin" id="pin">
+        <div class="stage"><canvas id="cv-main" role="img" aria-label="Eight engraved rings stacked like a machined instrument, one ring per swap detail. A line of light runs through their aligned slots. An outlined ring above marks post-quantum authorization under evaluation. A separate ring at left stands for the Security Swarm, with an air gap between it and the stack." aria-describedby="fig-text"></canvas></div>
+        <figcaption class="pcap">
+          <p class="cap" id="cap" aria-live="polite"></p>
+          <div class="tryit off" id="tryit"><span>Try it</span><span class="tg" role="group" aria-label="Change the swap"><button type="button" aria-pressed="true" data-mis="0">As reviewed</button><button type="button" aria-pressed="false" data-mis="1">Change the amount</button></span></div>
+        </figcaption>
+        <div class="sr" id="fig-text">Eight rings stand for eight groups of swap details: recipient, chain, tokens, amount, router and allowance, slippage and minimum output, nonce and deadline. When every ring matches what you reviewed, a line of light passes through all eight. The outlined ring on top is post-quantum authorization, ML-DSA, which is under evaluation. The separate ring is the Security Swarm. It reports to a human review dock across an air gap and holds no keys.</div>
+      </figure>
+    </div></div>
+  </section>
+
+  <section class="band" id="swarm-limits" aria-labelledby="h-limits">
+    <div class="wrap wide"><div class="bgrid">
+      <div class="bhead">
+        <h2 id="h-limits">What the Swarm can and cannot do</h2>
+        <p class="sub">QEVRA’s agents do not access your private keys, sign transactions on your behalf, or move your funds. They work with public security information and isolated test environments.</p>
+        <p class="sub">Proposed security changes must pass deterministic tests, appropriate security review, and explicit human approval before deployment.</p>
+      </div>
+      <div>
+        <div class="can2">
+          <div><h3><span class="mat outline"></span>It can</h3><ul id="can"></ul></div>
+          <div><h3><span class="mat solid"></span>It cannot</h3><ul id="cannot"></ul></div>
+        </div>
+        <figure class="gapfig">
+          <svg viewBox="0 0 520 112" role="img" aria-labelledby="gap-t" fill="none" stroke="currentColor" stroke-width="1.3">
+            <title id="gap-t">Three separate boxes: Security Swarm, Human review, and Your wallet. Reports pass from the Swarm to Human review. Nothing passes from the Swarm to your wallet, and the gap between them is marked as an air gap.</title>
+            <rect x="2" y="10" width="150" height="52"/><text x="77" y="32" text-anchor="middle" fill="currentColor" stroke="none" font-size="13" font-weight="500">Security Swarm</text><text x="77" y="49" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.5" opacity=".72">no keys · cannot sign</text>
+            <rect x="186" y="10" width="148" height="52" stroke-dasharray="3 3"/><text x="260" y="32" text-anchor="middle" fill="currentColor" stroke="none" font-size="13" font-weight="500">Human review</text><text x="260" y="49" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.5" opacity=".72">dock unlit in this preview</text>
+            <rect x="368" y="10" width="150" height="52"/><text x="443" y="32" text-anchor="middle" fill="currentColor" stroke="none" font-size="13" font-weight="500">Your wallet</text><text x="443" y="49" text-anchor="middle" fill="currentColor" stroke="none" font-size="10.5" opacity=".72">you sign, only you</text>
+            <path d="M154 36h26M176 32l5 4-5 4"/><path d="M336 36h30" stroke-dasharray="2 3" opacity=".55"/><path d="M345 30l12 12M357 30l-12 12" opacity=".7" stroke-width="1.6"/>
+            <path d="M154 86h212M154 80v12M366 80v12" opacity=".6"/><text x="260" y="106" text-anchor="middle" fill="currentColor" stroke="none" font-size="11" opacity=".8">air gap</text>
+          </svg>
+          <figcaption>Reports reach a human review dock. The Swarm has no path to your keys, your signing, or your funds.</figcaption>
+        </figure>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="band" id="status" aria-labelledby="h-status">
+    <div class="wrap wide">
+      <div class="bhead" style="margin-bottom:36px">
+        <h2 id="h-status">What is real today</h2>
+        <p class="sub">Nothing on this page is implemented. This table says what each part is meant to become, and how much is known about it now.</p>
+      </div>
+      <div class="covwrap"><table class="cov"><caption class="sr">Status of each part of QEVRA</caption><thead><tr><th scope="col">Part</th><th scope="col">Status</th><th scope="col">Note</th></tr></thead><tbody class="js-cov"></tbody></table></div>
+      <div class="pqnote"><p><b>About post-quantum.</b> ML-DSA is the initial candidate scheme, standardized by NIST as FIPS 204. QEVRA makes no claim that it resists quantum attacks, and no claim about the rest of Robinhood Chain.</p><p>An account can be called PQC-protected only if no ordinary wallet key can withdraw funds or replace the key. That is still being designed, and independent review is needed before any mainnet use.</p></div>
+      <div class="ctas" style="margin-top:36px"><button class="btn primary" data-launch>Launch App <svg class="arrow" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 7h9M7.5 3.5L11 7l-3.5 3.5"/></svg></button></div>
+    </div>
+  </section>
+
+  <footer class="lfoot"><div class="wrap wide">
+    <p>This page is a design preview, not a working wallet. It reads no chain, holds no funds and reports no audit. Every address, value and run shown is an example.</p>
+    <p>Built for Robinhood Chain. Robinhood brand-use rules have not been checked yet, so the name appears only in plain text.</p>
+  </div></footer>
+</div>
+
+<!-- ============================================================ APP ============================================================ -->
+<div class="view" id="view-app" hidden>
+  <div class="statusbar"><div class="wrap wide js-status"></div></div>
+  <div class="apptop">
+    <div class="wrap wide">
+      <button class="wordmark" data-view-go="landing" aria-label="QEVRA, back to the landing page"><span id="app-mark" aria-hidden="true"></span>QEVRA</button>
+      <div class="apptools">
+        <span class="chip exp netchip"><span class="mat outline"></span>Robinhood Testnet · 46630</span>
+        <button class="btn ghost small" id="walletBtn" type="button">Connect wallet</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="appshell">
+    <nav class="rail" aria-label="App sections">
+      <ul id="rail"></ul>
+      <div class="setupmini" id="setupmini"></div>
+    </nav>
+
+    <div class="appmain">
+      <div class="demobar">
+        <div class="demo-row"><span class="chip demo">DEMO DATA</span><p><b>A design preview, not a working app.</b> <span class="long">No wallet is connected, no chain is read and nothing here can move funds.</span></p><button class="btn ghost small" type="button" id="pcBtn" aria-expanded="false" aria-controls="pcPanel">Preview controls</button></div>
+        <div class="pcpanel" id="pcPanel" hidden>
+          <div class="row"><span id="pc-stage-l">Setup state</span>
+            <div class="pseg" role="group" aria-labelledby="pc-stage-l" id="pcStage">
+              <div class="tg"><button type="button" data-stage="0">Not connected</button><button type="button" data-stage="1">Wallet connected</button><button type="button" data-stage="2">Account created</button><button type="button" data-stage="3">Key registered</button><button type="button" data-stage="4">Funded (example)</button></div>
+            </div></div>
+          <div class="row"><label for="pcState">Button state</label><select id="pcState"></select></div>
+          <div class="row"><span id="pc-runs-l">Security runs</span><span class="tg" role="group" aria-labelledby="pc-runs-l"><button type="button" data-runs="1">Example runs</button><button type="button" data-runs="0">Empty state</button></span></div>
+          <div class="row"><span id="pc-acts-l">Activity</span><span class="tg" role="group" aria-labelledby="pc-acts-l"><button type="button" data-acts="1">Example rows</button><button type="button" data-acts="0">Empty state</button></span></div>
+          <div><button class="btn ghost small" type="button" id="pcReset">Reset the preview</button></div>
+        </div>
+      </div>
+
+      <!-- swap -->
+      <section class="route" data-route="swap" aria-labelledby="h-swap">
+        <div class="rhead"><h1 id="h-swap">Simple swap</h1><p>One swap, with every detail reviewed before you sign.</p></div>
+        <div class="swapgrid">
+          <div class="panel">
+            <div class="ph"><h2>Your swap</h2><span class="chip unk"><span class="mat dotted"></span>Router not configured</span></div>
+            <div class="swapbox">
+              <label class="fld" for="amt"><span class="fl">You pay</span><span class="fr"><input id="amt" inputmode="decimal" autocomplete="off" value="100" aria-describedby="amt-h"><span class="tok">TKN-A</span></span><small id="amt-h">Example token. A balance shows only after setup.</small></label>
+              <div class="fld"><span class="fl">You receive, at least</span><span class="fr"><span class="val">No quote</span><span class="tok">TKN-B</span></span><small>No quote is shown, because no route is configured and none can be made up.</small></div>
+            </div>
+            <dl class="quote">
+              <div><dt>Slippage limit</dt><dd>0.5% <em>example</em></dd></div>
+              <div><dt>Network fee</dt><dd>Not estimated</dd></div>
+              <div><dt>Quote expires</dt><dd>No quote</dd></div>
+              <div><dt>Router</dt><dd>Not configured</dd></div>
+            </dl>
+            <button class="btn primary swapbtn" id="swapBtn" type="button">Connect wallet</button>
+            <div class="statecard" id="stateCard" data-sev="info" role="status"><span class="glyph" aria-hidden="true"></span><div><p class="cause" id="sc-cause"></p><p class="not" id="sc-not"></p></div></div>
+            <p class="feenote">Network fees can be spent even when a swap fails.</p>
+          </div>
+          <div class="panel intent">
+            <div class="ph"><h2>Intent Lock</h2><span class="chip" id="intentChip"></span></div>
+            <figure class="glyphbox"><canvas id="cv-glyph" role="img" aria-label="Eight stacked rings, one per swap detail. A line of light passes through when every detail matches what you reviewed, and stops at a ring that changed."></canvas></figure>
+            <div class="itwrap"><table class="itable"><caption class="sr">Swap details as reviewed and as they would be signed</caption><thead><tr><th scope="col">Detail</th><th scope="col">Reviewed</th><th scope="col">To be signed</th><th scope="col">Match</th></tr></thead><tbody id="itbody"></tbody></table></div>
+            <p class="livecap" id="intent-cap" aria-live="polite"></p>
+            <p class="inote">This comparison runs in your browser on example values. It is a way to notice a change, not a security check.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- wallet -->
+      <section class="route" data-route="wallet" aria-labelledby="h-wallet" hidden>
+        <div class="rhead"><h1 id="h-wallet">Wallet and PQ Vault</h1><p>Your connected wallet and your QEVRA account are two different accounts.</p></div>
+        <div class="panel">
+          <div class="ph"><h2>Accounts</h2><span class="chip exp"><span class="mat outline"></span>Experimental</span></div>
+          <div class="ledgers"><article class="ledger" id="led-eoa" aria-labelledby="led-eoa-h"></article><article class="ledger q" id="led-q" aria-labelledby="led-q-h"></article></div>
+          <p class="nototal"><span class="mat outline"></span><span>Two ledgers, and no combined total. They do not share the same protection, so QEVRA never adds them together.</span></p>
+        </div>
+        <div class="panel">
+          <div class="ph"><h2>Set up your QEVRA account</h2><span class="chip" id="setupChip"></span></div>
+          <ol class="setup" id="setup" aria-label="Setup steps"></ol>
+          <div class="ctrlnote"><p><b>Who controls the account.</b> Which key controls a QEVRA account, and what your connected wallet can do after setup, is still being designed.</p><p>Until a conventional wallet key is ruled out as a way to withdraw or replace the key, QEVRA does not call this account protected.</p></div>
+        </div>
+      </section>
+
+      <!-- activity -->
+      <section class="route" data-route="activity" aria-labelledby="h-act" hidden>
+        <div class="rhead"><h1 id="h-act">Transaction activity</h1><p>Each swap in one plain sentence, with its real state.</p></div>
+        <div class="panel">
+          <div class="ph"><h2>Swaps</h2><span class="chip demo">EXAMPLE ROWS</span></div>
+          <div class="act-body"><ul class="acts" id="acts" aria-label="Example transactions"></ul><aside class="actd" id="actDetail" aria-live="polite"></aside></div>
+        </div>
+      </section>
+
+      <!-- security -->
+      <section class="route" data-route="security" aria-labelledby="h-sec" hidden>
+        <div class="rhead"><h1 id="h-sec">Security Swarm</h1><p>What the Swarm is working on, with its evidence and its limits.</p></div>
+        <div class="panel">
+          <div class="ph"><h2>Research and tests</h2><span class="chip demo">EXAMPLE RUNS</span></div>
+          <p class="core2">The Security Swarm researches, tests, and reports. It does not control your wallet.</p>
+          <p class="corep2">QEVRA’s agents do not access your private keys, sign transactions on your behalf, or move your funds. They work with public security information and isolated test environments. Proposed security changes must pass deterministic tests, appropriate security review, and explicit human approval before deployment.</p>
+          <div class="swarm-body"><ul class="runs" id="runs" aria-label="Example runs"></ul><aside class="drawer" id="runDrawer" aria-live="polite"></aside></div>
+          <p class="legend"><span class="mat outline"></span><span><b>Passed</b> appears only for a named, deterministic test with a definition link. No test is shown as passed here. <b>Research completed</b> appears only for a real run.</span></p>
+        </div>
+      </section>
+
+      <!-- status -->
+      <section class="route" data-route="status" aria-labelledby="h-stat" hidden>
+        <div class="rhead"><h1 id="h-stat">Status and limits</h1><p>Nothing in this preview is implemented. This is what each part is meant to become, and how much is known now.</p></div>
+        <div class="panel">
+          <div class="covwrap"><table class="cov"><caption class="sr">Status of each property in this preview</caption><thead><tr><th scope="col">Part</th><th scope="col">Status</th><th scope="col">Note</th></tr></thead><tbody class="js-cov"></tbody></table></div>
+          <div class="pqnote" style="margin-top:0"><p><b>About post-quantum.</b> ML-DSA is the initial candidate scheme (NIST FIPS 204). QEVRA makes no claim that it resists quantum attacks, and no claim about the rest of Robinhood Chain. Independent review is needed before any mainnet use.</p></div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <nav class="tabbar" id="tabbar" aria-label="App sections"></nav>
+</div>
+
+<!-- ============================================================ DESIGN SYSTEM ============================================================ -->
+<div class="view dsview" id="view-design" hidden>
+  <div class="wrap">
+    <header class="dshead">
+      <h1>The Aperture design system</h1>
+      <p class="lede">The approved direction as tokens, type, parts and the 3D object. The handoff document <span class="mono">QEVRA_DESIGN_DIRECTION.md</span> carries the full specification, and this page is its live reference.</p>
+      <nav class="dsnav" aria-label="On this page"><a href="#ds-color" data-ds="ds-color">Colour</a><a href="#ds-type" data-ds="ds-type">Type</a><a href="#ds-space" data-ds="ds-space">Space, radius, motion</a><a href="#ds-parts" data-ds="ds-parts">Parts</a><a href="#ds-3d" data-ds="ds-3d">The 3D object</a></nav>
+    </header>
+
+    <section class="dssec" id="ds-color"><h2>Colour</h2><p class="sub">Graphite, warm silver, one warm light. The beam is tungsten, never green: lime is kept for a test that actually passed. Contrast is computed here with the WCAG 2 formula.</p><div class="swatches" id="swatches"></div></section>
+
+    <section class="dssec" id="ds-type"><h2>Type</h2><p class="sub">Instrument Serif for display, Geist for the interface, Geist Mono for data. Sentence case throughout. No tracked capitals, no single emphasised word in a headline. Licences and loading are to be confirmed before production.</p><div class="tscale" id="tscale"></div></section>
+
+    <section class="dssec" id="ds-space"><h2>Space, radius, motion</h2>
+      <div class="demos">
+        <div><h3>Space scale</h3><div class="spacebars" id="spacebars"></div></div>
+        <div><h3>Radius</h3><div class="covwrap"><table class="ttable" style="min-width:0"><tbody id="radtab"></tbody></table></div><h3>Elevation</h3><p class="sub" style="font-size:14px">None. Depth comes from three surface steps, one hairline and one stronger line. There are no drop shadows.</p></div>
+        <div><h3>Motion</h3><div class="covwrap"><table class="ttable" style="min-width:0"><tbody id="mottab"></tbody></table></div></div>
+      </div>
+    </section>
+
+    <section class="dssec" id="ds-parts"><h2>Parts</h2><p class="sub">Status is a material: solid means evidenced, an outline means experimental, dotted means unknown. Colour is never the only signal.</p>
+      <div class="demos">
+        <div><h3>Status material and chips</h3>
+          <div class="btnrow"><span class="chip ok"><span class="mat solid"></span>Test passed, for example</span><span class="chip exp"><span class="mat outline"></span>Under evaluation</span><span class="chip unk"><span class="mat dotted"></span>Not yet verified</span><span class="chip bad"><span class="mat solid"></span>Failed</span><span class="chip demo">DEMO DATA</span></div>
+          <p class="sub" style="font-size:14px">Nothing is drawn solid without evidence.</p></div>
+        <div><h3>Buttons</h3>
+          <div class="btnrow"><button class="btn primary" type="button">Default</button><button class="btn primary force-hover" type="button">Hover</button><button class="btn primary force-focus" type="button">Focus</button><button class="btn primary" type="button" disabled>Disabled</button></div>
+          <div class="btnrow"><button class="btn ghost" type="button">Default</button><button class="btn ghost force-hover" type="button">Hover</button><button class="btn ghost small" type="button">Small</button></div></div>
+        <div><h3>Field</h3>
+          <label class="fld" for="ds-amt"><span class="fl">You pay</span><span class="fr"><input id="ds-amt" value="100" inputmode="decimal" autocomplete="off"><span class="tok">TKN-A</span></span><small>Example token.</small></label></div>
+        <div><h3>State card</h3>
+          <div class="statecard" data-sev="info"><span class="glyph"></span><div><p class="cause">Info: type an amount to swap.</p><p class="not">Says what did not happen.</p></div></div>
+          <div class="statecard" data-sev="blocked"><span class="glyph"></span><div><p class="cause">Blocked: the account holds less TKN-A than this amount.</p><p class="not">No transaction was sent.</p></div></div>
+          <div class="statecard" data-sev="failed"><span class="glyph"></span><div><p class="cause">Failed: the transaction reverted.</p><p class="not">Network fees may have been spent.</p></div></div></div>
+      </div>
+    </section>
+
+    <section class="dssec" id="ds-3d"><h2>The 3D object</h2><p class="sub">Eight machined rings, one per swap detail, drawn with Canvas 2D. Drag the sliders to see every state variable. In the landing, scrolling moves these values between seven keyframes.</p>
+      <div class="lab">
+        <div class="stage" id="labStage"><canvas id="cv-lab" role="img" aria-label="The Aperture ring stack, driven by the sliders."></canvas></div>
+        <div>
+          <div class="sliders" id="sliders"></div>
+        </div>
+      </div>
+      <div class="demos" style="margin-top:12px">
+        <div><h3>Rings, base to top</h3><div class="covwrap"><table class="ttable" style="min-width:0"><thead><tr><th>#</th><th>Detail</th><th>Radius</th><th>Tone</th></tr></thead><tbody id="ringtab"></tbody></table></div></div>
+        <div><h3>Scroll keyframes</h3><div class="covwrap"><table class="ttable" style="min-width:0"><thead><tr><th>Frame</th><th>Moment</th></tr></thead><tbody id="keytab"></tbody></table></div></div>
+      </div>
+    </section>
+  </div>
+  <footer class="lfoot"><div class="wrap"><p>A design preview. It reads no chain, holds no funds and reports no audit.</p></div></footer>
+</div>
+</main>

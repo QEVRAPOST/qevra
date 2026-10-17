@@ -1,0 +1,15 @@
+/*
+ * QEVRA global styles.
+ *
+ * Tailwind v4 provides the reset and the theme. Its automatic class scanning is switched off on purpose:
+ * the Aperture components are authored as plain CSS using the prototype's class names, and some of those names
+ * (for example `.outline`, the status material) are also Tailwind utilities. If a directory should use
+ * Tailwind utilities, enable it with `@source "<path>"` and rename any class that collides first.
+ *
+ * Design tokens live in styles/tokens.css and are the single source of truth.
+ */
+@import "tailwindcss" source(none);
+@import "../styles/tokens.css";
+@import "../styles/base.css";
+@import "../styles/landing.css";
+@import "../styles/dashboard.css";

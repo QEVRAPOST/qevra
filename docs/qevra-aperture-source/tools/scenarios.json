@@ -1,0 +1,250 @@
+[
+ {
+  "name": "reference-screenshots/01-landing-hero-intro-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 200,
+  "wait": 600
+ },
+ {
+  "name": "reference-screenshots/02-landing-hero-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 800,
+  "wait": 3600
+ },
+ {
+  "name": "reference-screenshots/03-frame1-every-detail-gets-a-ring-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelectorAll('#scol .frame')[1];const r=e.getBoundingClientRect();window.scrollTo({top:scrollY+r.top+r.height/2-(100+innerHeight)/2,behavior:'instant'});})()",
+  "wait": 1800
+ },
+ {
+  "name": "reference-screenshots/04-frame2-rings-turn-into-place-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelectorAll('#scol .frame')[2];const r=e.getBoundingClientRect();window.scrollTo({top:scrollY+r.top+r.height/2-(100+innerHeight)/2,behavior:'instant'});})()",
+  "wait": 1800
+ },
+ {
+  "name": "reference-screenshots/05-frame3-change-one-detail-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelectorAll('#scol .frame')[3];const r=e.getBoundingClientRect();window.scrollTo({top:scrollY+r.top+r.height/2-(100+innerHeight)/2,behavior:'instant'});})()",
+  "wait": 1800
+ },
+ {
+  "name": "reference-screenshots/06-frame4-experimental-outline-zoom-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelectorAll('#scol .frame')[4];const r=e.getBoundingClientRect();window.scrollTo({top:scrollY+r.top+r.height/2-(100+innerHeight)/2,behavior:'instant'});})()",
+  "wait": 1800
+ },
+ {
+  "name": "reference-screenshots/07-frame5-security-swarm-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelectorAll('#scol .frame')[5];const r=e.getBoundingClientRect();window.scrollTo({top:scrollY+r.top+r.height/2-(100+innerHeight)/2,behavior:'instant'});})()",
+  "wait": 1800
+ },
+ {
+  "name": "reference-screenshots/08-frame6-try-the-app-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelectorAll('#scol .frame')[6];const r=e.getBoundingClientRect();window.scrollTo({top:scrollY+r.top+r.height/2-(100+innerHeight)/2,behavior:'instant'});})()",
+  "wait": 1800
+ },
+ {
+  "name": "reference-screenshots/09-landing-swarm-limits-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelector('#swarm-limits');window.scrollTo({top:scrollY+e.getBoundingClientRect().top-100,behavior:'instant'});})()",
+  "wait": 900
+ },
+ {
+  "name": "reference-screenshots/10-landing-status-1360x900",
+  "w": 1360,
+  "h": 900,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelector('#status');window.scrollTo({top:scrollY+e.getBoundingClientRect().top-100,behavior:'instant'});})()",
+  "wait": 900
+ },
+ {
+  "name": "reference-screenshots/11-landing-hero-1024x768",
+  "w": 1024,
+  "h": 768,
+  "wait0": 3300,
+  "wait": 300
+ },
+ {
+  "name": "reference-screenshots/12-landing-hero-820x1180",
+  "w": 820,
+  "h": 1180,
+  "wait0": 3300,
+  "wait": 300
+ },
+ {
+  "name": "reference-screenshots/13-landing-hero-mobile-400x820",
+  "w": 400,
+  "h": 820,
+  "dpr": 2,
+  "wait0": 3300,
+  "wait": 300
+ },
+ {
+  "name": "reference-screenshots/14-landing-frame3-mobile-400x820",
+  "w": 400,
+  "h": 820,
+  "dpr": 2,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelectorAll('#scol .frame')[3];const r=e.getBoundingClientRect();window.scrollTo({top:scrollY+r.top+r.height/2-(document.querySelector('#pin').getBoundingClientRect().bottom+innerHeight)/2,behavior:'instant'});})()",
+  "wait": 1800
+ },
+ {
+  "name": "reference-screenshots/15-landing-frame5-mobile-400x820",
+  "w": 400,
+  "h": 820,
+  "dpr": 2,
+  "wait0": 3300,
+  "js": "(()=>{const e=document.querySelectorAll('#scol .frame')[5];const r=e.getBoundingClientRect();window.scrollTo({top:scrollY+r.top+r.height/2-(document.querySelector('#pin').getBoundingClientRect().bottom+innerHeight)/2,behavior:'instant'});})()",
+  "wait": 1800
+ },
+ {
+  "name": "reference-screenshots/20-app-swap-not-connected-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-swap",
+  "wait0": 900,
+  "wait": 500
+ },
+ {
+  "name": "reference-screenshots/21-app-swap-funded-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-swap",
+  "wait0": 900,
+  "js": "(()=>{const b=document.querySelector('#swapBtn');for(let i=0;i<4;i++)b.click();})()",
+  "wait": 900
+ },
+ {
+  "name": "reference-screenshots/22-app-swap-reviewed-route-unavailable-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-swap",
+  "wait0": 900,
+  "js": "(()=>{const b=document.querySelector('#swapBtn');for(let i=0;i<4;i++)b.click();document.querySelector('#swapBtn').click();})()",
+  "wait": 1200
+ },
+ {
+  "name": "reference-screenshots/23-app-swap-amount-changed-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-swap",
+  "wait0": 900,
+  "js": "(()=>{const b=document.querySelector('#swapBtn');for(let i=0;i<4;i++)b.click();document.querySelector('#swapBtn').click();const a=document.querySelector('#amt');a.value='80';a.dispatchEvent(new Event('input',{bubbles:true}));})()",
+  "wait": 1400
+ },
+ {
+  "name": "reference-screenshots/24-app-wallet-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-wallet",
+  "wait0": 900,
+  "js": "(()=>{for(let i=0;i<2;i++){const b=document.querySelector('[data-advance]');if(b)b.click();}})()",
+  "wait": 500
+ },
+ {
+  "name": "reference-screenshots/25-app-security-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-security",
+  "wait0": 900,
+  "wait": 500
+ },
+ {
+  "name": "reference-screenshots/26-app-activity-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-activity",
+  "wait0": 900,
+  "wait": 500
+ },
+ {
+  "name": "reference-screenshots/27-app-status-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-status",
+  "wait0": 900,
+  "wait": 500
+ },
+ {
+  "name": "reference-screenshots/28-app-preview-controls-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "app-swap",
+  "wait0": 900,
+  "js": "document.querySelector('#pcBtn').click()",
+  "wait": 500
+ },
+ {
+  "name": "reference-screenshots/29-app-swap-1024x768",
+  "w": 1024,
+  "h": 768,
+  "hash": "app-swap",
+  "wait0": 900,
+  "wait": 500
+ },
+ {
+  "name": "reference-screenshots/30-app-swap-mobile-400x820",
+  "w": 400,
+  "h": 820,
+  "dpr": 2,
+  "hash": "app-swap",
+  "wait0": 900,
+  "wait": 500
+ },
+ {
+  "name": "reference-screenshots/31-app-amount-changed-mobile-400x820",
+  "w": 400,
+  "h": 820,
+  "dpr": 2,
+  "hash": "app-swap",
+  "wait0": 900,
+  "js": "(()=>{const b=document.querySelector('#swapBtn');for(let i=0;i<4;i++)b.click();document.querySelector('#swapBtn').click();const a=document.querySelector('#amt');a.value='80';a.dispatchEvent(new Event('input',{bubbles:true}));window.scrollTo({top:480,behavior:'instant'});})()",
+  "wait": 1200
+ },
+ {
+  "name": "reference-screenshots/32-app-wallet-mobile-400x820",
+  "w": 400,
+  "h": 820,
+  "dpr": 2,
+  "hash": "app-wallet",
+  "wait0": 900,
+  "wait": 400
+ },
+ {
+  "name": "reference-screenshots/40-design-system-top-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "design",
+  "wait0": 900,
+  "wait": 600
+ },
+ {
+  "name": "reference-screenshots/41-design-system-3d-lab-1360x900",
+  "w": 1360,
+  "h": 900,
+  "hash": "design",
+  "wait0": 900,
+  "js": "(()=>{const e=document.querySelector('#ds-3d');window.scrollTo({top:scrollY+e.getBoundingClientRect().top-50,behavior:'instant'});})()",
+  "wait": 900
+ }
+]
