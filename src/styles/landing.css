@@ -1,0 +1,522 @@
+/*
+ * Landing: nav, the pinned 3D stage with the seven story frames, the bands and the footer.
+ * Class names and values match the approved prototype.
+ */
+
+/* ---------- nav ---------- */
+.lnav {
+  position: sticky;
+  top: calc(var(--shell-h) + var(--inset-t));
+  z-index: 30;
+  height: var(--nav-h);
+  background: var(--scrim);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.lnav .wrap {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+.lnav .wrap > :first-child {
+  justify-self: start;
+}
+.lnav .wrap > :last-child {
+  justify-self: end;
+}
+.lnav .links {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+}
+.lnav .links a {
+  color: var(--fg-2);
+  text-decoration: none;
+  font-size: 14.5px;
+  transition: color var(--t);
+}
+.lnav .links a:hover {
+  color: var(--fg);
+}
+.lnav .btn {
+  min-height: 40px;
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--f-display);
+  font-size: 28px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.wordmark svg {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+/* In the app bar the glyph sits in a wrapper span, as in the prototype, so it keeps inline baseline alignment
+   (Tailwind's reset would otherwise make the svg a block). */
+.wordmark .mark svg {
+  display: inline;
+  vertical-align: baseline;
+}
+
+/* ---------- one pinned stage across hero and story ---------- */
+.story {
+  position: relative;
+}
+.sgrid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 28px;
+}
+.scol {
+  min-width: 0;
+}
+.pin {
+  position: sticky;
+  top: var(--stick);
+  height: calc(100vh - var(--stick) - var(--status-h));
+  height: calc(100svh - var(--stick) - var(--status-h));
+  align-self: start;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding-top: 8px;
+  min-width: 0;
+}
+.stage {
+  position: relative;
+  min-height: 0;
+  background: radial-gradient(52% 46% at 40% 56%, rgba(255, 233, 184, 0.06), transparent 72%);
+}
+.pin .stage {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+}
+.stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.pcap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  align-items: end;
+  min-height: 56px;
+  padding-bottom: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.pcap .cap {
+  font: 400 13px/1.5 var(--f-ui);
+  color: var(--fg-2);
+  max-width: 62ch;
+}
+.pcap .cap b {
+  color: var(--fg);
+  font-weight: 500;
+}
+.pcap .tryit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 400 12.5px/1.3 var(--f-mono);
+  color: var(--muted);
+  transition: opacity var(--t-slow);
+}
+.pcap .tryit.off {
+  opacity: 0;
+  pointer-events: none;
+}
+.frame {
+  min-width: 0;
+}
+
+.hero {
+  min-height: calc(100vh - var(--stick) - var(--status-h));
+  min-height: calc(100svh - var(--stick) - var(--status-h));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 22px;
+  padding: 28px 0 32px;
+}
+.hero .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--fg-2);
+  font: 400 14px/1.35 var(--f-ui);
+}
+.hero .eyebrow::before {
+  content: "";
+  width: 34px;
+  height: 1px;
+  background: var(--line-2);
+  flex: none;
+}
+.hero h1 {
+  font-family: var(--f-display);
+  font-weight: 400;
+  font-size: clamp(44px, 5.6vw, 88px);
+  line-height: 0.94;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.lede {
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--fg-2);
+  max-width: 44ch;
+  text-wrap: pretty;
+}
+.ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.facts {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--line);
+  max-width: 54ch;
+}
+.facts li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+.facts .mat {
+  color: var(--muted);
+  margin-top: 3px;
+  align-self: start;
+}
+.facts b {
+  color: var(--fg);
+  font-weight: 500;
+  margin-right: 6px;
+}
+.core {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font: 400 12.5px/1.5 var(--f-mono);
+  color: var(--fg-2);
+  max-width: 54ch;
+}
+.core .mat {
+  margin-top: 3px;
+  color: var(--exp);
+}
+
+.step {
+  min-height: 78vh;
+  min-height: 78svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  max-width: 46ch;
+  opacity: 0.34;
+  transition: opacity var(--t-slow) var(--ease);
+  padding: 6vh 0;
+}
+.step.on,
+.step:focus-within {
+  opacity: 1;
+}
+.step h2 {
+  font-family: var(--f-display);
+  font-weight: 400;
+  font-size: clamp(32px, 3.6vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+.step p {
+  color: var(--fg-2);
+  font-size: 16.5px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.step .note {
+  display: flex;
+  gap: 10px;
+  font: 400 12.5px/1.5 var(--f-mono);
+  color: var(--muted);
+}
+.step .note .mat {
+  margin-top: 3px;
+}
+.step .corep {
+  font-family: var(--f-display);
+  font-size: 28px;
+  line-height: 1.15;
+  color: var(--fg);
+  letter-spacing: -0.005em;
+  border-left: 2px solid var(--exp);
+  padding: 2px 0 2px 16px;
+  text-wrap: balance;
+}
+.step .btn {
+  align-self: flex-start;
+}
+.path {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+.path li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 2px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.path .mat {
+  color: var(--muted);
+  margin-top: 4px;
+}
+.path b {
+  font-weight: 500;
+  font-size: 15px;
+}
+.path span.d {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+/* ---------- sections after the story ---------- */
+.band {
+  border-top: 1px solid var(--line);
+  padding: 88px 0 72px;
+  scroll-margin-top: var(--stick);
+}
+.band h2 {
+  font-family: var(--f-display);
+  font-weight: 400;
+  font-size: clamp(32px, 3.6vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+  max-width: 18ch;
+}
+.band .sub {
+  color: var(--fg-2);
+  font-size: 16.5px;
+  line-height: 1.55;
+  max-width: 52ch;
+  text-wrap: pretty;
+}
+.bgrid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 56px;
+  align-items: start;
+}
+.bgrid > * {
+  min-width: 0;
+}
+.bhead {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+.can2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+}
+.can2 h3 {
+  font: 500 15px/1.3 var(--f-ui);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-2);
+}
+.can2 ul {
+  display: grid;
+}
+.can2 li {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-2);
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+.gapfig {
+  display: grid;
+  gap: 10px;
+  margin-top: 36px;
+}
+.gapfig svg {
+  width: 100%;
+  height: auto;
+  color: var(--fg-2);
+  max-height: 150px;
+  font-family: var(--f-ui);
+}
+.gapfig rect {
+  rx: 2px;
+}
+.gapfig figcaption {
+  font-size: 13.5px;
+  color: var(--fg-2);
+  max-width: 70ch;
+}
+.lfoot {
+  border-top: 1px solid var(--line);
+  padding: 32px 0 64px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.lfoot .wrap {
+  display: grid;
+  gap: 10px;
+}
+.lfoot p {
+  max-width: 80ch;
+}
+
+/* ---------- Launch App curtain: a circle grows from the button, the route swaps, then it fades ---------- */
+.curtain {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  background: var(--bg);
+  clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%));
+  transition:
+    clip-path 0.62s cubic-bezier(0.7, 0, 0.2, 1),
+    opacity 0.42s ease;
+  display: grid;
+  place-items: center;
+}
+.curtain.on {
+  clip-path: circle(160vmax at var(--cx, 50%) var(--cy, 50%));
+}
+.curtain.off {
+  opacity: 0;
+}
+.curtain.reset {
+  transition: none;
+}
+.curtain .cm {
+  font: 500 13px/1 var(--f-mono);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  opacity: 0;
+  transition: opacity 0.3s 0.2s;
+}
+.curtain.on .cm {
+  opacity: 1;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1024px) {
+  .lnav .links {
+    display: none;
+  }
+  .lnav .wrap {
+    display: flex;
+    justify-content: space-between;
+  }
+  .pcap .tryit > span:first-child {
+    display: none;
+  }
+  .sgrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .pin {
+    order: -1;
+    z-index: 3;
+    height: 44vh;
+    height: 44svh;
+    min-height: 330px;
+    max-height: 440px;
+    background: var(--bg);
+    padding-top: 0;
+    gap: 0;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .pcap {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    padding: 6px 0 8px;
+  }
+  .pcap .cap {
+    font-size: 12.5px;
+    line-height: 1.4;
+  }
+  .pcap .tryit {
+    flex-wrap: wrap;
+  }
+  .hero {
+    min-height: 0;
+    padding: 22px 0 28px;
+    gap: 18px;
+  }
+  .step {
+    min-height: 46vh;
+    min-height: 46svh;
+    max-width: none;
+    padding: 3vh 0;
+  }
+  .bgrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+  .band {
+    padding: 56px 0 48px;
+  }
+  .can2 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hero h1 {
+    font-size: clamp(40px, 11vw, 56px);
+  }
+  .lede {
+    font-size: 16px;
+  }
+  .ctas .btn {
+    flex: 1 1 auto;
+  }
+  .step .corep {
+    font-size: 24px;
+  }
+}
+
+/* Inactive steps are dimmed by design. Give full contrast to anyone who asks for it. */
+@media (prefers-contrast: more) {
+  .step {
+    opacity: 1;
+  }
+}

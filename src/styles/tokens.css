@@ -1,0 +1,92 @@
+/*
+ * QEVRA Aperture tokens. One world: graphite, warm silver, one tungsten amber, one beam of light.
+ * Dark only. Values are copied from the approved prototype (docs/qevra-aperture-source/src/style.css).
+ */
+:root {
+  --bg: #0c0d0f;
+  --bg-2: #15171a;
+  --bg-3: #202328;
+  --line: #2e3238;
+  --line-2: #454a52;
+  --line-ctl: #6a6f77;
+  --fg: #ece8df;
+  --fg-2: #b9b5ab;
+  --muted: #8b8f96;
+  --exp: #e3a93b;
+  --fail: #e5604d;
+  --pass: #c4f25a;
+  --info: #9fb7c9;
+  --focus: #ffe9b8;
+  --cta-bg: #ece8df;
+  --cta-fg: #0c0d0f;
+  --scrim: rgba(12, 13, 15, 0.92);
+
+  --f-display: var(--font-instrument-serif), "Iowan Old Style", Georgia, serif;
+  --f-ui: var(--font-geist), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --r: 2px;
+  --r-lg: 3px;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
+  --s-8: 40px;
+  --s-9: 56px;
+  --s-10: 72px;
+  --s-11: 96px;
+
+  --t-fast: 120ms;
+  --t: 180ms;
+  --t-slow: 350ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* The prototype's studio bar is not shipped, so there is no shell height. */
+  --shell-h: 0px;
+  --status-h: 38px;
+  --nav-h: 60px;
+  --inset-t: env(safe-area-inset-top, 0px);
+  --stick: calc(var(--shell-h) + var(--nav-h) + var(--inset-t));
+
+  color-scheme: dark;
+}
+
+/* Map the tokens into Tailwind v4 so any utility added later reads the same single source of truth. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-ctl: var(--line-ctl);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+  --color-exp: var(--exp);
+  --color-fail: var(--fail);
+  --color-pass: var(--pass);
+  --color-info: var(--info);
+  --color-focus: var(--focus);
+  --font-display: var(--f-display);
+  --font-ui: var(--f-ui);
+  --font-mono: var(--f-mono);
+  --radius-sm: var(--r);
+  --radius-lg: var(--r-lg);
+  --ease-aperture: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --nav-h: 54px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --status-h: 34px;
+  }
+}
