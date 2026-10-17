@@ -1,0 +1,55 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { RouteIcon, APP_ROUTES } from "./routes";
+import { useAppModel } from "./DemoAppProvider";
+
+function isCurrent(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** Left rail on desktop (1025px and up). Hidden by CSS at 1024px and below, where the tab bar shows. */
+export function Rail() {
+  const pathname = usePathname();
+  const { model } = useAppModel();
+  const done = model.wallet.setupDone;
+  return (
+    <nav className="rail" aria-label="App sections">
+      <ul>
+        {APP_ROUTES.map((r) => (
+          <li key={r.key}>
+            <Link href={r.href} aria-current={isCurrent(pathname, r.href) ? "page" : undefined}>
+              <RouteIcon route={r} size={18} />
+              <span>{r.label}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <div className="setupmini">
+        <span>Setup: {done} of 4</span>
+        <span className="bar" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <i key={i} className={i < done ? "on" : ""} />
+          ))}
+        </span>
+        {done < 4 ? <Link href="/app/wallet">Continue setup</Link> : <span>Example account funded</span>}
+      </div>
+    </nav>
+  );
+}
+
+/** Bottom tab bar at 1024px and below. */
+export function TabBar() {
+  const pathname = usePathname();
+  return (
+    <nav className="tabbar" aria-label="App sections">
+      {APP_ROUTES.map((r) => (
+        <Link key={r.key} href={r.href} aria-current={isCurrent(pathname, r.href) ? "page" : undefined}>
+          <RouteIcon route={r} size={20} />
+          <span>{r.short}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
