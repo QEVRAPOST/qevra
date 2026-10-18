@@ -1,4 +1,5 @@
 import type { ActivityView } from "./activity";
+import type { NetworkId, NetworkOption } from "./network";
 import type { SecurityView } from "./security";
 import type { CoverageRow, StatusBarItem } from "./status";
 import type { SwapView } from "./swap";
@@ -16,6 +17,8 @@ export interface AppModel {
   mode: "demo";
   statusBar: StatusBarItem[];
   coverage: CoverageRow[];
+  /** the network the app is pointed at, and the ones the menu lists (unavailable ones cannot be picked) */
+  network: { selected: NetworkId; options: NetworkOption[] };
   wallet: WalletView;
   swap: SwapView;
   activity: ActivityView;
@@ -27,6 +30,11 @@ export interface AppModel {
  * labelled example state. None of them may sign or move funds from UI code.
  */
 export interface AppActions {
+  /**
+   * The network menu in the top bar. A real provider switches its chain and RPC; the demo provider only records the
+   * choice. A network that is not available is refused.
+   */
+  setNetwork(id: NetworkId): void;
   setAmount(value: string): void;
   /** the primary swap button */
   pressSwapButton(): void;

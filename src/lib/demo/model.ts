@@ -1,8 +1,9 @@
+import { NETWORKS } from "@/lib/config/networks";
 import { COVERAGE_ROWS, STATUS_BAR_ITEMS } from "@/lib/content/status";
 import { DEMO_ACTIVITY, DEMO_RUNS_ALL, DEMO_RUNS_DEFAULT } from "@/lib/demo-fixtures";
 import { buildSwapView } from "./swap";
 import { buildWalletView } from "./wallet";
-import type { ActivityView, ActsMode, AppModel, RunsMode, SecurityView, SetupStage, SwapButtonKey } from "@/types";
+import type { ActivityView, ActsMode, AppModel, NetworkId, RunsMode, SecurityView, SetupStage, SwapButtonKey } from "@/types";
 
 export interface DemoInputs {
   stage: SetupStage;
@@ -11,6 +12,7 @@ export interface DemoInputs {
   amount: string;
   runsMode: RunsMode;
   actsMode: ActsMode;
+  network: NetworkId;
 }
 
 function buildSecurity(mode: RunsMode): SecurityView {
@@ -33,6 +35,7 @@ export function buildDemoModel(i: DemoInputs): AppModel {
     mode: "demo",
     statusBar: STATUS_BAR_ITEMS,
     coverage: COVERAGE_ROWS,
+    network: { selected: i.network, options: [...NETWORKS] },
     wallet: buildWalletView(i.stage),
     swap: buildSwapView(i.stage, i.amount, i.reviewed, i.forced),
     activity: buildActivity(i.actsMode),

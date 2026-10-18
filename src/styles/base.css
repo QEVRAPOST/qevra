@@ -15,6 +15,18 @@
 
 html {
   scroll-behavior: smooth;
+  /* anything scrolled into view, by a focus or an anchor, stops below the sticky bar instead of under it */
+  scroll-padding-top: calc(var(--stick) + 12px);
+}
+@media (max-width: 1024px) {
+  /* on phones and tablets the landing also pins the figure on top */
+  html:has(#story-pin) {
+    scroll-padding-top: calc(var(--stick) + clamp(330px, 44svh, 440px) + 12px);
+  }
+  /* and the dashboard has a bottom tab bar */
+  html:has(.tabbar) {
+    scroll-padding-bottom: 84px;
+  }
 }
 
 body {
@@ -108,8 +120,8 @@ canvas {
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
-  padding-left: max(20px, env(safe-area-inset-left, 0px));
-  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  padding-left: max(var(--gutter), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--gutter), env(safe-area-inset-right, 0px));
 }
 .wrap.wide {
   max-width: 1440px;
@@ -355,7 +367,7 @@ canvas {
 .notice-page {
   display: grid;
   gap: 20px;
-  padding: 48px max(20px, env(safe-area-inset-left, 0px)) 72px;
+  padding: 48px max(var(--gutter), env(safe-area-inset-left, 0px)) 72px;
 }
 
 @media (max-width: 760px) {

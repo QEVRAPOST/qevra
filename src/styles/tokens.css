@@ -19,7 +19,10 @@
   --focus: #ffe9b8;
   --cta-bg: #ece8df;
   --cta-fg: #0c0d0f;
-  --scrim: rgba(12, 13, 15, 0.92);
+  /* Sticky bars are opaque: content scrolling under them must never show through. */
+  --scrim: #0c0d0f;
+  /* Shared side gutter. The approved 20px, plus 4px a side. */
+  --gutter: 24px;
 
   --f-display: var(--font-instrument-serif), "Iowan Old Style", Georgia, serif;
   --f-ui: var(--font-geist), system-ui, -apple-system, "Segoe UI", sans-serif;

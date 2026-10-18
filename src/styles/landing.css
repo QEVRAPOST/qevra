@@ -10,9 +10,18 @@
   z-index: 30;
   height: var(--nav-h);
   background: var(--scrim);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
+}
+/* text leaving under the bar fades out instead of being cut off */
+.lnav::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 16px;
+  background: linear-gradient(var(--bg), transparent);
+  pointer-events: none;
 }
 .lnav .wrap {
   height: 100%;
@@ -74,6 +83,7 @@
 /* ---------- one pinned stage across hero and story ---------- */
 .story {
   position: relative;
+  border-top: 1px solid var(--line);
 }
 .sgrid {
   display: grid;
@@ -146,13 +156,11 @@
 }
 
 .hero {
-  min-height: calc(100vh - var(--stick) - var(--status-h));
-  min-height: calc(100svh - var(--stick) - var(--status-h));
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 22px;
-  padding: 28px 0 32px;
+  gap: 18px;
+  padding: 22px 0 24px;
 }
 .hero .eyebrow {
   display: flex;
@@ -189,6 +197,12 @@
   gap: 12px;
   align-items: center;
 }
+.ctas-note {
+  margin-top: -10px;
+  font: 400 12.5px/1.45 var(--f-mono);
+  color: var(--muted);
+  max-width: 54ch;
+}
 .facts {
   display: grid;
   gap: 0;
@@ -200,7 +214,7 @@
   grid-template-columns: 14px minmax(0, 1fr);
   gap: 4px 12px;
   align-items: baseline;
-  padding: 11px 0;
+  padding: 9px 0;
   border-bottom: 1px solid var(--line);
   font-size: 14px;
   line-height: 1.45;
@@ -210,6 +224,16 @@
   color: var(--muted);
   margin-top: 3px;
   align-self: start;
+}
+/* the line for the hero object on show */
+.facts li {
+  padding-left: 12px;
+  margin-left: -12px;
+  transition: background var(--t-slow) var(--ease), box-shadow var(--t-slow) var(--ease);
+}
+.facts li.on {
+  background: linear-gradient(90deg, rgba(227, 169, 59, 0.08), transparent 75%);
+  box-shadow: inset 2px 0 0 var(--exp);
 }
 .facts b {
   color: var(--fg);
@@ -229,21 +253,179 @@
   color: var(--exp);
 }
 
+/* ---------- the hero: pinned copy, and three objects built one at a time ---------- */
+.landing {
+  /* one side gutter for the whole page: the shared 24px, plus 8px (Tailwind's px-2) */
+  --gutter: 32px;
+  display: contents;
+}
+.hstage {
+  --hs-avail: calc(100vh - var(--stick) - var(--status-h));
+  --hs-avail: calc(100svh - var(--stick) - var(--status-h));
+  position: relative;
+}
+.hs-track {
+  position: relative;
+}
+.hstage .hero {
+  min-height: 0;
+  justify-content: flex-start;
+  padding: 22px 0 28px;
+}
+/* the stage is a framed panel: this is what tells the hero's objects apart from the story's open ring below */
+.hfig {
+  position: sticky;
+  top: var(--stick);
+  height: var(--hs-avail);
+  align-self: start;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  padding-top: 8px;
+  min-width: 0;
+}
+.hcanvas {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: radial-gradient(60% 52% at 46% 58%, rgba(255, 233, 184, 0.07), transparent 74%), var(--bg);
+}
+.hcanvas canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.hbadge {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font: 400 12px/1.3 var(--f-mono);
+  color: var(--fg-2);
+  pointer-events: none;
+}
+.hbadge span {
+  color: var(--exp);
+}
+.htabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.htabs-row {
+  display: flex;
+  min-width: 0;
+}
+.htab {
+  position: relative;
+  min-height: 36px;
+  padding: 9px 14px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font: 500 12px/1 var(--f-mono);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease);
+}
+.htab::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  background: var(--line);
+}
+.htab:hover {
+  color: var(--fg);
+}
+.htab[aria-pressed="true"] {
+  color: var(--fg);
+}
+/* the lit part of the underline is how far through the object the scroll is */
+.htab[aria-pressed="true"]::after {
+  background: linear-gradient(90deg, var(--exp) calc(var(--hu, 0) * 100%), var(--line-2) 0);
+}
+.hhint {
+  font: 400 12px/1 var(--f-mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* tall desktop windows: the copy and the stage are pinned together while the objects change */
+@media (min-width: 1025px) and (min-height: 760px) {
+  .hs-track {
+    height: calc(var(--hs-avail) * 3.1);
+  }
+  .hs-pin {
+    position: sticky;
+    top: var(--stick);
+    height: var(--hs-avail);
+  }
+  .hs-pin > .wrap,
+  .hs-pin .hgrid {
+    height: 100%;
+  }
+  .hgrid {
+    align-items: stretch;
+  }
+  .hfig {
+    position: static;
+    height: auto;
+    align-self: stretch;
+  }
+  .hstage .hero {
+    justify-content: center;
+    padding: 0;
+  }
+}
+/* wide but short windows: only the stage is pinned, and the copy scrolls away beside it */
+@media (min-width: 1025px) and (max-height: 759px) {
+  .hgrid {
+    min-height: calc(var(--hs-avail) * 2.2);
+  }
+}
+
 .step {
-  min-height: 78vh;
-  min-height: 78svh;
+  min-height: 66vh;
+  min-height: 66svh;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 14px;
   max-width: 46ch;
-  opacity: 0.34;
+  opacity: 0.55;
   transition: opacity var(--t-slow) var(--ease);
   padding: 6vh 0;
 }
 .step.on,
 .step:focus-within {
   opacity: 1;
+}
+.step.long {
+  min-height: 98vh;
+  min-height: 98svh;
+}
+.step .kicker {
+  font: 400 12.5px/1.3 var(--f-mono);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.step .kicker::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: var(--line-2);
+  flex: none;
 }
 .step h2 {
   font-family: var(--f-display);
@@ -369,16 +551,335 @@
   display: grid;
   gap: 10px;
   margin-top: 36px;
+  container-type: inline-size;
 }
-.gapfig svg {
+/* two drawings of the same figure: a row of cards when there is room, a column when there is not */
+.gapbox svg {
   width: 100%;
   height: auto;
   color: var(--fg-2);
-  max-height: 150px;
   font-family: var(--f-ui);
+  overflow: visible;
 }
-.gapfig rect {
+.gapbox .gv {
+  display: none;
+  max-width: 420px;
+  margin: 0 auto;
+}
+@container (max-width: 560px) {
+  .gapbox .gw {
+    display: none;
+  }
+  .gapbox .gv {
+    display: block;
+  }
+}
+/* the cards: select one, related parts stay lit, the rest dim */
+.gapfig .gp {
+  cursor: pointer;
+  transition: opacity var(--t) var(--ease), color var(--t);
+}
+.gapfig .gbox {
+  fill: var(--bg);
+  pointer-events: all;
   rx: 2px;
+  transition: stroke-width var(--t), fill var(--t);
+}
+.gapfig .gsep,
+.gapfig .gline {
+  stroke: var(--line-2);
+  stroke-width: 1;
+}
+.gapfig .gdot {
+  fill: currentColor;
+  stroke: none;
+}
+.gapfig .gdot.dashed {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-dasharray: 2 2;
+}
+.gapfig .gtitle {
+  font: 500 13.5px var(--f-ui);
+  fill: var(--fg);
+}
+.gapfig .gtag {
+  font: 400 10.5px var(--f-mono);
+  fill: var(--muted);
+}
+.gapfig .gk {
+  font: 400 11px var(--f-mono);
+  fill: var(--muted);
+}
+.gapfig .gval {
+  font: 400 12.5px var(--f-ui);
+  fill: var(--fg-2);
+}
+.gapfig .glabel {
+  font: 400 11px var(--f-mono);
+  fill: var(--fg-2);
+}
+.gapfig .gp:hover {
+  color: var(--fg);
+}
+.gapfig .gp.on {
+  color: var(--fg);
+}
+.gapfig .gp.on .gbox {
+  stroke-width: 2;
+  fill: color-mix(in srgb, var(--fg) 7%, var(--bg));
+}
+.gapfig .gp.on .gval {
+  fill: var(--fg);
+}
+/* Chrome paints its own blue ring around focused SVG groups, so the focus state is drawn in the figure itself */
+.gapfig .gp:focus,
+.gapfig .gp:focus-visible {
+  outline: none;
+}
+.gapfig .gp:focus-visible .gbox,
+.gapfig .gp:focus-visible path {
+  stroke: var(--focus);
+  stroke-width: 2.4;
+}
+.gapfig .gp.rel {
+  color: var(--fg);
+  opacity: 0.9;
+}
+.gapfig svg.sel .gp.off,
+.gapfig svg.sel .gedge:not(.on) {
+  opacity: 0.3;
+}
+.gapfig .gp .hit {
+  fill: transparent;
+  pointer-events: all;
+}
+.gapfig .gedge {
+  transition: opacity var(--t) var(--ease), color var(--t);
+}
+/* reports flow from the Swarm to Human review: this path exists, so it is the only one that moves */
+.gapfig .link .flow,
+.gapfig .link .packet {
+  opacity: 0;
+}
+.gapfig .link.on {
+  color: var(--fg);
+}
+.gapfig .link.on .flow {
+  opacity: 1;
+  stroke-dasharray: 4 4;
+  animation: gapflow 900ms linear infinite;
+}
+@keyframes gapflow {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+/* a report travelling to the dock, over and over while the figure is on screen. It stops at the dock: the dock stays unlit. */
+.gapfig .packet {
+  fill: var(--exp);
+  stroke: none;
+  --d: 66px;
+}
+.gapfig .packet.v {
+  --d: 52px;
+}
+.gapfig svg.live .packet {
+  animation: gappacket 3600ms var(--ease) 1800ms infinite;
+}
+.gapfig svg.live .packet.v {
+  animation-name: gappacketv;
+}
+@keyframes gappacket {
+  0% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  10% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+    transform: translateX(var(--d));
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: translateX(var(--d));
+  }
+}
+@keyframes gappacketv {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  10% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(var(--d));
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: translateY(var(--d));
+  }
+}
+/* the missing path is drawn in once, never as a flow */
+.gapfig .cross .x {
+  opacity: 0.8;
+  stroke-width: 1.6;
+}
+.gapfig .cross .dotted {
+  opacity: 0.55;
+}
+.gapfig .cross.on {
+  color: var(--fg);
+}
+.gapfig .cross.on .x {
+  stroke: var(--fail);
+  opacity: 1;
+  stroke-dasharray: 1;
+  animation: gapdraw 450ms var(--ease);
+}
+@keyframes gapdraw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.gapfig .gapline {
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+.gapfig .gapline.on {
+  animation: gapspan 520ms var(--ease);
+}
+.gapfig .gl2 {
+  fill: var(--fg-2);
+}
+@keyframes gapspan {
+  from {
+    transform: scaleX(0.05);
+    opacity: 0.2;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+/* the draw-in: cards rise one after another, their rows follow, then the paths draw themselves */
+.gapfig svg.arm .gcard,
+.gapfig svg.arm .gedge,
+.gapfig svg.arm .gapline,
+.gapfig svg.arm .gl2 {
+  opacity: 0;
+}
+.gapfig svg.arm .gcard {
+  transform: translateY(10px);
+}
+.gapfig svg.arm .grow {
+  opacity: 0;
+}
+.gapfig svg.arm .draw,
+.gapfig svg.arm .x {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+.gapfig svg.in .gcard,
+.gapfig svg.in .gedge,
+.gapfig svg.in .gapline,
+.gapfig svg.in .gl2,
+.gapfig svg.in .grow {
+  transition: opacity 520ms var(--ease), transform 520ms var(--ease);
+}
+.gapfig svg.in .gcard {
+  transition-delay: calc(var(--i) * 140ms);
+}
+.gapfig svg.in .grow {
+  transition-delay: calc(var(--i, 0) * 140ms + 260ms + var(--r) * 60ms);
+}
+.gapfig svg.in .gcard .grow {
+  transition-delay: calc(260ms + var(--r) * 60ms);
+}
+.gapfig svg.in .gedge {
+  transition-delay: calc(900ms + var(--e) * 280ms);
+}
+.gapfig svg.in .gapline,
+.gapfig svg.in .gl2 {
+  transition-delay: calc(900ms + var(--e, 2) * 280ms);
+}
+.gapfig svg.in .draw,
+.gapfig svg.in .x {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 700ms var(--ease) 900ms;
+}
+.gapfig .gleg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  color: var(--muted);
+  font: 400 12px/1.3 var(--f-mono);
+}
+.gapfig .gleg .k {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  border-top: 1.5px solid currentColor;
+}
+.gapfig .gleg .k.dotted {
+  border-top-style: dotted;
+  margin-left: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gapfig .packet {
+    display: none;
+  }
+}
+.gapinfo {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  min-height: 112px;
+  align-content: start;
+}
+.gapinfo p {
+  max-width: 62ch;
+}
+.gapinfo .gi-h {
+  color: var(--muted);
+  font: 400 12.5px/1.5 var(--f-mono);
+}
+.gapinfo .gi-t {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--fg);
+  font-size: 15px;
+}
+.gapinfo .gi-t b {
+  font-weight: 500;
+}
+.gapinfo .gi-t span {
+  color: var(--muted);
+  font: 400 12px var(--f-mono);
+}
+.gapinfo .gi-b {
+  color: var(--fg-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.gapinfo .gi-r {
+  color: var(--muted);
+  font: 400 12.5px/1.5 var(--f-mono);
 }
 .gapfig figcaption {
   font-size: 13.5px;
@@ -399,40 +900,37 @@
   max-width: 80ch;
 }
 
-/* ---------- Launch App curtain: a circle grows from the button, the route swaps, then it fades ---------- */
-.curtain {
+/* ---------- Launch App transition: the same sculpture, drawn by the same renderer, over the page ---------- */
+.launch {
   position: fixed;
   inset: 0;
   z-index: 80;
+  visibility: hidden;
   pointer-events: none;
+}
+.launch-bg {
+  position: absolute;
+  inset: 0;
   background: var(--bg);
-  clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%));
-  transition:
-    clip-path 0.62s cubic-bezier(0.7, 0, 0.2, 1),
-    opacity 0.42s ease;
-  display: grid;
-  place-items: center;
-}
-.curtain.on {
-  clip-path: circle(160vmax at var(--cx, 50%) var(--cy, 50%));
-}
-.curtain.off {
   opacity: 0;
 }
-.curtain.reset {
-  transition: none;
+.launch-canvas {
+  position: absolute;
+  opacity: 0;
 }
-.curtain .cm {
+.launch-note {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(28px, env(safe-area-inset-bottom, 0px));
+  text-align: center;
   font: 500 13px/1 var(--f-mono);
   color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 10px;
   opacity: 0;
-  transition: opacity 0.3s 0.2s;
 }
-.curtain.on .cm {
-  opacity: 1;
+/* the landing canvas hands over to the overlay at the same pixel, so it must not show twice */
+html[data-launching] .stage canvas {
+  visibility: hidden;
 }
 
 /* ---------- responsive ---------- */
@@ -480,11 +978,66 @@
     padding: 22px 0 28px;
     gap: 18px;
   }
+  /* the hero's stage sits on top and stays pinned while the copy scrolls beneath it */
+  .hfig {
+    order: -1;
+    z-index: 3;
+    height: clamp(360px, 48svh, 460px);
+    background: var(--bg);
+    padding-top: 0;
+    gap: 6px;
+  }
+  /* the copy slides under the pinned stage, so give the stage's lower edge a soft fade */
+  .hfig::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 14px;
+    background: linear-gradient(var(--bg), transparent);
+    pointer-events: none;
+  }
+  .hhint {
+    display: none;
+  }
+  .hbadge {
+    display: none;
+  }
+  .htab {
+    flex: 1 1 auto;
+    padding: 9px 8px;
+    font-size: 11.5px;
+  }
+  .htabs-row {
+    flex: 1 1 auto;
+  }
+  .hfig .pcap .cap {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  /* Try it floats over the top of the stage, so the stage keeps its height */
+  .hfig .pcap {
+    position: static;
+  }
+  .hfig .pcap .tryit {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    justify-content: flex-end;
+  }
   .step {
-    min-height: 46vh;
-    min-height: 46svh;
+    min-height: 40vh;
+    min-height: 40svh;
     max-width: none;
     padding: 3vh 0;
+  }
+  .step.long {
+    min-height: 64vh;
+    min-height: 64svh;
   }
   .bgrid {
     grid-template-columns: minmax(0, 1fr);
@@ -500,6 +1053,9 @@
 }
 
 @media (max-width: 760px) {
+  .landing {
+    --gutter: 24px;
+  }
   .hero h1 {
     font-size: clamp(40px, 11vw, 56px);
   }

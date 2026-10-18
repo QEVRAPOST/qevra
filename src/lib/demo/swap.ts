@@ -57,6 +57,27 @@ export function buildIntentComparison(stage: SetupStage, amount: number, reviewe
   return { rows, reviewed: isReviewed, changedCount: changed ? 1 : 0, setupComplete: stage >= 4 };
 }
 
+/**
+ * The design-demonstration comparison used by the draggable Intent Lock rings. Example values only: it is a
+ * picture of the idea ("a changed detail turns its ring out of line"), never a check of anything real.
+ */
+export function buildDemoIntentComparison(turned: readonly boolean[]): IntentComparison {
+  const rows: IntentRow[] = FIXED_ROWS.map((r, i) => {
+    const isAmount = r.id === "amount";
+    const base = isAmount ? `100 ${DEMO_TOKENS.pay}` : r.value;
+    const chg = !!turned[i];
+    return {
+      id: r.id,
+      label: r.label,
+      reviewed: base,
+      toSign: chg ? (isAmount ? `120 ${DEMO_TOKENS.pay}` : "Changed (example)") : base,
+      match: chg ? "changed" : r.dim ? "not-set" : "same",
+      dim: r.dim && !chg,
+    };
+  });
+  return { rows, reviewed: true, changedCount: turned.filter(Boolean).length, setupComplete: true };
+}
+
 export function buildSwapView(
   stage: SetupStage,
   amountText: string,

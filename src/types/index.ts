@@ -5,3 +5,5 @@ export type * from "./activity";
 export type * from "./security";
 export type * from "./app-model";
 export type * from "./preview";
+export type * from "./integrations";
+export type * from "./network";

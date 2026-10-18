@@ -8,8 +8,6 @@
   z-index: 30;
   height: var(--nav-h);
   background: var(--scrim);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
 }
 .apptop .wrap {
@@ -24,13 +22,63 @@
   align-items: center;
   gap: 10px;
 }
+/* the network menu: it looks like the chip it replaced, and it is a real select */
+.netsel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--exp);
+}
+.netsel .mat {
+  position: absolute;
+  left: 10px;
+  pointer-events: none;
+}
+.netsel select {
+  appearance: none;
+  -webkit-appearance: none;
+  /* a select is as wide as its longest option unless told otherwise; this is the width of the selected name */
+  width: 256px;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  height: 32px;
+  margin: 0;
+  padding: 0 28px 0 29px;
+  background: transparent;
+  border: 1px solid var(--exp);
+  border-radius: var(--r);
+  color: inherit;
+  font: 400 12px/1 var(--f-mono);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+.netsel select:hover {
+  background: color-mix(in srgb, var(--exp) 8%, transparent);
+}
+.netsel select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.netsel select option {
+  background: var(--bg-2);
+  color: var(--fg);
+}
+.netsel select option:disabled {
+  color: var(--muted);
+}
+.netsel .netcaret {
+  position: absolute;
+  right: 10px;
+  pointer-events: none;
+}
 .appshell {
   display: grid;
   grid-template-columns: 244px minmax(0, 1fr);
   gap: 0;
   max-width: 1440px;
   margin: 0 auto;
-  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  padding-right: max(var(--gutter), env(safe-area-inset-right, 0px));
 }
 .rail {
   position: sticky;
@@ -38,7 +86,7 @@
   align-self: start;
   height: calc(100vh - var(--stick));
   height: calc(100svh - var(--stick));
-  padding: 24px 20px 24px max(20px, env(safe-area-inset-left, 0px));
+  padding: 24px 20px 24px max(var(--gutter), env(safe-area-inset-left, 0px));
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
@@ -133,6 +181,35 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* arriving from Launch App: the shell settles in as the overlay fades */
+html[data-arrive] .apptop {
+  animation: arrive-down 520ms var(--ease) both;
+}
+html[data-arrive] .rail {
+  animation: arrive-side 560ms var(--ease) 60ms both;
+}
+html[data-arrive] .appmain {
+  animation: arrive-up 600ms var(--ease) 100ms both;
+}
+@keyframes arrive-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes arrive-side {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+@keyframes arrive-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
   }
 }
 
@@ -394,6 +471,67 @@
   inset: 0;
   width: 100%;
   height: 100%;
+}
+.glyphbox.interactive {
+  outline-offset: 2px;
+}
+.glyphbox.interactive canvas {
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* controls for the draggable rings: a labelled demonstration, with keyboard and button alternatives */
+.ilctl {
+  display: grid;
+  gap: 8px;
+}
+.ilctl .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font: 400 12.5px/1.3 var(--f-mono);
+  color: var(--muted);
+}
+.ilctl .btns {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ilctl .sel {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.itable .rowbtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.itable .rowbtn:hover {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.itable tr.sel td {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.itable tr.sel td.k {
+  box-shadow: inset 3px 0 0 var(--fg);
+  padding-left: 8px;
+  color: var(--fg);
+}
+.inote.demo-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--fg-2);
+}
+.inote.demo-note .mat {
+  margin-top: 3px;
 }
 .itwrap {
   overflow-x: auto;
@@ -861,7 +999,7 @@
     display: none;
   }
   .appmain {
-    padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(84px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    padding: 18px max(20px, env(safe-area-inset-right, 0px)) calc(84px + env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
   }
   .tabbar {
     display: grid;
@@ -872,8 +1010,6 @@
     right: 0;
     bottom: 0;
     background: var(--scrim);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     border-top: 1px solid var(--line);
     padding: 6px max(6px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
   }
@@ -900,8 +1036,16 @@
 }
 
 @media (max-width: 560px) {
-  .netchip {
-    display: none;
+  .netsel select {
+    width: 104px;
+    padding: 0 22px 0 24px;
+    font-size: 11.5px;
+  }
+  .netsel .mat {
+    left: 8px;
+  }
+  .netsel .netcaret {
+    right: 8px;
   }
   .panel {
     padding: 16px;
