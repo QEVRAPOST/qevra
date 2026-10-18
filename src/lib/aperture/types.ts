@@ -23,14 +23,43 @@ export interface ApertureState {
   zoom: number;
   /** focal height as a fraction of the figure, 0 = base, 1 = top of the PQ ring */
   fy: number;
+  /** camera pan along x, in scene units. Negative looks left of the stack axis. 0 = centred on the stack. */
+  fx: number;
+  /** highlighted ring as a continuous position, 0 (recipient) to 7 (deadline). Only visible while hlA > 0. */
+  hl: number;
+  /** how strongly the highlighted ring and its annotation show, 0..1 */
+  hlA: number;
+  /** chapter 1: the connected-wallet plate, the link marker and their labels, 0..1 */
+  acct: number;
+  /** chapter 3: labels and emphasis for the air gap and the human review dock, 0..1 */
+  air: number;
+  /** chapter 3: restrained tungsten light on the experimental ring, 0..1 */
+  pqGlow: number;
+  /** dims the stack so a focused part reads first, 0..1 */
+  dim: number;
+  /** multiplier on the standard callouts, 1 = shown as in the hero */
+  lbl: number;
+  /** travelling pulse of light down the notches, 0 (top) to 1 (base). Anything outside 0..1 hides it. */
+  beam: number;
 }
 
 export type ApertureKey = keyof ApertureState;
 
 export type ApertureMode = "hero" | "glyph";
 
+export interface RingsInfo {
+  /** selected ring index, or -1 */
+  selected: number;
+  /** which rings the user has turned out of line */
+  turned: boolean[];
+}
+
 export interface ApertureOptions {
   mode: ApertureMode;
+  /** Glyph only: rings can be hovered, selected, dragged and turned by the user. */
+  interactive?: boolean;
+  /** Called when the selected ring or the set of turned rings changes. */
+  onRingsChange?: (info: RingsInfo) => void;
   /** easing rate per second (exponential). Defaults to 5. */
   rate?: number;
   /** Fit the figure as if it had this explode value. The glyph uses 0 so it does not breathe. */
@@ -53,5 +82,18 @@ export interface SceneView {
   readonly t: number;
   /** CSS font stack for engraved text (resolved from --f-mono at runtime, never a hard-coded family name) */
   readonly fontMono: string;
-  readonly layout: { hover: number };
+  readonly layout: {
+    hover: number;
+    /** last drawn on-screen scale and stack centre, used for hit-testing and drag sensitivity */
+    s: number;
+    cx: number;
+    /** where the stack axis sits before zoom and pan: used to centre the sculpture in the launch transition */
+    cx0: number;
+    /** front-wall band of each ring in canvas pixels, ring 0 at the base */
+    bands: Array<{ y0: number; y1: number; half: number }>;
+  };
+  /** extra turn the user has given each ring, in radians (interactive scenes) */
+  readonly ringRot: readonly number[];
+  /** selected ring index, or -1 */
+  readonly selected: number;
 }

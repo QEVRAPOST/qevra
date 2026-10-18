@@ -52,3 +52,24 @@ export const A_SCAT: readonly number[] = [1.25, -1.35, 0.8, -0.95, 1.3, -0.55, 1
 
 /** Fallback only. The real stack is resolved at runtime from the --f-mono CSS variable. */
 export const FALLBACK_FONT_MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
+/** One short plain line per ring, shown beside a highlighted ring. They describe the design, not a working check. */
+export const RING_NOTES: readonly string[] = [
+  "who gets paid",
+  "which network",
+  "which two tokens",
+  "how much you pay",
+  "router and its allowance",
+  "the worst price you accept",
+  "a one-time number",
+  "when the approval ends",
+];
+
+/** Where the external wallet plate sits in chapter 1, on the floor to the left of the base plate. */
+export const WALLET_X = -(A_BASE_R + 92);
+export const WALLET_R = 36;
+
+/** A ring counts as turned out of line once the user has moved it more than this, in radians. */
+export const TURNED_EPS = 0.14;
+/** Released within this of the aligned angle, a ring snaps back to it. */
+export const SNAP_RAD = 0.16;

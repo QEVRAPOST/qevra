@@ -16,6 +16,9 @@ import {
   A_RINGS,
   A_SCAT,
   A_TONES,
+  RING_NOTES,
+  WALLET_R,
+  WALLET_X,
 } from "./constants";
 import { TAU, clamp, lerp, smooth } from "./math";
 import type { ApertureState, SceneView } from "./types";
@@ -53,6 +56,12 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
   const fy = st.fy == null ? 0.5 : st.fy;
   const scatter = st.scatter || 0;
   const rev = st.rev == null ? 1 : st.rev;
+  const fx = st.fx || 0;
+  const dim = st.dim || 0;
+  const lblMul = st.lbl == null ? 1 : st.lbl;
+  const compact = w < 520;
+  const ringRot = sc.ringRot;
+  const selI = sc.selected;
   const T = clamp(0.5 + tilt + sc.py * 0.07, 0.3, 1.15);
   const sinT = Math.sin(T);
   const cosT = Math.cos(T);
@@ -88,8 +97,9 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
   const cb = smooth(1, 1.35, zoom);
   const yf = fy * topF;
   const pv = lerp(cy0 - yf * cosT * s0, h * 0.5, cb);
-  const g: Geo = { s, sinT, cosT, dpr: sc.dpr, cx: lerp(cx0, w * 0.5, cb), cy: pv + yf * cosT * s };
-  const lblA = 1 - smooth(1.03, 1.2, zoom);
+  const g: Geo = { s, sinT, cosT, dpr: sc.dpr, cx: lerp(cx0, w * 0.5, cb) - fx * s, cy: pv + yf * cosT * s };
+  const lblZoom = 1 - smooth(1.03, 1.2, zoom);
+  const lblA = lblZoom * lblMul;
   const P = (x: number, y: number, z: number): Pt => [g.cx + x * s, g.cy - y * cosT * s + z * sinT * s];
   const wallPt = (R: number, th: number, yw: number): Pt => [
     g.cx + R * Math.sin(th) * s,
@@ -103,7 +113,10 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
   /* alignment and seam */
   const mis = st.mis;
   const lockI = (i: number) => smooth((7 - i) / 9, (7 - i + 1.4) / 9, rev);
-  const ang = (i: number) => A_SCAT[i] * scatter * (1 - lockI(i)) + (i === A_AMOUNT ? mis * 0.78 : 0);
+  const ang = (i: number) => A_SCAT[i] * scatter * (1 - lockI(i)) + (i === A_AMOUNT ? mis * 0.78 : 0) + (ringRot[i] || 0);
+  /* a ring is emphasised while the highlight sweep is on it or while the user has selected it */
+  const hlW = (i: number) => (st.hlA > 0.001 ? st.hlA * Math.max(0, 1 - Math.abs(st.hl - i)) : 0);
+  const emph = (i: number) => Math.max(hlW(i), i === selI ? 1 : 0);
   const aligned = (i: number) => Math.exp(-Math.pow(ang(i) / 0.11, 2));
   const litFrom = new Array<number>(8);
   let acc = st.lit;
@@ -183,16 +196,75 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
     wallText(ctx, g, font, A_BASE_R, -5, "QEVRA SMART ACCOUNT · ROBINHOOD TESTNET 46630", 0, 0, Math.max(7.5, 8 * s), "rgba(236,232,223,0.42)", "center");
   }
 
+  /* ---- chapter 1: the external wallet is a separate plate beside the QEVRA base, with no path between them ---- */
+  const wallet = P(WALLET_X, 0, 0);
+  const walletThick = 6 * cosT * s;
+  if (!glyph && st.acct > 0.01) {
+    const A = st.acct;
+    const Rw = WALLET_R * s;
+    ctx.save();
+    ctx.globalAlpha = A;
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(wallet[0] + 4 * s, wallet[1] + walletThick + 3 * s * sinT, Rw * 1.08, Rw * 1.08 * sinT, 0, 0, TAU);
+    ctx.fill();
+    const ww = ctx.createLinearGradient(wallet[0] - Rw, 0, wallet[0] + Rw, 0);
+    ww.addColorStop(0, "#14161a");
+    ww.addColorStop(0.4, "#4a4f56");
+    ww.addColorStop(0.72, "#23262b");
+    ww.addColorStop(1, "#0f1114");
+    ctx.fillStyle = ww;
+    ctx.beginPath();
+    ctx.ellipse(wallet[0], wallet[1], Rw, Rw * sinT, 0, 0, Math.PI, false);
+    ctx.ellipse(wallet[0], wallet[1] + walletThick, Rw, Rw * sinT, 0, Math.PI, 0, true);
+    ctx.closePath();
+    ctx.fill();
+    const wt = ctx.createRadialGradient(wallet[0] - Rw * 0.3, wallet[1] - Rw * sinT * 0.3, 2, wallet[0], wallet[1], Rw);
+    wt.addColorStop(0, "#3a3f46");
+    wt.addColorStop(1, "#1c1f23");
+    ctx.fillStyle = wt;
+    ctx.beginPath();
+    ctx.ellipse(wallet[0], wallet[1], Rw, Rw * sinT, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(236,232,223,0.5)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(236,232,223,0.16)";
+    ctx.beginPath();
+    ctx.ellipse(wallet[0], wallet[1], Rw * 0.7, Rw * 0.7 * sinT, 0, 0, TAU);
+    ctx.stroke();
+    /* no path between the wallet plate and the QEVRA base: dotted means not built */
+    const l0 = P(WALLET_X + WALLET_R + 3, 0, 0);
+    const l1 = P(-A_BASE_R - 3, 0, 0);
+    ctx.strokeStyle = "rgba(139,143,150,0.9)";
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(l0[0], l0[1]);
+    ctx.lineTo(l1[0], l1[1]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    /* what the base is meant to hold, said as intent: engraved flat on its rim */
+    planeText(ctx, g, font, (A_R[0] + A_BASE_R) / 2 + 1, "ASSETS WOULD LIVE HERE · NONE YET", 0, Math.max(7, 7.4 * s), "rgba(227,169,59,0.92)", A);
+  }
+
   /* ---- rings ---- */
+  /* front-wall band of every ring in canvas pixels: used for hover here and for pointer hits in the engine */
+  sc.layout.s = s;
+  sc.layout.cx = g.cx;
+  sc.layout.cx0 = cx0;
+  sc.layout.bands.length = 0;
+  for (let i = 0; i < 8; i++) {
+    const yTop = 4 + i * (A_H + gap) + A_H;
+    const y0 = g.cy - yTop * cosT * s + A_R[i] * sinT * s;
+    sc.layout.bands.push({ y0, y1: y0 + A_H * cosT * s, half: A_R[i] * s });
+  }
   const hoverI = (() => {
-    if (!sc.pointer.inside || glyph) return -1;
+    if (!sc.pointer.inside || (glyph && !sc.opts.interactive)) return -1;
     let hit = -1;
-    for (let i = 0; i < 8; i++) {
-      const yTop = 4 + i * (A_H + gap) + A_H;
-      const y0 = g.cy - yTop * cosT * s + A_R[i] * sinT * s;
-      const y1 = y0 + A_H * cosT * s;
-      if (Math.abs(sc.pointer.x - g.cx) < A_R[i] * s && sc.pointer.y >= y0 && sc.pointer.y <= y1) hit = i;
-    }
+    sc.layout.bands.forEach((b, i) => {
+      if (Math.abs(sc.pointer.x - g.cx) < b.half && sc.pointer.y >= b.y0 && sc.pointer.y <= b.y1) hit = i;
+    });
     return hit;
   })();
   sc.layout.hover = hoverI;
@@ -204,6 +276,9 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
     const y1 = y0 + A_H;
     const tone = A_TONES[i % 2];
     const hov = hoverI === i ? 1.22 : 1;
+    const em = Math.max(emph(i), st.acct * clamp(1 - i / 3.5, 0, 1));
+    const bright = hov * (1 + 0.3 * em) * (1 - 0.55 * dim * (1 - em));
+    const dimK = 1 - 0.5 * dim * (1 - em);
     const Rp = R * s;
     const rp = r * s;
     const Yt = g.cy - y1 * cosT * s;
@@ -252,7 +327,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
       ctx,
       a0,
       (v) =>
-        `rgb(${Math.min(255, tone[0] * v * 1.55 * hov) | 0},${Math.min(255, tone[1] * v * 1.55 * hov) | 0},${Math.min(255, tone[2] * v * 1.55 * hov) | 0})`,
+        `rgb(${Math.min(255, tone[0] * v * 1.55 * bright) | 0},${Math.min(255, tone[1] * v * 1.55 * bright) | 0},${Math.min(255, tone[2] * v * 1.55 * bright) | 0})`,
       `rgb(${(tone[0] * 0.7) | 0},${(tone[1] * 0.7) | 0},${(tone[2] * 0.7) | 0})`,
     );
     ctx.beginPath();
@@ -298,10 +373,10 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
       const d1 = Math.max(0, sx2 * L[0] + c * L[2]);
       const d2 = Math.max(0, sx2 * 0.9 + c * 0.1);
       const sp = Math.pow(Math.max(0, sx2 * Hh[0] + c * Hh[2]), 44);
-      const kk = (0.13 + 0.92 * d1 + 0.2 * d2) * hov;
+      const kk = (0.13 + 0.92 * d1 + 0.2 * d2) * bright;
       gr.addColorStop(
         u,
-        `rgb(${Math.min(255, tone[0] * kk + sp * 190) | 0},${Math.min(255, tone[1] * kk + sp * 176) | 0},${Math.min(255, tone[2] * kk + sp * 150) | 0})`,
+        `rgb(${Math.min(255, tone[0] * kk + sp * 190 * dimK) | 0},${Math.min(255, tone[1] * kk + sp * 176 * dimK) | 0},${Math.min(255, tone[2] * kk + sp * 150 * dimK) | 0})`,
       );
     }
     ctx.fillStyle = gr;
@@ -311,8 +386,8 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
     /* top chamfer highlight and bottom shadow line */
     ctx.save();
     ctx.lineWidth = 1;
-    const act = scatter > 0.02 ? 4 * lockI(i) * (1 - lockI(i)) : 0;
-    ctx.strokeStyle = act > 0.05 ? `rgba(255,226,176,${Math.min(1, 0.46 + 0.5 * act)})` : "rgba(255,248,232,0.46)";
+    const act = Math.max(scatter > 0.02 ? 4 * lockI(i) * (1 - lockI(i)) : 0, em);
+    ctx.strokeStyle = act > 0.05 ? `rgba(255,226,176,${Math.min(1, 0.46 + 0.5 * act)})` : `rgba(255,248,232,${0.46 * dimK})`;
     ctx.lineWidth = act > 0.05 ? 1 + act : 1;
     ctx.beginPath();
     ctx.ellipse(g.cx, Yt, Rp, Rp * sinT, 0, 0, TAU);
@@ -336,7 +411,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
       const changed = i === A_AMOUNT && mis > 0.5;
       const lab = changed ? "AMOUNT" : A_RINGS[i][0];
       const val = changed ? "CHANGED" : A_RINGS[i][1];
-      const col = hoverI === i ? "rgba(255,248,232,0.95)" : "rgba(255,248,232,0.62)";
+      const col = hoverI === i ? "rgba(255,248,232,0.95)" : `rgba(255,248,232,${Math.min(0.97, (0.62 + 0.33 * em) * dimK)})`;
       wallText(ctx, g, font, R, yMid, lab, rot - 0.17, -1, fs, col, "edge");
       wallText(
         ctx,
@@ -348,7 +423,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
         rot + 0.17,
         1,
         fs,
-        changed ? "rgba(229,96,77,0.95)" : hoverI === i ? "rgba(255,248,232,0.95)" : "rgba(255,248,232,0.46)",
+        changed ? "rgba(229,96,77,0.95)" : hoverI === i ? "rgba(255,248,232,0.95)" : `rgba(255,248,232,${Math.min(0.95, (0.46 + 0.45 * em) * dimK)})`,
         "edge",
       );
     }
@@ -427,16 +502,59 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
     ctx.restore();
   }
 
+  /* ---- launch: a pulse of light travelling down the aligned notches, top ring to base ---- */
+  if (!glyph && st.beam >= 0 && st.beam <= 1.2) {
+    const topY = pqY + pqH;
+    const yb = lerp(topY, 0, clamp(st.beam, 0, 1));
+    const frontR = (y: number) => A_R[clamp(Math.floor((y - 4) / (A_H + gap)), 0, 7)];
+    const head = wallPt(frontR(yb), 0, yb);
+    const tail = wallPt(frontR(Math.min(topY, yb + 150)), 0, Math.min(topY, yb + 150));
+    const fade = 1 - smooth(1, 1.2, st.beam);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const trail = ctx.createLinearGradient(0, tail[1], 0, head[1]);
+    trail.addColorStop(0, "rgba(255,226,176,0)");
+    trail.addColorStop(1, `rgba(255,236,196,${0.9 * fade})`);
+    ctx.fillStyle = trail;
+    ctx.fillRect(head[0] - 2.5, tail[1], 5, head[1] - tail[1]);
+    const halo = ctx.createRadialGradient(head[0], head[1], 1, head[0], head[1], 46 * s + 10);
+    halo.addColorStop(0, `rgba(255,236,196,${0.85 * fade})`);
+    halo.addColorStop(0.4, `rgba(255,214,150,${0.35 * fade})`);
+    halo.addColorStop(1, "rgba(255,214,150,0)");
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(head[0], head[1], 46 * s + 10, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
   /* ---- PQ authorization ring: outline only (experimental) ---- */
   if (st.pq > 0.01) {
     const R = pqR;
     const Rp = R * s;
     const Yt = g.cy - (pqY + pqH) * cosT * s;
     const hp = pqH * cosT * s;
+    /* chapter 3: restrained tungsten light on the experimental ring. It marks the state; it does not mean "verified". */
+    if (!glyph && st.pqGlow > 0.01) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const pg = ctx.createRadialGradient(g.cx, Yt, 4, g.cx, Yt, 160 * s);
+      pg.addColorStop(0, `rgba(227,169,59,${0.2 * st.pqGlow * st.pq})`);
+      pg.addColorStop(0.55, `rgba(227,169,59,${0.06 * st.pqGlow * st.pq})`);
+      pg.addColorStop(1, "rgba(227,169,59,0)");
+      ctx.translate(g.cx, Yt);
+      ctx.scale(1, Math.max(0.45, sinT * 1.5));
+      ctx.translate(-g.cx, -Yt);
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      ctx.arc(g.cx, Yt, 160 * s, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.save();
     ctx.globalAlpha = st.pq;
     ctx.strokeStyle = glyph ? "rgba(227,169,59,0.95)" : "rgba(227,169,59,0.9)";
-    ctx.lineWidth = glyph ? 1.2 : 1.3;
+    ctx.lineWidth = glyph ? 1.2 : 1.3 + 0.5 * st.pqGlow;
     ctx.setLineDash([5, 4]);
     ctx.beginPath();
     ctx.ellipse(g.cx, Yt, Rp, Rp * sinT, 0, 0, TAU);
@@ -490,6 +608,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
   }
 
   /* ---- Security Swarm: separate research ring, review dock, air gap ---- */
+  let airGeo: { gx0: number; gx1: number; gy: number; dockX: number; dockY: number; ringX: number; ringTop: number } | null = null;
   if (swarm > 0.01) {
     const X = -(A_R[0] + 96);
     const Y = stackTop + 18 + (1 - swarm) * 30;
@@ -615,10 +734,12 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
     ctx.restore();
 
     /* air gap dimension line between the dock and the stack */
-    if (!glyph && labelsOn && s >= 0.7) {
+    if (!glyph && ((labelsOn && s >= 0.7) || (st.air > 0.05 && s >= 0.4))) {
       const gy = (q11[1] + p11[1]) / 2;
       const gx0 = q11[0] + 8;
       const gx1 = g.cx - (A_R[6] + 4) * s;
+      const dm = P(dx + dw / 2, dy, dz + dd / 2);
+      airGeo = { gx0, gx1, gy, dockX: dm[0], dockY: dm[1], ringX: cxr, ringTop: Yt - Rp * sinT };
       if (gx1 - gx0 > 24) {
         ctx.save();
         ctx.globalAlpha = swarm;
@@ -636,7 +757,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
         ctx.font = `500 10px ${font}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText("air gap", (gx0 + gx1) / 2, gy + 7);
+        ctx.fillText("air gap", (gx0 + gx1) / 2, gy + (compact ? 31 : 7));
         ctx.restore();
       }
       ctx.save();
@@ -652,20 +773,24 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
   }
 
   /* ---- callouts ---- */
-  if (labelsOn && lblA > 0.02) {
-    const lx = Math.max(g.cx + A_BASE_R * s + 18, w - rightPad + 14);
-    const callouts: Array<[Pt, string, string, string, number]> = [];
+  if (labelsOn && (lblA > 0.02 || st.pqGlow > 0.02 || st.air > 0.02)) {
+    const lx0 = Math.max(g.cx + A_BASE_R * s + 18, w - rightPad + 14);
+    /* [anchor, line 1, line 2, colour, final alpha, text x] */
+    const callouts: Array<[Pt, string, string, string, number, number]> = [];
     const pqEdge = wallPt(pqR, 1.15, pqY + pqH * 0.5);
-    callouts.push([pqEdge, "Post-quantum authorization", "ML-DSA · under evaluation", "rgba(227,169,59,1)", st.pq]);
+    const pqAlpha = st.pq * Math.max(lblA, st.pqGlow);
+    /* up close the callout sits beside the ring instead of in the far-right column, and stays on the canvas */
+    const pqLx = lerp(lx0, Math.min(g.cx + pqR * s + 24, w - 190), st.pqGlow);
+    callouts.push([pqEdge, "Post-quantum authorization", "ML-DSA · under evaluation", "rgba(227,169,59,1)", pqAlpha, pqLx]);
     const midRing = wallPt(A_R[4], 1.12, 4 + 4 * (A_H + gap) + A_H * 0.5);
-    callouts.push([midRing, "Intent Lock", "8 rings, one per detail", "rgba(236,232,223,1)", 1]);
+    callouts.push([midRing, "Intent Lock", "8 rings, one per detail", "rgba(236,232,223,1)", lblA, lx0]);
     const baseEdge = wallPt(A_BASE_R, 1.0, 0);
-    callouts.push([baseEdge, "QEVRA smart account", "design preview, not deployed", "rgba(139,143,150,1)", 1]);
-    for (const [pt, t1, t2, col, a] of callouts) {
-      if (a * lblA < 0.05) continue;
+    callouts.push([baseEdge, "QEVRA smart account", "design preview, not deployed", "rgba(139,143,150,1)", lblA, lx0]);
+    for (const [pt, t1, t2, col, a, lx] of callouts) {
+      if (a < 0.05) continue;
       const ty = pt[1];
       ctx.save();
-      ctx.globalAlpha = a * lblA;
+      ctx.globalAlpha = a;
       ctx.strokeStyle = col;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -692,7 +817,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
         g.cy - (stackTop + 18 + (1 - swarm) * 30 + 8) * cosT * s - 64 * sinT * s - 10 - 6 * s,
       ];
       ctx.save();
-      ctx.globalAlpha = swarm * lblA;
+      ctx.globalAlpha = swarm * Math.max(lblA, st.air);
       ctx.textAlign = "center";
       ctx.textBaseline = "alphabetic";
       ctx.font = `400 10px ${font}`;
@@ -708,6 +833,221 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
       ctx.restore();
     }
   }
+
+  /* ---- chapter annotations: separate passes, so a phone gets shorter wording than a desktop ---- */
+  if (!glyph) {
+    const f1 = compact ? 10 : 11;
+    const f2 = compact ? 9 : 10;
+    const ink = "rgba(236,232,223,1)";
+    const muted = "rgba(139,143,150,1)";
+
+    /* chapter 2: the ring under the highlight sweep names itself and says what it stands for */
+    if (st.hlA > 0.02) {
+      const lo = Math.floor(st.hl);
+      const hi = Math.ceil(st.hl);
+      /* on a phone the note sits at a fixed spot, so only the nearest ring speaks at a time */
+      const nearest = Math.round(st.hl);
+      for (const i of compact ? [nearest] : lo === hi ? [lo] : [lo, hi]) {
+        if (i < 0 || i > 7) continue;
+        const a = compact ? st.hlA * clamp(1 - Math.abs(st.hl - i) * 1.6) : hlW(i);
+        if (a < 0.05) continue;
+        const head = `${String(i + 1).padStart(2, "0")}  ${A_RINGS[i][0]}`;
+        const yMid = 4 + i * (A_H + gap) + A_H * 0.5;
+        if (compact) {
+          noteBlock(ctx, font, { ax: 0, ay: 0, x: 10, y: 22, lines: [head, RING_NOTES[i]], color: ink, alpha: a, side: "none", f1, f2, w });
+        } else {
+          const right = wallPt(A_R[i], 1.1, yMid);
+          const rightRoom = w - (g.cx + A_R[i] * s + 26);
+          const leftRoom = g.cx - A_R[i] * s - 26;
+          const useRight = rightRoom >= leftRoom;
+          const anchor = useRight ? right : wallPt(A_R[i], -1.1, yMid);
+          noteBlock(ctx, font, {
+            ax: anchor[0],
+            ay: anchor[1],
+            x: useRight ? g.cx + A_R[i] * s + 26 : g.cx - A_R[i] * s - 26,
+            y: anchor[1],
+            lines: [head, RING_NOTES[i]],
+            color: ink,
+            alpha: a,
+            side: useRight ? "right" : "left",
+            f1,
+            f2,
+            w,
+          });
+        }
+      }
+    }
+
+    /* chapter 3, phones: the callout column does not fit, so the ring names itself at a fixed spot */
+    if (compact && st.pqGlow > 0.02) {
+      noteBlock(ctx, font, { ax: 0, ay: 0, x: 10, y: 22, lines: ["Post-quantum authorization", "ML-DSA · under evaluation"], color: "rgba(227,169,59,1)", alpha: st.pqGlow * st.pq, side: "none", f1, f2, w });
+    }
+
+    /* chapter 1: name the connected wallet and the QEVRA account as two different things */
+    if (st.acct > 0.02) {
+      const A = st.acct;
+      const below = wallet[1] + walletThick + WALLET_R * s * sinT + 24;
+      noteBlock(ctx, font, {
+        ax: wallet[0],
+        ay: wallet[1] + walletThick + WALLET_R * s * sinT + 2,
+        x: wallet[0],
+        y: below,
+        lines: compact ? ["Your wallet"] : ["Your connected wallet", "external account (EOA)", "QEVRA protection: none claimed"],
+        color: ink,
+        alpha: A,
+        side: "center",
+        f1,
+        f2,
+        w,
+      });
+      const baseBottom = g.cy + (A_BASE_R * sinT + 10 * cosT) * s;
+      noteBlock(ctx, font, {
+        ax: g.cx,
+        ay: baseBottom + 1,
+        x: g.cx,
+        y: baseBottom + 24,
+        lines: compact ? ["QEVRA account"] : ["QEVRA smart account", "separate address · experimental", "design preview, not deployed"],
+        color: "rgba(227,169,59,1)",
+        alpha: A,
+        side: "center",
+        f1,
+        f2,
+        w,
+      });
+      const m = P((WALLET_X + WALLET_R - A_BASE_R) / 2, 0, 0);
+      ctx.save();
+      ctx.globalAlpha = A;
+      ctx.fillStyle = muted;
+      ctx.font = `400 ${f2}px ${font}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(compact ? "no link yet" : "no deposit path yet", clamp(m[0], 60, w - 60), m[1] - 38);
+      ctx.restore();
+    }
+
+    /* chapter 3: the separation of responsibilities, said next to the things it separates */
+    if (st.air > 0.02 && airGeo) {
+      const A = st.air * swarm;
+      const { gx0, gx1, gy, dockX, dockY, ringX, ringTop } = airGeo;
+      if (compact) {
+        noteBlock(ctx, font, { ax: 0, ay: 0, x: clamp(ringX, 60, w - 60), y: ringTop - 20, lines: ["Security Swarm", "researches, tests, reports"], color: ink, alpha: A, side: "center", leader: false, f1, f2, w });
+      }
+      ctx.save();
+      ctx.globalAlpha = A;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = muted;
+      ctx.font = `400 ${f2}px ${font}`;
+      ctx.fillText("unlit until recorded", clamp(dockX - 16, 70, w - 70), dockY + 19);
+      if (gx1 - gx0 > 24) {
+        const cxm = (gx0 + gx1) / 2;
+        ctx.fillStyle = "rgba(236,232,223,0.78)";
+        if (gx1 - gx0 > 100) ctx.fillText("no keys · no signing", clamp(cxm + 6, 70, w - 70), gy + 21);
+        /* no path: a dotted line with a cross over it, as in the diagram below the story */
+        ctx.strokeStyle = "rgba(236,232,223,0.5)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(gx0, gy - 12);
+        ctx.lineTo(gx1, gy - 12);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(cxm - 5, gy - 17);
+        ctx.lineTo(cxm + 5, gy - 7);
+        ctx.moveTo(cxm + 5, gy - 17);
+        ctx.lineTo(cxm - 5, gy - 7);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+}
+
+/** Callout-style label: optional dot and leader from an anchor, then up to three lines of text. */
+function noteBlock(
+  ctx: CanvasRenderingContext2D,
+  font: string,
+  o: {
+    ax: number;
+    ay: number;
+    x: number;
+    y: number;
+    lines: string[];
+    color: string;
+    alpha: number;
+    side: "right" | "left" | "center" | "none";
+    /** draw a dot and leader from the anchor (default true); false centres the text with no leader */
+    leader?: boolean;
+    f1: number;
+    f2: number;
+    w: number;
+  },
+): void {
+  ctx.save();
+  ctx.globalAlpha = o.alpha;
+  let tw = 0;
+  o.lines.forEach((t, k) => {
+    ctx.font = `${k === 0 ? 500 : 400} ${k === 0 ? o.f1 : o.f2}px ${font}`;
+    tw = Math.max(tw, ctx.measureText(t).width);
+  });
+  let tx = o.side === "left" ? o.x - tw : o.side === "center" ? o.x - tw / 2 : o.x;
+  tx = clamp(tx, 8, Math.max(8, o.w - tw - 8));
+  if (o.side !== "none" && o.leader !== false) {
+    ctx.strokeStyle = o.color;
+    ctx.fillStyle = o.color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(o.ax, o.ay);
+    if (o.side === "center") ctx.lineTo(clamp(o.ax, tx + 4, tx + tw - 4), o.y - o.f1 - 3);
+    else ctx.lineTo(o.side === "right" ? tx - 6 : tx + tw + 6, o.y - 4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(o.ax, o.ay, 2.2, 0, TAU);
+    ctx.fill();
+  }
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  o.lines.forEach((t, k) => {
+    ctx.font = `${k === 0 ? 500 : 400} ${k === 0 ? o.f1 : o.f2}px ${font}`;
+    ctx.fillStyle = k === 0 ? o.color : "rgba(139,143,150,1)";
+    ctx.fillText(t, tx, o.y + (k === 0 ? 0 : 12 + (k - 1) * 12));
+  });
+  ctx.restore();
+}
+
+/** Text lying flat on a horizontal ring of the stack, centred on the front. Reads upright from the camera. */
+function planeText(
+  ctx: CanvasRenderingContext2D,
+  g: Geo,
+  font: string,
+  R: number,
+  text: string,
+  theta0: number,
+  fs: number,
+  color: string,
+  alpha: number,
+): void {
+  ctx.save();
+  ctx.font = `500 ${fs}px ${font}`;
+  const adv = ctx.measureText("M").width + 0.8;
+  const dth = adv / (R * g.s);
+  let th = theta0 - (dth * text.length) / 2;
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (let k = 0; k < text.length; k++) {
+    const c = th + dth / 2;
+    th += dth;
+    const cs = Math.cos(c);
+    if (cs < 0.2) continue;
+    const x = g.cx + R * Math.sin(c) * g.s;
+    const y = g.cy + R * cs * g.sinT * g.s;
+    ctx.globalAlpha = alpha * clamp((cs - 0.2) / 0.35);
+    ctx.setTransform(g.dpr * cs, g.dpr * (-Math.sin(c) * g.sinT), g.dpr * Math.sin(c), g.dpr * cs * g.sinT, g.dpr * x, g.dpr * y);
+    ctx.fillText(text[k], 0, 0);
+  }
+  ctx.restore();
 }
 
 /**
