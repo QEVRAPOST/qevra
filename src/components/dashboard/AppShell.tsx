@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { Chip } from "@/components/ui/Chip";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { WordmarkMark } from "@/components/ui/Wordmark";
 import { Rail, TabBar } from "./AppNav";
 import { DemoBar } from "./DemoBar";
 import { useAppModel } from "./DemoAppProvider";
+import { NetworkSelect } from "./NetworkSelect";
 
 /** Status bar, top bar, rail, demo bar and tab bar around every dashboard route. */
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -24,9 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             QEVRA
           </Link>
           <div className="apptools">
-            <Chip tone="exp" material="outline" className="netchip">
-              Robinhood Testnet · 46630
-            </Chip>
+            <NetworkSelect />
             <Button variant="ghost" size="small" onClick={actions.pressWalletButton}>
               {model.wallet.walletButtonLabel}
             </Button>

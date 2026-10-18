@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { LaunchCurtainProvider } from "@/components/landing/LaunchCurtain";
+import { LaunchTransitionProvider } from "@/components/landing/LaunchTransition";
 import "./globals.css";
 
 /*
@@ -53,7 +53,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <a className="skip-link" href="#main">
           Skip to the content
         </a>
-        <LaunchCurtainProvider>{children}</LaunchCurtainProvider>
+        <LaunchTransitionProvider>{children}</LaunchTransitionProvider>
       </body>
     </html>
   );

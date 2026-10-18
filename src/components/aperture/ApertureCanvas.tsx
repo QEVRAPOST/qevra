@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { ApertureScene } from "@/lib/aperture/engine";
-import type { ApertureMode, ApertureState } from "@/lib/aperture/types";
+import type { ApertureMode, ApertureState, RingsInfo } from "@/lib/aperture/types";
 
 interface ApertureCanvasProps {
   mode: ApertureMode;
@@ -20,6 +20,9 @@ interface ApertureCanvasProps {
   onSceneChange?: (scene: ApertureScene | null) => void;
   /** Hovered ring index (0..7), or -1. Pass a stable function. */
   onHoverChange?: (ringIndex: number) => void;
+  /** Glyph only: the user can select a ring and drag it. Pass a stable `onRingsChange` to follow it. */
+  interactive?: boolean;
+  onRingsChange?: (info: RingsInfo) => void;
 }
 
 /**
@@ -38,13 +41,15 @@ export function ApertureCanvas({
   describedBy,
   onSceneChange,
   onHoverChange,
+  interactive,
+  onRingsChange,
 }: ApertureCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const scene = new ApertureScene(canvas, { mode, rate, fitExplode, labels, onHoverChange }, initial);
+    const scene = new ApertureScene(canvas, { mode, rate, fitExplode, labels, onHoverChange, interactive, onRingsChange }, initial);
     if (pointer) scene.bindPointer(canvas);
     scene.render();
     onSceneChange?.(scene);
@@ -52,7 +57,7 @@ export function ApertureCanvas({
       onSceneChange?.(null);
       scene.dispose();
     };
-  }, [mode, initial, rate, fitExplode, labels, pointer, onSceneChange, onHoverChange]);
+  }, [mode, initial, rate, fitExplode, labels, pointer, onSceneChange, onHoverChange, interactive, onRingsChange]);
 
   return <canvas ref={ref} role="img" aria-label={label} aria-describedby={describedBy} />;
 }

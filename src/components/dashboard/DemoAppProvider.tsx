@@ -1,8 +1,9 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState } from "react";
+import { DEFAULT_NETWORK_ID, isNetworkAvailable } from "@/lib/config/networks";
 import { buildDemoModel } from "@/lib/demo/model";
-import type { ActsMode, AppActions, AppModelValue, PreviewControls, RunsMode, SetupStage, SwapButtonKey } from "@/types";
+import type { ActsMode, AppActions, AppModelValue, NetworkId, PreviewControls, RunsMode, SetupStage, SwapButtonKey } from "@/types";
 
 /*
  * DEMO PROVIDER. Every value it produces is a labelled example from src/lib/demo-fixtures.ts.
@@ -34,10 +35,11 @@ export function DemoAppProvider({ children }: { children: React.ReactNode }) {
   const [amount, setAmountRaw] = useState(DEFAULT_AMOUNT);
   const [runsMode, setRunsMode] = useState<RunsMode>("examples");
   const [actsMode, setActsMode] = useState<ActsMode>("examples");
+  const [network, setNetworkRaw] = useState<NetworkId>(DEFAULT_NETWORK_ID);
 
   const model = useMemo(
-    () => buildDemoModel({ stage, forced, reviewed, amount, runsMode, actsMode }),
-    [stage, forced, reviewed, amount, runsMode, actsMode],
+    () => buildDemoModel({ stage, forced, reviewed, amount, runsMode, actsMode, network }),
+    [stage, forced, reviewed, amount, runsMode, actsMode, network],
   );
 
   const actions = useMemo<AppActions>(() => {
@@ -46,6 +48,10 @@ export function DemoAppProvider({ children }: { children: React.ReactNode }) {
       setForced(null);
     };
     return {
+      setNetwork(id) {
+        /* an unavailable network (mainnet, for now) is never selected, whatever the caller asks */
+        if (isNetworkAvailable(id)) setNetworkRaw(id);
+      },
       setAmount(value) {
         setForced(null);
         setAmountRaw(value);
@@ -104,6 +110,7 @@ export function DemoAppProvider({ children }: { children: React.ReactNode }) {
         setReviewed(null);
         setRunsMode("examples");
         setActsMode("examples");
+        setNetworkRaw(DEFAULT_NETWORK_ID);
         setAmountRaw(DEFAULT_AMOUNT);
       },
     }),

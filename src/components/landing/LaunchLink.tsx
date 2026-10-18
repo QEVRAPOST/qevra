@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowIcon } from "@/components/ui/ArrowIcon";
-import { useLaunch } from "./LaunchCurtain";
+import { useLaunch } from "./LaunchTransition";
 
 interface LaunchLinkProps {
   /** extra classes after "btn primary" */
