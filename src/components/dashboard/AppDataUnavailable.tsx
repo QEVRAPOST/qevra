@@ -1,3 +1,4 @@
+import { buttonVariants } from "@/components/ui/Button";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBar } from "@/components/ui/StatusBar";
@@ -14,13 +15,13 @@ export function AppDataUnavailable() {
       <main className="wrap wide notice-page" id="main" tabIndex={-1}>
         <div className="rhead">
           <h1>The app is not connected</h1>
-          <p>Wallet, chain and Security Swarm data are not available in this build, and the example data is switched off.</p>
+          <p>No dashboard provider is selected for this build. Choose demo mode or configure the live service.</p>
         </div>
         <EmptyState title="Nothing is shown here.">
           No wallet is connected, no chain is read and nothing here can move funds. This is not a statement about whether the system is safe.
         </EmptyState>
         <p>
-          <Link className="btn ghost" href="/">
+          <Link className={buttonVariants({ variant: "ghost" })} href="/">
             Back to the landing page
           </Link>
         </p>

@@ -1,3 +1,4 @@
+import { buttonVariants } from "@/components/ui/Button";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBar } from "@/components/ui/StatusBar";
@@ -15,10 +16,10 @@ export default function NotFound() {
         </div>
         <EmptyState title="Nothing is here.">No wallet was contacted and no chain was read to look for this page.</EmptyState>
         <p className="ctas">
-          <Link className="btn primary" href="/">
+          <Link className={buttonVariants()} href="/">
             Back to the landing page
           </Link>
-          <Link className="btn ghost" href="/app">
+          <Link className={buttonVariants({ variant: "ghost" })} href="/app">
             Open the app preview
           </Link>
         </p>

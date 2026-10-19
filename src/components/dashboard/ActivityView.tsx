@@ -18,9 +18,11 @@ export function ActivityView() {
         <h1 id="h-act">Transaction activity</h1>
         <p>Each swap in one plain sentence, with its real state.</p>
       </div>
-      <Panel title="Swaps" aside={a.sourceTag ? <DemoChip>{a.sourceTag}</DemoChip> : undefined}>
+      <Panel title="Swaps" aside={a.origin === "live"
+        ? <Chip tone="unk" material="dotted">ACTIVITY NOT CONNECTED</Chip>
+        : a.sourceTag ? <DemoChip>{a.sourceTag}</DemoChip> : undefined}>
         <div className="act-body">
-          <ul className="acts" aria-label="Example transactions">
+          <ul className="acts" aria-label={a.origin === "demo" ? "Example transactions" : "Live transaction activity"}>
             {a.status === "ready" &&
               a.rows.map((r) => (
                 <li key={r.id}>
@@ -40,7 +42,9 @@ export function ActivityView() {
             )}
             {a.status === "unavailable" && (
               <EmptyState as="li" title="Activity unavailable.">
-                The transaction feed is not connected, so no transactions can be shown. This is not a statement that there are none.
+                {a.origin === "live"
+                  ? "Live transaction history is not connected in this read-only dashboard. No transaction was requested or sent."
+                  : "The transaction feed is not connected, so no transactions can be shown. This is not a statement that there are none."}
               </EmptyState>
             )}
           </ul>

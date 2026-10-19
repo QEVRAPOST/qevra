@@ -2,9 +2,10 @@
  * QEVRA global styles.
  *
  * Tailwind v4 provides the reset and the theme. Its automatic class scanning is switched off on purpose:
- * the Aperture components are authored as plain CSS using the prototype's class names, and some of those names
- * (for example `.outline`, the status material) are also Tailwind utilities. If a directory should use
- * Tailwind utilities, enable it with `@source "<path>"` and rename any class that collides first.
+ * the Aperture pages are authored as plain CSS using the prototype's class names. shadcn/ui components
+ * (src/components/ui, built on Radix) are authored with Tailwind utilities, so only `src/components` is scanned
+ * (see the @source line below). A prototype class that is also a Tailwind utility would collide: the one that did,
+ * the status material `.outline`, is now `.m-outline`. Check for a collision before adding a plain-CSS class name.
  *
  * Design tokens live in styles/tokens.css and are the single source of truth.
  */
@@ -13,3 +14,56 @@
 @import "../styles/base.css";
 @import "../styles/landing.css";
 @import "../styles/dashboard.css";
+
+/* shadcn/ui: scan the components for utilities, and map its semantic colours onto the Aperture tokens (tokens.css) */
+@source "../components";
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--bg-2);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--bg-2);
+  --color-popover-foreground: var(--fg);
+  --color-primary: var(--cta-bg);
+  --color-primary-foreground: var(--cta-fg);
+  --color-secondary: var(--bg-3);
+  --color-secondary-foreground: var(--fg);
+  --color-muted: var(--bg-3);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--bg-3);
+  --color-accent-foreground: var(--fg);
+  --color-destructive: var(--fail);
+  --color-border: var(--line);
+  --color-input: var(--line-2);
+  --color-ring: var(--focus);
+  --color-fg-2: var(--fg-2);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-exp: var(--exp);
+  --color-pass: var(--pass);
+  --color-fail: var(--fail);
+  --radius-sm: 1px;
+  --radius-md: var(--r);
+  --radius-lg: var(--r-lg);
+  --font-sans: var(--f-ui);
+  --font-mono: var(--f-mono);
+  --font-display: var(--f-display);
+}
+
+@keyframes ui-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ui-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+}

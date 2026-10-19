@@ -25,9 +25,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="apptools">
             <NetworkSelect />
-            <Button variant="ghost" size="small" onClick={actions.pressWalletButton}>
-              {model.wallet.walletButtonLabel}
+            <Button variant="ghost" size="small" aria-label={model.wallet.walletButtonLabel} onClick={actions.pressWalletButton}>
+              {model.mode === "live" ? model.wallet.connection?.address ? "Disconnect" : "Connect" : model.wallet.walletButtonLabel}
             </Button>
+            {model.mode === "live" ? (
+              <Button variant="ghost" size="small" aria-label="Sign out of live services" onClick={actions.logout}>
+                Exit
+              </Button>
+            ) : null}
           </div>
         </div>
       </header>

@@ -4,6 +4,7 @@ import { isExperimentSandboxConfigured } from "@/features/security/approved-expe
 import { getModelProvider } from "@/features/security/provider";
 import { getResearchStore, StoreNotConfiguredError } from "@/features/security/store";
 import { approvedSources } from "@/features/security/topics";
+import { getProjectName } from "@/lib/project-brand";
 import type { SecurityResearchCapabilities } from "@/types/integrations";
 
 export const runtime = "nodejs";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const sessionKey = verifySessionCookie(readCookie(request, "qevra_session"));
   if (!sessionKey) {
-    return apiError(401, "authentication_required", "A valid QEVRA session is required.");
+    return apiError(401, "authentication_required", `A valid ${getProjectName()} session is required.`);
   }
 
   const provider = getModelProvider();

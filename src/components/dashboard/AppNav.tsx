@@ -27,13 +27,19 @@ export function Rail() {
         ))}
       </ul>
       <div className="setupmini">
-        <span>Setup: {done} of 4</span>
-        <span className="bar" aria-hidden="true">
-          {[0, 1, 2, 3].map((i) => (
-            <i key={i} className={i < done ? "on" : ""} />
-          ))}
-        </span>
-        {done < 4 ? <Link href="/app/wallet">Continue setup</Link> : <span>Example account funded</span>}
+        {model.mode === "demo" ? (
+          <>
+            <span>Setup: {done} of 4</span>
+            <span className="bar" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => (
+                <i key={i} className={i < done ? "on" : ""} />
+              ))}
+            </span>
+            {done < 4 ? <Link href="/app/wallet">Continue setup</Link> : <span>Example account funded</span>}
+          </>
+        ) : (
+          <span>Live mode · read-only · no QEVRA account</span>
+        )}
       </div>
     </nav>
   );
