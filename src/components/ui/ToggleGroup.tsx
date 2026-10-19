@@ -1,13 +1,17 @@
 "use client";
 
+import { ToggleGroup as Group, ToggleGroupItem } from "./toggle-group";
+
 interface ToggleOption<T extends string | number> {
   value: T;
   label: string;
+  /** listed but cannot be chosen (for example a filter with nothing in it) */
+  disabled?: boolean;
 }
 
 interface ToggleGroupProps<T extends string | number> {
   options: ReadonlyArray<ToggleOption<T>>;
-  /** the pressed value, or null when none is pressed */
+  /** the chosen value, or null when none is chosen */
   value: T | null;
   onChange: (value: T) => void;
   /** accessible name for the group */
@@ -15,15 +19,24 @@ interface ToggleGroupProps<T extends string | number> {
   labelledBy?: string;
 }
 
-/** A group of toggle buttons. The pressed button carries aria-pressed and is filled. */
+/** A single-choice group of buttons, on the shadcn ToggleGroup. Choosing the one already chosen keeps it chosen. */
 export function ToggleGroup<T extends string | number>({ options, value, onChange, label, labelledBy }: ToggleGroupProps<T>) {
   return (
-    <span className="tg" role="group" aria-label={label} aria-labelledby={labelledBy}>
+    <Group
+      type="single"
+      value={value == null ? "" : String(value)}
+      onValueChange={(v) => {
+        const o = options.find((x) => String(x.value) === v);
+        if (o) onChange(o.value);
+      }}
+      aria-label={label}
+      aria-labelledby={labelledBy}
+    >
       {options.map((o) => (
-        <button key={String(o.value)} type="button" aria-pressed={o.value === value} onClick={() => onChange(o.value)}>
+        <ToggleGroupItem key={String(o.value)} value={String(o.value)} disabled={o.disabled}>
           {o.label}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </span>
+    </Group>
   );
 }

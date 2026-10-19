@@ -8,7 +8,7 @@
  * is dotted and crossed. Reports are the only thing that moves, and they go to a person, not to the wallet.
  */
 import { clamp, lerp, TAU } from "../math";
-import { BRIGHT, COOL, DARK, WARM, drawBox, drawFloor, drawLabel, drawLine, drawShadow, drawSphere, ease, P, piece } from "./gfx";
+import { BRIGHT, COOL, DARK, WARM, drawBox, drawFloor, drawLabel, drawLine, drawPointer, drawShadow, drawSphere, ease, P, piece } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
@@ -28,7 +28,7 @@ const seed = (n: number) => {
 };
 
 function draw(a: SceneArgs): void {
-  const { ctx, cam, q, font, form, u, compact } = a;
+  const { ctx, cam, q, font, form, u, compact, hot, hover } = a;
 
   const pPlate = ease.out(piece(form, 0, 0.2));
   const pEdges = piece(form, 0.34, 0.2);
@@ -71,7 +71,7 @@ function draw(a: SceneArgs): void {
     }
 
   /* the glass wall: the air gap */
-  q.add(-8e5, () => {
+  q.add(P(cam, WALL_X, 28, 0)[2], () => {
     const c1 = P(cam, WALL_X, 0, -62);
     const c2 = P(cam, WALL_X, 0, 62);
     const c3 = P(cam, WALL_X, 56 * pWall, 62);
@@ -101,7 +101,7 @@ function draw(a: SceneArgs): void {
     alpha: pWallet,
     text: [{ face: "top", text: "YOUR WALLET", size: 5.6, color: `rgba(12,13,15,${0.72 * pWallet})` }],
   };
-  q.add(-7e5, () => drawBox(ctx, cam, font, wallet));
+  q.add(P(cam, -124, 2, 34)[2], () => drawBox(ctx, cam, font, wallet));
   const dock: BoxOpts = {
     c: [DOCK[0] + 30 * (1 - pDock), 3, DOCK[2]],
     size: [44, 6, 32],
@@ -132,6 +132,19 @@ function draw(a: SceneArgs): void {
       drawBox(ctx, cam, font, { c: pt, size: [9, 6, 9], tone: [214, 208, 194], edge: "rgba(227,169,59,0.9)", alpha: Math.sin(e * Math.PI) * 0.95 + 0.05 }),
     );
   }
+
+  /* the parts that can be pointed at */
+  const reg = (id: string, x: number, y: number, z: number, r: number) => {
+    const p = P(cam, x, y, z);
+    const rr = Math.max(15, r * cam.s);
+    hot.push({ id, x: p[0], y: p[1], r: rr });
+    if (hover === id) q.add(1e9, () => drawPointer(ctx, p[0], p[1], rr * 0.9));
+  };
+  reg("l-lattice", 0, ORB_Y, 0, 30);
+  agents.forEach((g) => reg("l-agents", g[0], g[1], g[2], 9));
+  reg("l-dock", DOCK[0], 4, DOCK[2], 24);
+  reg("l-gap", WALL_X, 28, 0, 26);
+  reg("l-wallet", -124, 4, 34, 24);
 
   q.flush();
 
@@ -236,6 +249,7 @@ export const LATTICE: SceneDef = {
   yaw: -0.42,
   pitch: 0.62,
   turn: 0.4,
+  limit: 1.2,
   bounds: box8(-150, 125, 0, 66, -70, 72),
   draw,
 };

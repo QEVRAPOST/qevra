@@ -2,6 +2,7 @@ import "server-only";
 
 import { hashRateLimitKey, readCookie, verifySessionCookie } from "./auth";
 import { getResearchStore, StoreNotConfiguredError } from "./store";
+import { getProjectName } from "@/lib/project-brand";
 
 export function apiError(status: number, code: string, message: string, headers?: HeadersInit): Response {
   return Response.json({ error: { code, message } }, { status, headers });
@@ -10,7 +11,7 @@ export function apiError(status: number, code: string, message: string, headers?
 export async function requireResearchAccess(request: Request, limit = 60, windowMs = 60_000, bucket = "general") {
   const sessionKey = verifySessionCookie(readCookie(request, "qevra_session"));
   if (!sessionKey) {
-    return { response: apiError(401, "authentication_required", "A valid QEVRA session is required.") } as const;
+    return { response: apiError(401, "authentication_required", `A valid ${getProjectName()} session is required.`) } as const;
   }
 
   try {

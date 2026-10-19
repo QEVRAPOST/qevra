@@ -10,6 +10,11 @@ import type { z } from "zod";
 
 export type CreateResearchRunInput = z.input<typeof createResearchRunRequestSchema>;
 
+export interface SecuritySessionStatus {
+  configured: boolean;
+  authenticated: boolean;
+}
+
 export class SecurityApiClientError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
     super(message);
@@ -42,6 +47,10 @@ export async function loginToSecurityService(accessToken: string): Promise<{ aut
 
 export async function logoutFromSecurityService(): Promise<void> {
   await requestJson("/api/auth/session", { method: "DELETE" });
+}
+
+export async function getSecuritySessionStatus(): Promise<SecuritySessionStatus> {
+  return requestJson("/api/auth/session");
 }
 
 export async function getSecurityCapabilities(): Promise<SecurityResearchCapabilities> {

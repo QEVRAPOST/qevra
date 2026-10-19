@@ -11,6 +11,22 @@ export interface ReadOnlyEip1193Provider {
   removeListener?(event: "accountsChanged" | "chainChanged" | "disconnect", listener: (...args: unknown[]) => void): void;
 }
 
+export function createWalletRequestGuard() {
+  let currentRequestId = 0;
+  return {
+    begin() {
+      currentRequestId += 1;
+      return currentRequestId;
+    },
+    invalidate() {
+      currentRequestId += 1;
+    },
+    isCurrent(requestId: number) {
+      return requestId === currentRequestId;
+    },
+  };
+}
+
 const ROBINHOOD_TESTNET_CHAIN_ID = 46_630;
 const ROBINHOOD_MAINNET_CHAIN_ID = 4_663;
 
