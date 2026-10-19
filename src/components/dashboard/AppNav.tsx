@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RouteIcon, APP_ROUTES } from "./routes";
 import { useAppModel } from "./DemoAppProvider";
+import { PROJECT_NAME } from "@/lib/project-brand";
 
 function isCurrent(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -38,7 +39,7 @@ export function Rail() {
             {done < 4 ? <Link href="/app/wallet">Continue setup</Link> : <span>Example account funded</span>}
           </>
         ) : (
-          <span>Live mode · read-only · no QEVRA account</span>
+            <span>Live mode · read-only · no {PROJECT_NAME} account</span>
         )}
       </div>
     </nav>

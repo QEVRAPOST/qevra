@@ -6,6 +6,7 @@ import { Chip, DemoChip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel } from "@/components/ui/Panel";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
+import { brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import {
   CORE_SENTENCE,
   PASSED_LEGEND_BODY,
@@ -166,7 +167,7 @@ export function SecurityView() {
       </div>
       <Panel title="Research and tests" aside={sec.origin === "live" ? <Chip tone="neutral" material={sec.status === "ready" ? "solid" : "dotted"}>LIVE MODE</Chip> : sec.sourceTag ? <DemoChip>{sec.sourceTag}</DemoChip> : undefined}>
         <p className="core2">{CORE_SENTENCE}</p>
-        <p className="corep2">{SWARM_PARAGRAPH}</p>
+        <p className="corep2">{brandizeProjectName(SWARM_PARAGRAPH, PROJECT_NAME)}</p>
         {sec.origin === "live" && sec.capabilities ? (
           <dl className="kv" aria-label="Live service status">
             <div><dt>Provider</dt><dd>{sec.capabilities.provider}{sec.capabilities.providerName ? ` · ${sec.capabilities.providerName}` : ""}</dd></div>

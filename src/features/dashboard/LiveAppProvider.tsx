@@ -9,6 +9,8 @@ import type {
   ResearchRunDetail,
   ResearchRunSummary,
   ResearchTopicId,
+  NetworkId,
+  NetworkRpcState,
 } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -28,6 +30,8 @@ import {
 } from "@/features/security/client";
 import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, watchReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
 import { getInjectedReadOnlyProvider } from "@/features/wallet/browser";
+import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
+import { DEFAULT_NETWORK_ID, isNetworkAvailable } from "@/lib/config/networks";
 import { toLiveSecurityRun } from "./live-adapters";
 import { buildLiveAppModel } from "./live-model";
 
@@ -35,6 +39,7 @@ type GateState = "checking" | "unconfigured" | "login" | "authenticated" | "unav
 const STATUS = [{ id: "live-access", tone: "unk" as const, text: "LIVE DATA · READ-ONLY ACCESS" }];
 const POLL_INTERVAL_MS = 5_000;
 const DETAIL_BATCH_SIZE = 3;
+const NETWORK_REFRESH_INTERVAL_MS = 30_000;
 
 function errorMessage(error: unknown): string {
   if (error instanceof SecurityApiClientError) return `${error.code}: ${error.message}`;
@@ -187,6 +192,8 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const [gate, setGate] = useState<GateState>("checking");
   const [gateMessage, setGateMessage] = useState<string>();
   const [wallet, setWallet] = useState<ReadOnlyWalletState>({ status: "disconnected" });
+  const [selectedNetwork, setSelectedNetwork] = useState<NetworkId>(DEFAULT_NETWORK_ID);
+  const [networkRpc, setNetworkRpc] = useState<NetworkRpcState>({ status: "not_requested" });
   const [capabilities, setCapabilities] = useState<AppModel["security"]["capabilities"]>();
   const [summaries, setSummaries] = useState<ResearchRunSummary[] | null>(null);
   const [details, setDetails] = useState<Record<string, ResearchRunDetail>>({});
@@ -332,6 +339,39 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [gate, loadLiveData]);
 
+  useEffect(() => {
+    if (gate !== "authenticated") return;
+    let active = true;
+    const refresh = async () => {
+      setNetworkRpc({ status: "loading" });
+      try {
+        const snapshot = await getRobinhoodNetworkStatus(selectedNetwork);
+        if (!active) return;
+        setNetworkRpc({
+          status: "available",
+          chainId: snapshot.chainId,
+          latestBlock: snapshot.latestBlock,
+          observedAt: snapshot.observedAt,
+        });
+      } catch (error) {
+        if (!active) return;
+        setNetworkRpc({
+          status: "unavailable",
+          ...(error instanceof NetworkStatusClientError ? { errorCode: error.code, message: error.message } : {
+            errorCode: "rpc_unavailable",
+            message: "The public Robinhood RPC could not be reached.",
+          }),
+        });
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(() => { void refresh(); }, NETWORK_REFRESH_INTERVAL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [gate, selectedNetwork]);
+
   useEffect(() => () => {
     walletRequestGuardRef.current.invalidate();
     unwatchRef.current?.();
@@ -380,17 +420,23 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     }) ?? [],
     [summaries, details, detailErrors],
   );
-  const model = useMemo(() => buildLiveAppModel({
-    wallet,
-    capabilities,
+    const model = useMemo(() => buildLiveAppModel({
+      wallet,
+      selectedNetwork,
+      networkRpc,
+      capabilities,
     runs: summaries,
     dataError,
     isRefreshing,
     isCreating,
     actionMessage,
-  }), [wallet, capabilities, summaries, dataError, isRefreshing, isCreating, actionMessage]);
-  const actions = useMemo<AppActions>(() => ({
-    setNetwork() { /* Read-only mode never asks a wallet to switch chains. */ },
+    }), [wallet, selectedNetwork, networkRpc, capabilities, summaries, dataError, isRefreshing, isCreating, actionMessage]);
+    const actions = useMemo<AppActions>(() => ({
+      setNetwork(id) {
+        if (!isNetworkAvailable(id)) return;
+        setSelectedNetwork(id);
+        setNetworkRpc({ status: "loading" });
+      },
     setAmount() { /* Swap input remains non-executable and disabled. */ },
     pressSwapButton() { /* No swap route or transaction method is configured. */ },
     pressWalletButton() { void connectWallet(); },
@@ -400,7 +446,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     },
     createSecurityRun: startResearch,
     logout,
-  }), [connectWallet, disconnectWallet, startResearch, logout]);
+    }), [connectWallet, disconnectWallet, startResearch, logout]);
   const value = useMemo<AppModelValue>(() => ({ model: { ...model, security: { ...model.security, runs: securityRuns } }, actions }), [model, actions, securityRuns]);
 
   if (gate !== "authenticated") {

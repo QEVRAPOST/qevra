@@ -14,7 +14,15 @@
     "typecheck": "tsc --noEmit",
     "lint:copy": "node scripts/copy-lint.mjs",
     "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
-    "security:worker": "node --conditions=react-server --import tsx src/features/security/worker-main.ts"
+    "security:worker": "node --conditions=react-server --import tsx src/features/security/worker-main.ts",
+    "robinhood:rpc:testnet": "bun scripts/robinhood.ts rpc testnet",
+    "robinhood:rpc:mainnet": "bun scripts/robinhood.ts rpc mainnet",
+    "robinhood:contracts:build": "bun scripts/robinhood.ts contracts build",
+    "robinhood:contracts:size": "bun scripts/robinhood.ts contracts size",
+    "robinhood:contracts:gas": "bun scripts/robinhood.ts contracts gas",
+    "robinhood:deploy:validate": "bun scripts/robinhood.ts deploy validate testnet",
+    "robinhood:deploy:dry-run": "bun scripts/robinhood.ts deploy dry-run testnet",
+    "robinhood:explorer:readiness": "bun scripts/robinhood.ts explorer readiness testnet"
   },
   "dependencies": {
     "@radix-ui/react-select": "2.4.1",

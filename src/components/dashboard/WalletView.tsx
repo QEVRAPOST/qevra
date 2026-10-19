@@ -5,6 +5,7 @@ import { Chip, DemoChip } from "@/components/ui/Chip";
 import { Panel } from "@/components/ui/Panel";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { ACCOUNT_CONTROL, ACCOUNT_CONTROL_LEAD, ACCOUNT_CONTROL_RULE, TWO_LEDGERS } from "@/lib/content/copy-lock";
+import { brandizeDisplayStrings, brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import type { LedgerActionId, LedgerView } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 
@@ -81,12 +82,14 @@ function Ledger({ ledger, onAction }: { ledger: LedgerView; onAction: (id: Ledge
 export function WalletView() {
   const { model, actions } = useAppModel();
   const w = model.wallet;
+  const activeNetwork = model.network.options.find((network) => network.id === model.network.selected);
+  const rpc = model.network.rpc;
   const complete = w.setupDone === 4;
   return (
     <section className="route" aria-labelledby="h-wallet">
       <div className="rhead">
         <h1 id="h-wallet">{model.mode === "live" ? "Read-only wallet" : "Wallet and PQ Vault"}</h1>
-        <p>{model.mode === "live" ? "Read-only external wallet observations. No QEVRA smart account exists in this mode." : "Your connected wallet and your QEVRA account are two different accounts."}</p>
+        <p>{brandizeProjectName(model.mode === "live" ? "Read-only external wallet observations. No QEVRA smart account exists in this mode." : "Your connected wallet and your QEVRA account are two different accounts.", PROJECT_NAME)}</p>
       </div>
       <Panel
         title="Accounts"
@@ -97,16 +100,66 @@ export function WalletView() {
         }
       >
         <div className="ledgers">
-          <Ledger ledger={w.eoa} onAction={actions.pressLedgerAction} />
-          <Ledger ledger={w.qevra} onAction={actions.pressLedgerAction} />
+          <Ledger ledger={brandizeDisplayStrings(w.eoa)} onAction={actions.pressLedgerAction} />
+          <Ledger ledger={brandizeDisplayStrings(w.qevra)} onAction={actions.pressLedgerAction} />
         </div>
         <p className="nototal">
           <StatusMaterial material="outline" />
-          <span>{model.mode === "live" ? "No QEVRA ledger exists in this read-only mode. The external wallet balance is shown separately." : TWO_LEDGERS}</span>
+          <span>{brandizeProjectName(model.mode === "live" ? "No QEVRA ledger exists in this read-only mode. The external wallet balance is shown separately." : TWO_LEDGERS, PROJECT_NAME)}</span>
         </p>
       </Panel>
       <Panel
-        title={model.mode === "live" ? "Read-only status" : "Set up your QEVRA account"}
+        title="Application network"
+        aside={model.mode === "demo"
+          ? <Chip tone="demo">Example only</Chip>
+          : rpc.status === "available"
+            ? <Chip tone="neutral" material="solid">RPC healthy</Chip>
+            : <Chip tone="unk" material="dotted">{rpc.status === "loading" ? "Checking RPC" : "RPC unavailable"}</Chip>}
+      >
+        <dl className="kv">
+          <div>
+            <dt>Selected network</dt>
+            <dd>{activeNetwork?.label ?? "Unavailable"}</dd>
+          </div>
+          <div>
+            <dt>Expected chain ID</dt>
+            <dd>{activeNetwork?.chainId ?? "Unavailable"}</dd>
+          </div>
+          {model.mode === "demo" ? (
+            <div>
+              <dt>Public RPC</dt>
+              <dd>Not queried in example mode</dd>
+            </div>
+          ) : (
+            <>
+              <div>
+                <dt>RPC chain ID</dt>
+                <dd>{rpc.chainId ?? (rpc.status === "loading" ? "Checking" : "Unavailable")}</dd>
+              </div>
+              <div>
+                <dt>Latest block</dt>
+                <dd>{rpc.latestBlock ?? "Unavailable"}</dd>
+              </div>
+              {rpc.observedAt ? (
+                <div>
+                  <dt>Observed at</dt>
+                  <dd>{rpc.observedAt}</dd>
+                </div>
+              ) : null}
+            </>
+          )}
+        </dl>
+        {model.mode === "live" && rpc.message ? <p role="status" className="lt">{rpc.message}</p> : null}
+        {model.mode === "live" && w.connection?.address ? (
+          <p role="status" className="lt">
+            {model.network.walletMismatch
+              ? `Wallet is on ${w.connection.networkName ?? `chain ${w.connection.chainId}`}; the app reads ${activeNetwork?.label ?? "the selected network"}. The wallet network was not changed.`
+              : `Wallet and app networks match. The wallet network was not changed.`}
+          </p>
+        ) : null}
+      </Panel>
+      <Panel
+        title={model.mode === "live" ? "Read-only status" : `Set up your ${PROJECT_NAME} account`}
         aside={
           model.mode === "live"
             ? <Chip tone="unk" material="dotted">Account setup disabled</Chip>
@@ -135,9 +188,10 @@ export function WalletView() {
         </ol>
         <div className="ctrlnote">
           <p>
-            <b>{ACCOUNT_CONTROL_LEAD}</b> {ACCOUNT_CONTROL}
-          </p>
-          <p>{ACCOUNT_CONTROL_RULE}</p>
+              <b>{brandizeProjectName(ACCOUNT_CONTROL_LEAD, PROJECT_NAME)}</b>{" "}
+              {brandizeProjectName(ACCOUNT_CONTROL, PROJECT_NAME)}
+            </p>
+            <p>{brandizeProjectName(ACCOUNT_CONTROL_RULE, PROJECT_NAME)}</p>
         </div>
       </Panel>
     </section>

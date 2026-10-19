@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { SWARM_PARAGRAPH_A, SWARM_PARAGRAPH_B } from "@/lib/content/copy-lock";
 import { SWARM_CAN, SWARM_CANNOT, SWARM_CAN_FOCUS, SWARM_CANNOT_FOCUS } from "@/lib/content/landing";
+import { brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import { SwarmDiagram } from "./SwarmDiagram";
 
 const STEPS = [
@@ -51,8 +52,8 @@ export function SwarmExplainer() {
       <div className="swcopy">
         <div className="swintro" data-i={-1}>
           <h2 id="h-limits">What the Swarm can and cannot do</h2>
-          <p className="sub">{SWARM_PARAGRAPH_A}</p>
-          <p className="sub">{SWARM_PARAGRAPH_B}</p>
+          <p className="sub">{brandizeProjectName(SWARM_PARAGRAPH_A, PROJECT_NAME)}</p>
+          <p className="sub">{brandizeProjectName(SWARM_PARAGRAPH_B, PROJECT_NAME)}</p>
         </div>
         <h3 className="swgroup">
           <StatusMaterial material="outline" />

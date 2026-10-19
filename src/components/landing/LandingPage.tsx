@@ -22,12 +22,12 @@ export function LandingPage() {
       </noscript>
       <Splash projectName={projectName} />
       <StatusBar items={STATUS_BAR_ITEMS} />
-      <LandingNav />
+      <LandingNav projectName={projectName} />
       <main id="main" tabIndex={-1} className="curtain-main">
         <HeroStage projectName={projectName} />
-        <LandingStory />
+        <LandingStory projectName={projectName} />
         <SwarmLimitsBand />
-        <StatusBand />
+        <StatusBand projectName={projectName} />
       </main>
       <Curtain projectName={projectName} />
     </div>

@@ -3,6 +3,7 @@ import type {
   AppModel,
   CoverageRow,
   NetworkId,
+  NetworkRpcState,
   ReadOnlyWalletState,
   ResearchRunSummary,
   SecurityResearchCapabilities,
@@ -12,12 +13,9 @@ import type {
 } from "@/types";
 import { NETWORKS } from "@/lib/config/networks";
 import { COVERAGE_ROWS } from "@/lib/content/status";
+import { brandizeDisplayStrings, brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 
-const READ_ONLY_NOTICE = "This view only reads public account/network data. QEVRA has no smart account, custody, signing, approvals, or swap execution.";
-
-function networkIdFor(wallet: ReadOnlyWalletState): NetworkId {
-  return wallet.chainId === 4_663 ? "mainnet" : "testnet";
-}
+const READ_ONLY_NOTICE = brandizeProjectName("This view only reads public account/network data. QEVRA has no smart account, custody, signing, approvals, or swap execution.", PROJECT_NAME);
 
 function agentStatusSummary(run: ResearchRunSummary): string {
   return run.agents.map((agent) => `${agent.role}: ${agent.status}`).join(" · ") || "Agent states not reported";
@@ -62,11 +60,11 @@ function buildLiveWallet(wallet: ReadOnlyWalletState): AppModel["wallet"] {
       { label: "Observed at", value: wallet.balance.observedAt },
       { label: "Read source", value: wallet.balance.provider },
     ] : []),
-    { label: "QEVRA authority", value: "None claimed" },
+    { label: `${PROJECT_NAME} authority`, value: "None claimed" },
   ];
   const steps: SetupStepView[] = [
     { title: "External wallet", detail: "User-initiated, read-only account access.", tag: hasAddress ? "Connected · read-only" : "Not connected", state: hasAddress ? "done" : "current" },
-    { title: "QEVRA smart account", detail: "Not built. No assets are held by QEVRA.", tag: "Not built", state: "todo" },
+    { title: `${PROJECT_NAME} smart account`, detail: `Not built. No assets are held by ${PROJECT_NAME}.`, tag: "Not built", state: "todo" },
     { title: "Authorization key", detail: "Key registration is blocked by the Phase 0B NO-GO.", tag: "Disabled", state: "todo" },
     { title: "Funding or swaps", detail: "No deposit path or reviewed swap route is active.", tag: "Disabled", state: "todo" },
   ];
@@ -80,7 +78,7 @@ function buildLiveWallet(wallet: ReadOnlyWalletState): AppModel["wallet"] {
     eoa: {
       kind: "eoa",
       title: "Connected external wallet",
-      subtitle: "Your external account. QEVRA requests reads only.",
+      subtitle: `Your external account. ${PROJECT_NAME} requests reads only.`,
       intro: hasAddress ? READ_ONLY_NOTICE : wallet.message ?? "No wallet is connected. Connect only when you choose.",
       ...(hasAddress ? { address: { label: wallet.address!, demo: false } } : {}),
       facts,
@@ -93,12 +91,12 @@ function buildLiveWallet(wallet: ReadOnlyWalletState): AppModel["wallet"] {
     },
     qevra: {
       kind: "qevra",
-      title: "QEVRA smart account",
+      title: `${PROJECT_NAME} smart account`,
       subtitle: "Not built · no custody",
-      intro: "No QEVRA smart account exists. No assets are held or controlled here.",
+      intro: `No ${PROJECT_NAME} smart account exists. No assets are held or controlled here.`,
       facts: [{ label: "Account status", value: "Not built" }, { label: "Transfers and swaps", value: "Disabled" }],
       assets: [],
-      emptyAssets: "No QEVRA assets; no account is deployed.",
+      emptyAssets: `No ${PROJECT_NAME} assets; no account is deployed.`,
       actions: [],
       footnote: "Phase 0B authorization NO-GO remains in force.",
     },
@@ -158,7 +156,8 @@ function buildLiveStatusBar(wallet: ReadOnlyWalletState, capabilities?: Security
 }
 
 function buildLiveCoverage(wallet: ReadOnlyWalletState, capabilities?: SecurityResearchCapabilities, runCount = 0): CoverageRow[] {
-  return COVERAGE_ROWS.map((row) => {
+  return COVERAGE_ROWS.map((sourceRow) => {
+    const row = brandizeDisplayStrings(sourceRow, PROJECT_NAME);
     if (row.id === "wallet-connection") {
       return {
         ...row,
@@ -187,6 +186,8 @@ function buildLiveCoverage(wallet: ReadOnlyWalletState, capabilities?: SecurityR
 
 export function buildLiveAppModel(input: {
   wallet: ReadOnlyWalletState;
+  selectedNetwork?: NetworkId;
+  networkRpc?: NetworkRpcState;
   capabilities?: SecurityResearchCapabilities;
   runs: ResearchRunSummary[] | null;
   dataError?: string;
@@ -195,6 +196,10 @@ export function buildLiveAppModel(input: {
   actionMessage?: string;
 }): AppModel {
   const { wallet, capabilities, runs } = input;
+  const selectedNetwork = input.selectedNetwork ?? "testnet";
+  const rpc = input.networkRpc ?? { status: "loading" as const };
+  const selectedChainId = NETWORKS.find((network) => network.id === selectedNetwork)?.chainId;
+  const walletMismatch = wallet.address !== undefined && wallet.chainId !== undefined && wallet.chainId !== selectedChainId;
   const liveRuns = runs?.map(toSwarmRun) ?? [];
   const securityStatus: AppModel["security"]["status"] = runs === null
     ? input.dataError ? "unavailable" : "loading"
@@ -220,7 +225,7 @@ export function buildLiveAppModel(input: {
     mode: "live",
     statusBar: buildLiveStatusBar(wallet, capabilities),
     coverage: buildLiveCoverage(wallet, capabilities, liveRuns.length),
-    network: { selected: networkIdFor(wallet), options: [...NETWORKS] },
+    network: { selected: selectedNetwork, options: [...NETWORKS], rpc, walletMismatch },
     wallet: buildLiveWallet(wallet),
     swap: buildLiveSwap(),
     activity,

@@ -2,8 +2,8 @@
 
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Chip } from "@/components/ui/Chip";
 import { useMediaQuery } from "@/lib/use-media-query";
+import type { NetworkId } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 
 /**
@@ -16,26 +16,10 @@ export function NetworkSelect() {
   const narrow = useMediaQuery("(max-width: 560px)");
   const { selected, options } = model.network;
 
-  if (model.mode === "live") {
-    const connection = model.wallet.connection;
-    const network = connection?.networkName === "Robinhood Chain Testnet"
-      ? "Testnet"
-      : connection?.networkName === "Robinhood Chain"
-        ? "Mainnet"
-        : connection?.networkName === "Unsupported network"
-          ? "Unsupported"
-          : "Offline";
-    return (
-      <Chip tone={connection?.isQevraTargetNetwork ? "neutral" : "unk"} material={connection?.isQevraTargetNetwork ? "solid" : "dotted"}>
-        {network}
-      </Chip>
-    );
-  }
-
   return (
-    <Select value={selected} onValueChange={(v) => actions.setNetwork(v as typeof selected)}>
+    <Select value={selected} onValueChange={(v) => actions.setNetwork(v as NetworkId)}>
       <SelectTrigger
-        aria-label="Network"
+        aria-label={model.mode === "live" ? "Application network" : "Example network"}
         className="h-8 w-64 border-exp font-mono text-xs text-exp hover:border-exp hover:bg-exp/10 data-[state=open]:border-exp max-sm:w-[5.6rem] max-sm:gap-1.5 max-sm:px-2"
       >
         {/* the circle goes first on a narrow bar, so the name fits */}

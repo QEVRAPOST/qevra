@@ -11,6 +11,7 @@ import { ToggleGroup } from "@/components/ui/ToggleGroup";
 import type { ApertureScene } from "@/lib/aperture/engine";
 import { GLYPH_INITIAL } from "@/lib/aperture/keyframes";
 import type { RingsInfo } from "@/lib/aperture/types";
+import { brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import { INTENT_LOCK_CAPTION } from "@/lib/content/copy-lock";
 import { GLYPH_LABEL } from "@/lib/content/landing";
 import { buildDemoIntentComparison } from "@/lib/demo/swap";
@@ -42,7 +43,7 @@ function ComparisonChip({ c, demo }: { c: IntentComparison; demo: boolean }) {
   return <Chip material="outline">Matches your review</Chip>;
 }
 
-function LiveCaption({ c, demo }: { c: IntentComparison; demo: boolean }) {
+function LiveCaption({ c, demo, projectName }: { c: IntentComparison; demo: boolean; projectName: string }) {
   const names = c.rows.filter((r) => r.match === "changed").map((r) => r.label).join(", ");
   if (demo) {
     return c.changedCount > 0 ? (
@@ -75,7 +76,7 @@ function LiveCaption({ c, demo }: { c: IntentComparison; demo: boolean }) {
         <b>
           {c.changedCount} {c.changedCount === 1 ? "detail differs" : "details differ"} from what you reviewed: {names}.
         </b>{" "}
-        The light stops at that ring. QEVRA is designed to ask for a fresh review before anything is signed.
+         {brandizeProjectName("The light stops at that ring. QEVRA is designed to ask for a fresh review before anything is signed.", projectName)}
       </>
     );
   }
@@ -256,9 +257,9 @@ export function IntentLockPanel({ comparison }: { comparison: IntentComparison }
         </table>
       </ScrollRegion>
       <p className="livecap" aria-live="polite">
-        <LiveCaption c={shown} demo={demo} />
+        <LiveCaption c={shown} demo={demo} projectName={PROJECT_NAME} />
       </p>
-      <p className="inote">{INTENT_LOCK_CAPTION}</p>
+      <p className="inote">{brandizeProjectName(INTENT_LOCK_CAPTION, PROJECT_NAME)}</p>
       {demo ? (
         <p className="inote demo-note">
           <StatusMaterial material="outline" /> Design demonstration on example values. Turning a ring changes this picture only. Nothing is verified, signed or sent.

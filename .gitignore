@@ -16,25 +16,8 @@ contracts/broadcast/
 !.env.example
 .qevra-data/
 
-# Ignore local/reference documentation and large assets by default. Explicitly
-# allow only the reviewed project/security/engineering documents below.
+# Ignore all repository documentation.
 /docs/
-!/docs/
-/docs/*
-!/docs/ADR-001-account-and-pq-authorization.md
-!/docs/ADR-002-pq-verifier-selection.md
-!/docs/ADR-003-pq-authorization-recovery.md
-!/docs/PHASE-0-REPORT.md
-!/docs/PHASE-0B-SECURITY-RESEARCH.md
-!/docs/SAFE-MVP-SCOPE.md
-!/docs/SWAP_ROUTE_DISCOVERY.md
-!/docs/QEVRA_DESIGN_DIRECTION.md
-!/docs/QEVRA_ENGINEERING_ADDENDUM.md
-!/docs/QEVRA_FUNCTIONAL_MVP_HANDOFF.md
-!/docs/QEVRA_LIVE_VERIFICATION_HANDOFF.md
-!/docs/QEVRA_PHASE3_ACTIVATION_HANDOFF.md
-!/docs/QEVRA_PHASE4_SESSION_HANDOFF.md
-!/docs/QEVRA_PM_BRIEF_v0.1.md
-!/docs/QEVRA_REFERENCES.md
-!/docs/QEVRA_UI_IMPLEMENTATION_HANDOFF.md
+/research_notes/
+/reports/
 .DS_Store

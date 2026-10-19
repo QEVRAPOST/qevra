@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { WordmarkMark } from "@/components/ui/Wordmark";
+import { PROJECT_NAME } from "@/lib/project-brand";
 import { Rail, TabBar } from "./AppNav";
 import { DemoBar } from "./DemoBar";
 import { useAppModel } from "./DemoAppProvider";
@@ -17,11 +18,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <StatusBar items={model.statusBar} />
       <header className="apptop" data-sticky-nav>
         <div className="wrap wide">
-          <Link href="/" className="wordmark" aria-label="QEVRA, back to the landing page">
+          <Link href="/" className="wordmark" aria-label={`${PROJECT_NAME}, back to the landing page`}>
             <span className="mark" aria-hidden="true">
               <WordmarkMark />
             </span>
-            QEVRA
+            {PROJECT_NAME}
           </Link>
           <div className="apptools">
             <NetworkSelect />

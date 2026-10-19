@@ -7,7 +7,7 @@ import { INTRO_FROM, INTRO_RATE, SCENE_RATE, STORY_KEYFRAMES, STORY_KEYFRAMES_CO
 import { prefersReducedMotion } from "@/lib/aperture/motion";
 import { registerHeroScene } from "@/lib/aperture/registry";
 import { PIN_ID, computeStoryTarget, frameBounds, frameCenters, readingTop } from "@/lib/aperture/scroll";
-import { FIGURE_DESCRIPTION, FIGURE_LABEL, STORY_INTRO, STORY_STEPS } from "@/lib/content/landing";
+import { brandize, brandizeStoryStep, FIGURE_DESCRIPTION, FIGURE_LABEL, STORY_INTRO, STORY_STEPS } from "@/lib/content/landing";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { FigureCaption } from "./FigureCaption";
 import { StepFrame } from "./StoryFrames";
@@ -18,7 +18,7 @@ import { StepFrame } from "./StoryFrames";
  * The scroll controller writes straight to the scene: scroll position is never React state. React state holds
  * only the active frame and the hovered ring, and only when they change.
  */
-export function LandingStory() {
+export function LandingStory({ projectName }: { projectName: string }) {
   const [scene, setScene] = useState<ApertureScene | null>(null);
   const [active, setActive] = useState(0);
   const [hoverRing, setHoverRing] = useState(-1);
@@ -133,16 +133,16 @@ export function LandingStory() {
   }, [scene]);
 
   return (
-    <section className="story" id="story" aria-label="How QEVRA works">
+    <section className="story" id="story" aria-label={`How ${projectName} works`}>
       <noscript>
         <style>{".step{opacity:1}"}</style>
       </noscript>
       <div className="wrap wide">
         <div className="sgrid">
           <div className="scol" id="scol">
-            <StepFrame step={STORY_INTRO} active={active === 0} />
+            <StepFrame step={brandizeStoryStep(STORY_INTRO, projectName)} active={active === 0} />
             {STORY_STEPS.map((step, i) => (
-              <StepFrame key={step.title} step={step} active={active === i + 1} />
+              <StepFrame key={step.title} step={brandizeStoryStep(step, projectName)} active={active === i + 1} />
             ))}
           </div>
           <figure className="pin" id={PIN_ID}>
@@ -152,15 +152,15 @@ export function LandingStory() {
                 initial={INTRO_FROM}
                 rate={SCENE_RATE}
                 pointer
-                label={FIGURE_LABEL}
+                label={brandize(FIGURE_LABEL, projectName)}
                 describedBy="fig-text"
                 onSceneChange={setScene}
                 onHoverChange={setHoverRing}
               />
             </div>
-            <FigureCaption active={active} hoverRing={hoverRing} canHover={canHover} />
+            <FigureCaption active={active} hoverRing={hoverRing} canHover={canHover} projectName={projectName} />
             <div className="sr" id="fig-text">
-              {FIGURE_DESCRIPTION}
+              {brandize(FIGURE_DESCRIPTION, projectName)}
             </div>
           </figure>
         </div>

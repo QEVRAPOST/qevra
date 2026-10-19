@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { DemoChip } from "@/components/ui/Chip";
 import { ToggleGroup } from "@/components/ui/ToggleGroup";
 import { SWAP_STATE_ORDER, SWAP_STATES } from "@/lib/content/swap-states";
+import { brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import type { ActsMode, RunsMode, SetupStage, SwapButtonKey } from "@/types";
 import { usePreviewControls } from "./DemoAppProvider";
 
@@ -59,7 +60,7 @@ export function DemoBar() {
             <option value="">Automatic, from the setup state</option>
             {SWAP_STATE_ORDER.map((k) => (
               <option key={k} value={k}>
-                {SWAP_STATES[k].label}
+                {brandizeProjectName(SWAP_STATES[k].label, PROJECT_NAME)}
               </option>
             ))}
           </select>

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { LaunchTransitionProvider } from "@/components/landing/LaunchTransition";
+import { PROJECT_NAME } from "@/lib/project-brand";
 import "./globals.css";
 
 /*
@@ -33,7 +34,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: { default: "QEVRA", template: "%s · QEVRA" },
+  title: { default: PROJECT_NAME, template: `%s · ${PROJECT_NAME}` },
   description:
     "A wallet and simple swap for Robinhood Chain. A design preview: post-quantum authorization is under evaluation, and nothing here holds funds.",
 };

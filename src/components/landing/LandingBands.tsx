@@ -1,6 +1,7 @@
 import { PqNote } from "@/components/ui/PqNote";
 import { STATUS_BAND_INTRO } from "@/lib/content/landing";
 import { COVERAGE_ROWS } from "@/lib/content/status";
+import { brandizeDisplayStrings, brandizeProjectName } from "@/lib/project-brand";
 import { StatusLedger } from "./StatusLedger";
 import { SwarmExplainer } from "./SwarmExplainer";
 
@@ -16,15 +17,18 @@ export function SwarmLimitsBand() {
 }
 
 /** Band 2: what is real today. */
-export function StatusBand() {
+export function StatusBand({ projectName }: { projectName: string }) {
   return (
     <section className="band" id="status" aria-labelledby="h-status">
       <div className="wrap wide">
         <div className="bhead" style={{ marginBottom: 36 }}>
           <h2 id="h-status">What is real today</h2>
-          <p className="sub">{STATUS_BAND_INTRO}</p>
-        </div>
-        <StatusLedger rows={COVERAGE_ROWS} caption="Status of each part of QEVRA" />
+            <p className="sub">{brandizeProjectName(STATUS_BAND_INTRO, projectName)}</p>
+          </div>
+          <StatusLedger
+            rows={brandizeDisplayStrings(COVERAGE_ROWS, projectName)}
+            caption={`Status of each part of ${projectName}`}
+          />
         <PqNote variant="landing" />
       </div>
     </section>

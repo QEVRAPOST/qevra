@@ -6,18 +6,18 @@ import { FRAME_HOW_IT_WORKS, FRAME_SWARM } from "@/lib/content/landing";
 import { WordmarkMark } from "@/components/ui/Wordmark";
 import { LaunchLink } from "./LaunchLink";
 
-export function LandingNav() {
+export function LandingNav({ projectName }: { projectName: string }) {
   return (
-    <nav className="lnav" aria-label="QEVRA" data-sticky-nav>
+      <nav className="lnav" aria-label={projectName} data-sticky-nav>
       <div className="wrap wide">
         <button
           type="button"
           className="wordmark"
-          aria-label="QEVRA, back to top"
+            aria-label={`${projectName}, back to top`}
           onClick={() => window.scrollTo({ top: 0, behavior: scrollBehavior(prefersReducedMotion()) })}
         >
           <WordmarkMark />
-          QEVRA
+            {projectName}
         </button>
         <div className="links">
           <a

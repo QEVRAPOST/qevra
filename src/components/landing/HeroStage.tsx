@@ -13,6 +13,7 @@ import { scrollBehavior, scrollToFrame } from "@/lib/aperture/scroll";
 import { whenSplashDone } from "@/lib/splash";
 import { StageScene, stageState } from "@/lib/aperture/stage/engine";
 import { WaterScene } from "@/lib/aperture/water";
+import { brandizeDisplayStrings } from "@/lib/project-brand";
 import { CORE_SENTENCE } from "@/lib/content/copy-lock";
 import {
   brandize,
@@ -46,12 +47,13 @@ const TOUR = { sway: 1900, lock: 3400, lockBreak: 5300, swarm: 7000, home: 10400
 type SceneIndex = 0 | 1 | 2;
 
 /** The hero copy, in the layout the approved hero has always had. `activeFact` lights the line for the object on show. */
-function HeroText({ activeFact }: { activeFact: number }) {
+function HeroText({ activeFact, projectName }: { activeFact: number; projectName: string }) {
+  const facts = brandizeDisplayStrings(HERO_FACTS, projectName);
   return (
     <header className="hero">
       <p className="eyebrow">{HERO.eyebrow}</p>
       <h1>{HERO.headline}</h1>
-      <p className="lede">{HERO.lede}</p>
+        <p className="lede">{brandize(HERO.lede, projectName)}</p>
       <div className="ctas">
         <LaunchLink>Launch App</LaunchLink>
         <a
@@ -66,8 +68,8 @@ function HeroText({ activeFact }: { activeFact: number }) {
         </a>
       </div>
       <p className="ctas-note">{HERO.note}</p>
-      <ul className="facts" aria-label="What QEVRA is">
-        {HERO_FACTS.map((f, i) => (
+        <ul className="facts" aria-label={`What ${projectName} is`}>
+          {facts.map((f, i) => (
           <li key={f.lead} className={activeFact === i ? "on" : undefined}>
             <StatusMaterial material={f.material} />
             <span>
@@ -79,7 +81,7 @@ function HeroText({ activeFact }: { activeFact: number }) {
       </ul>
       <p className="core">
         <StatusMaterial material="outline" />
-        <span>{CORE_SENTENCE}</span>
+          <span>{brandize(CORE_SENTENCE, projectName)}</span>
       </p>
     </header>
   );
@@ -395,12 +397,12 @@ export function HeroStage({ projectName }: { projectName: string }) {
   };
 
   return (
-    <section className="hstage" id="hero" aria-label="QEVRA at a glance" data-scene={scene}>
+    <section className="hstage" id="hero" aria-label={`${projectName} at a glance`} data-scene={scene}>
       <div className="hs-track" ref={trackRef}>
         <div className="hs-pin" ref={pinRef}>
           <div className="wrap wide">
             <div className="sgrid hgrid">
-              <HeroText activeFact={scene} />
+              <HeroText activeFact={scene} projectName={projectName} />
               <figure className="hfig" ref={figRef}>
                 <div className="hcanvas" tabIndex={0} role="group" aria-label={HERO_STAGE_KEYS} onKeyDown={onStageKey}>
                   <canvas ref={canvasRef} role="img" aria-label={bn(s.label)} />
