@@ -1,5 +1,5 @@
 import type { ActivityView } from "./activity";
-import type { NetworkId, NetworkOption } from "./network";
+import type { NetworkId, NetworkOption, NetworkRpcState } from "./network";
 import type { SecurityView } from "./security";
 import type { CoverageRow, StatusBarItem } from "./status";
 import type { SwapView } from "./swap";
@@ -18,7 +18,7 @@ export interface AppModel {
   statusBar: StatusBarItem[];
   coverage: CoverageRow[];
   /** the network the app is pointed at, and the ones the menu lists (unavailable ones cannot be picked) */
-  network: { selected: NetworkId; options: NetworkOption[] };
+  network: { selected: NetworkId; options: NetworkOption[]; rpc: NetworkRpcState; walletMismatch: boolean };
   wallet: WalletView;
   swap: SwapView;
   activity: ActivityView;

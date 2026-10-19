@@ -1,4 +1,7 @@
 import type { Material } from "@/types";
+import { PROJECT_NAME, brandizeProjectName, brandizeDisplayStrings } from "@/lib/project-brand";
+
+export { DEFAULT_PROJECT_NAME } from "@/lib/project-brand";
 
 /** Landing copy (docs/QEVRA_DESIGN_DIRECTION.md section 5.3). Sentence case, active voice, no claims past the evidence. */
 
@@ -109,8 +112,11 @@ export const HERO_STAGE_KEYS = "3D object. Left and Right arrows rotate it, Ente
  * The hero copy is written with the default project name. The name is a setting (NEXT_PUBLIC_PROJECT_NAME, read on the
  * server by getProjectName), so the hero swaps it in where it shows the name.
  */
-export const DEFAULT_PROJECT_NAME = "QEVRA";
-export const brandize = (text: string, name: string): string => (name === DEFAULT_PROJECT_NAME ? text : text.replaceAll(DEFAULT_PROJECT_NAME, name));
+export const brandize = (text: string, name = PROJECT_NAME): string => brandizeProjectName(text, name);
+
+export function brandizeStoryStep(step: StoryStep, name = PROJECT_NAME): StoryStep {
+  return brandizeDisplayStrings(step, name);
+}
 
 /** What the Intent Lock object says while its slots line up, and when one detail has changed. */
 export const HERO_LOCK_CAPTIONS: ReadonlyArray<{ lead: string; text: string }> = [

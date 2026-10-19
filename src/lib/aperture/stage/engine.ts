@@ -16,6 +16,7 @@
  * and starts again from the authored angle when the object changes.
  */
 import { clamp, lerp } from "../math";
+import { PROJECT_NAME } from "@/lib/project-brand";
 import { onReducedMotionChange, prefersReducedMotion } from "../motion";
 import { FALLBACK_FONT_MONO } from "../constants";
 import { resolveMonoFamily } from "../engine";
@@ -85,7 +86,7 @@ export class StageScene implements StageView {
   dpr = 1;
   fontMono: string;
   hover: string | null = null;
-  projectName = "QEVRA";
+  projectName = PROJECT_NAME;
   water = false;
   /** the part the camera has flown in on, or null */
   zoomId: string | null = null;

@@ -2,6 +2,7 @@
 
 import { formatEther, isAddress, type Address } from "viem";
 import type { PublicNativeBalance, ReadOnlyWalletState } from "@/types/integrations";
+import { PROJECT_NAME } from "@/lib/project-brand";
 
 type ReadOnlyMethod = "eth_requestAccounts" | "eth_accounts" | "eth_chainId" | "eth_getBalance" | "eth_getBlockByNumber";
 
@@ -108,7 +109,7 @@ async function readWallet(provider: ReadOnlyEip1193Provider, requestAccounts: bo
         chainId,
         networkName: "Unsupported network",
         isQevraTargetNetwork: false,
-        message: "This network is not configured as a QEVRA read-only target.",
+        message: `This network is not configured as a ${PROJECT_NAME} read-only target.`,
       };
     }
 

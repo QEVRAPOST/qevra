@@ -1,5 +1,6 @@
 import { NETWORKS } from "@/lib/config/networks";
 import { COVERAGE_ROWS, STATUS_BAR_ITEMS } from "@/lib/content/status";
+import { brandizeDisplayStrings } from "@/lib/project-brand";
 import { DEMO_ACTIVITY, DEMO_RUNS_ALL, DEMO_RUNS_DEFAULT } from "@/lib/demo-fixtures";
 import { buildSwapView } from "./swap";
 import { buildWalletView } from "./wallet";
@@ -31,14 +32,15 @@ function buildActivity(mode: ActsMode): ActivityView {
 
 /** Assemble the demo view model. Pure: the same inputs always give the same model. */
 export function buildDemoModel(i: DemoInputs): AppModel {
-  return {
+  const model: AppModel = {
     mode: "demo",
     statusBar: STATUS_BAR_ITEMS,
     coverage: COVERAGE_ROWS,
-    network: { selected: i.network, options: [...NETWORKS] },
+    network: { selected: i.network, options: [...NETWORKS], rpc: { status: "not_requested" }, walletMismatch: false },
     wallet: buildWalletView(i.stage),
     swap: buildSwapView(i.stage, i.amount, i.reviewed, i.forced),
     activity: buildActivity(i.actsMode),
     security: buildSecurity(i.runsMode),
   };
+  return brandizeDisplayStrings(model);
 }

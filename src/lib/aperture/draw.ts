@@ -22,6 +22,7 @@ import {
 } from "./constants";
 import { TAU, clamp, lerp, smooth } from "./math";
 import type { ApertureState, SceneView } from "./types";
+import { PROJECT_NAME } from "@/lib/project-brand";
 
 type Vec3 = [number, number, number];
 type Pt = [number, number];
@@ -196,7 +197,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
   }
   ctx.restore();
   if (!glyph) {
-    wallText(ctx, g, font, A_BASE_R, -5, "QEVRA SMART ACCOUNT · ROBINHOOD TESTNET 46630", 0, 0, Math.max(7.5, 8 * s), "rgba(236,232,223,0.42)", "center");
+    wallText(ctx, g, font, A_BASE_R, -5, `${PROJECT_NAME.toUpperCase()} SMART ACCOUNT · ROBINHOOD TESTNET 46630`, 0, 0, Math.max(7.5, 8 * s), "rgba(236,232,223,0.42)", "center");
   }
 
   /* ---- chapter 1: the external wallet is a separate plate beside the QEVRA base, with no path between them ---- */
@@ -791,7 +792,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
     const midRing = wallPt(A_R[4], 1.12, 4 + 4 * (A_H + gap) + A_H * 0.5);
     callouts.push([midRing, "Intent Lock", "8 rings, one per detail", "rgba(236,232,223,1)", lblA, lx0]);
     const baseEdge = wallPt(A_BASE_R, 1.0, 0);
-    callouts.push([baseEdge, "QEVRA smart account", "design preview, not deployed", "rgba(139,143,150,1)", lblA, lx0]);
+    callouts.push([baseEdge, `${PROJECT_NAME} smart account`, "design preview, not deployed", "rgba(139,143,150,1)", lblA, lx0]);
     for (const [pt, t1, t2, col, a, lx] of callouts) {
       if (a < 0.05) continue;
       const ty = pt[1];
@@ -898,7 +899,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
         ay: wallet[1] + walletThick + WALLET_R * s * sinT + 2,
         x: wallet[0],
         y: below,
-        lines: compact ? ["Your wallet"] : ["Your connected wallet", "external account (EOA)", "QEVRA protection: none claimed"],
+        lines: compact ? ["Your wallet"] : ["Your connected wallet", "external account (EOA)", `${PROJECT_NAME} protection: none claimed`],
         color: ink,
         alpha: A,
         side: "center",
@@ -912,7 +913,7 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
         ay: baseBottom + 1,
         x: g.cx,
         y: baseBottom + 24,
-        lines: compact ? ["QEVRA account"] : ["QEVRA smart account", "separate address · experimental", "design preview, not deployed"],
+        lines: compact ? [`${PROJECT_NAME} account`] : [`${PROJECT_NAME} smart account`, "separate address · experimental", "design preview, not deployed"],
         color: "rgba(227,169,59,1)",
         alpha: A,
         side: "center",

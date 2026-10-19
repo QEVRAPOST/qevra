@@ -120,6 +120,33 @@ test("live model shows backend failures honestly without demo fallback or execut
   assert.equal(model.wallet.qevra.actions.length, 0);
 });
 
+test("live model keeps the app network independent from the connected wallet chain", () => {
+  const model = buildLiveAppModel({
+    wallet: {
+      status: "connected",
+      address: "0x0000000000000000000000000000000000000001",
+      chainId: 46_630,
+      networkName: "Robinhood Chain Testnet",
+      isQevraTargetNetwork: true,
+    },
+    selectedNetwork: "mainnet",
+    networkRpc: {
+      status: "available",
+      chainId: 4_663,
+      latestBlock: "123",
+      observedAt: "2026-10-19T00:00:00.000Z",
+    },
+    runs: [],
+    isRefreshing: false,
+    isCreating: false,
+  });
+
+  assert.equal(model.network.selected, "mainnet");
+  assert.equal(model.network.rpc.chainId, 4_663);
+  assert.equal(model.network.walletMismatch, true);
+  assert.equal(model.wallet.connection?.chainId, 46_630);
+});
+
 test("live run labels distinguish rate limits and explicit research lifecycle states", () => {
   const baseRun: ResearchRunSummary = {
     id: "77777777-7777-4777-8777-777777777777",
