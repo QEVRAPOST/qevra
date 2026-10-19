@@ -447,13 +447,14 @@ test("model provider parses structured output and enforces the response schema",
     fetchImpl: async (_input, init) => {
       standardRequestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return Response.json({
-        choices: [{ message: { content: JSON.stringify({ summary: "Verified summary.", claims: [], scopeLimitations: [] }) } }],
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ summary: "Verified summary.", claims: [], scopeLimitations: [] }) } }],
         usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
       });
     },
   }).completeJson({ agent: "research", systemPrompt: "system", input: {}, schema: researchAgentOutputSchema });
   assert.equal(valid.output.summary, "Verified summary.");
   assert.equal(valid.usage?.totalTokens, 7);
+  assert.equal(valid.usage?.outputDiagnostics?.finishReason, "stop");
   assert.equal(standardRequestBody?.max_tokens, 128);
   assert.equal("max_completion_tokens" in (standardRequestBody ?? {}), false);
   assert.equal("reasoning_effort" in (standardRequestBody ?? {}), false);
@@ -467,14 +468,97 @@ test("model provider parses structured output and enforces the response schema",
     maxOutputTokens: 128,
     timeoutMs: 1_000,
     fetchImpl: async () => Response.json({
-      choices: [{ message: { content: JSON.stringify({ summary: "Missing fields" }) } }],
+      choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ summary: "Missing fields" }) } }],
       usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
     }),
   });
   await assert.rejects(
     invalidProvider.completeJson({ agent: "research", systemPrompt: "system", input: {}, schema: researchAgentOutputSchema }),
-    (error: unknown) => error instanceof ModelProviderError && error.code === "provider_output_invalid" && error.usage?.totalTokens === 7,
+    (error: unknown) => error instanceof ModelProviderError
+      && error.code === "provider_output_invalid"
+      && error.usage?.totalTokens === 7
+      && error.usage.outputDiagnostics?.validationCategory === "schema_validation"
+      && error.usage.outputDiagnostics.validationIssues?.some((issue) => issue.path[0] === "claims" && issue.code === "invalid_type"),
   );
+});
+
+test("model provider records safe schema diagnostics for wrong field types", async () => {
+  const provider = new OpenAICompatibleProvider({
+    apiKey: "mock-key",
+    model: "test-model",
+    baseUrl: "https://api.example.test/v1",
+    maxOutputTokens: 128,
+    timeoutMs: 1_000,
+    fetchImpl: async () => Response.json({
+      choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ summary: 42, claims: [], scopeLimitations: [] }) } }],
+      usage: { prompt_tokens: 6, completion_tokens: 8, total_tokens: 14 },
+    }),
+  });
+
+  await assert.rejects(
+    provider.completeJson({ agent: "research", systemPrompt: "system", input: {}, schema: researchAgentOutputSchema }),
+    (error: unknown) => error instanceof ModelProviderError
+      && error.code === "provider_output_invalid"
+      && error.usage?.outputDiagnostics?.validationCategory === "schema_validation"
+      && error.usage.outputDiagnostics.validationIssues?.some((issue) => issue.path[0] === "summary" && issue.code === "invalid_type"),
+  );
+});
+
+test("model provider classifies malformed structured JSON and truncation without retaining response text", async () => {
+  const makeProvider = (content: string, finishReason: string) => new OpenAICompatibleProvider({
+    apiKey: "mock-key",
+    model: "test-model",
+    baseUrl: "https://api.example.test/v1",
+    maxOutputTokens: 128,
+    timeoutMs: 1_000,
+    fetchImpl: async () => Response.json({
+      choices: [{ finish_reason: finishReason, message: { content } }],
+      usage: { prompt_tokens: 9, completion_tokens: 10, total_tokens: 19 },
+    }),
+  });
+  const request = { agent: "research" as const, systemPrompt: "system", input: {}, schema: researchAgentOutputSchema };
+
+  await assert.rejects(
+    makeProvider("malformed secret-shaped response", "stop").completeJson(request),
+    (error: unknown) => error instanceof ModelProviderError
+      && error.usage?.outputDiagnostics?.validationCategory === "structured_json_parse"
+      && error.usage.outputDiagnostics.finishReason === "stop"
+      && !JSON.stringify(error.usage).includes("malformed secret-shaped response"),
+  );
+  await assert.rejects(
+    makeProvider("{", "length").completeJson(request),
+    (error: unknown) => error instanceof ModelProviderError
+      && error.usage?.outputDiagnostics?.validationCategory === "truncated"
+      && error.usage.outputDiagnostics.finishReason === "length"
+      && error.usage.totalTokens === 19,
+  );
+});
+
+test("Research Agent prompt enumerates the exact bounded schema and short exact-quote policy", async () => {
+  let researchPrompt = "";
+  const baseProvider = mockProvider();
+  const capturingProvider: ModelProvider = {
+    name: "mock",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      if (request.agent === "research") researchPrompt = request.systemPrompt;
+      return baseProvider.completeJson(request);
+    },
+  };
+  const run = createQueuedRun("22222223-2222-4222-8222-222222222222", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider: capturingProvider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  assert.match(researchPrompt, /summary.*string/i);
+  assert.match(researchPrompt, /claims.*array/i);
+  assert.match(researchPrompt, /scopeLimitations.*array.*string/i);
+  assert.match(researchPrompt, /sourceId.*quote/i);
+  assert.match(researchPrompt, /exact quote/i);
+  assert.match(researchPrompt, /empty array/i);
+  assert.match(researchPrompt, /no markdown/i);
 });
 
 test("model provider classifies authentication, quota, malformed JSON, and schema failures without exposing bodies", async () => {

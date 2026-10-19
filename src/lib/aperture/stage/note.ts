@@ -42,13 +42,26 @@ export function drawNote(ctx: CanvasRenderingContext2D, w: number, h: number, no
   ctx.font = `500 ${fC}px ${font}`;
   const cw = ctx.measureText(note.type).width + 14;
   ctx.font = `400 ${fL}px ${font}`;
-  const lw = Math.max(0, ...note.lines.map((l) => ctx.measureText(l).width));
-  const bw = Math.min(w - 24, Math.max(tw + 10 + cw, lw) + pad * 2);
-  const bh = pad * 2 + 18 + 6 + note.lines.length * lh - 2;
+  /* On a phone the card spans the stage and its text is one paragraph wrapped to fit; on a wide stage the authored lines stand. */
+  const bw = compact ? w - 24 : Math.min(w - 24, Math.max(tw + 10 + cw, ...note.lines.map((l) => ctx.measureText(l).width)) + pad * 2);
+  const inner = bw - pad * 2;
+  const lines: string[] = [];
+  if (compact) {
+    let line = "";
+    for (const word of note.lines.join(" ").split(/\s+/)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(next).width > inner) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    if (line) lines.push(line);
+  } else lines.push(...note.lines);
+  const bh = pad * 2 + 18 + 6 + lines.length * lh - 2;
 
-  /* on a wide stage the card stands at the upper right, clear of the part and of the buttons; on a phone, under the part */
-  const bx = compact ? clamp((w - bw) / 2, 12, w - bw - 12) : w - bw - 22;
-  const by = compact ? h - bh - 12 : 62;
+  /* on a wide stage the card stands at the upper right, clear of the part and of the buttons; on a phone, above the buttons at the foot */
+  const bx = compact ? 12 : w - bw - 22;
+  const by = compact ? h - bh - 46 : 62;
   const rise = (1 - a) * 6;
   const sx = compact ? bx + bw / 2 : bx;
   const sy = (compact ? by : by + bh / 2) + rise;
@@ -94,6 +107,6 @@ export function drawNote(ctx: CanvasRenderingContext2D, w: number, h: number, no
   ctx.fillText(note.type, cx + 7, y0 + 13);
   ctx.fillStyle = "rgba(139,143,150,1)";
   ctx.font = `400 ${fL}px ${font}`;
-  note.lines.forEach((l, i) => ctx.fillText(l, x0, y0 + 18 + 6 + 11 + i * lh));
+  lines.forEach((l, i) => ctx.fillText(l, x0, y0 + 18 + 6 + 11 + i * lh));
   ctx.restore();
 }

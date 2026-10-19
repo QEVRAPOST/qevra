@@ -62,7 +62,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, s
       const hy = f.oy + u[1] * f.s;
       s = f.s * (1 + st.zm * (st.zk - 1));
       ox = lerp(hx, w / 2, st.zm) - u[0] * s;
-      oy = lerp(hy, h * 0.46, st.zm) - u[1] * s;
+      oy = lerp(hy, h * (compact ? 0.32 : 0.46), st.zm) - u[1] * s;
     }
     const cam = makeCam({ yaw, pitch, s, ox, oy, dpr: view.dpr, px: view.px });
     cam.bare = view.water;
