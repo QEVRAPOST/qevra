@@ -9,6 +9,7 @@
 import { clamp } from "../math";
 import { BRIGHT, COOL, DARK, drawBox, drawCyl, drawFloor, drawLabel, drawLine, drawShadow, ease, P, piece, WARM } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
+import type { HeroPartId } from "@/types";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
 
@@ -26,7 +27,7 @@ function draw(a: SceneArgs): void {
   const plaque = Math.max(5, 13 * Math.min(1, 9 / NAME.length));
   const engrave = Math.max(3.2, 5.6 * Math.min(1, 37 / (NAME.length + 30)));
   /* callouts fade out as the camera flies in on a part: the caption under the stage takes over */
-  const lab = 1 - 0.95 * zoom;
+  const lab = Math.max(0, 1 - 1.15 * zoom);
   /* depth is taken from each part's centre, so the order stays right when the visitor turns the object */
   const dep = (x: number, y: number, z: number) => P(cam, x, y, z)[2];
 
@@ -127,7 +128,7 @@ function draw(a: SceneArgs): void {
   }
 
   /* the parts that can be pointed at */
-  const reg = (id: string, x: number, y: number, z: number, r: number, zk = 2.2) => {
+  const reg = (id: HeroPartId, x: number, y: number, z: number, r: number, zk = 2.2) => {
     const p = P(cam, x, y, z);
     const rr = Math.max(15, r * cam.s);
     hot.push({ id, x: p[0], y: p[1], r: rr, wx: x, wy: y, wz: z, zoom: zk });

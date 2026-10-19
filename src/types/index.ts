@@ -7,3 +7,4 @@ export type * from "./app-model";
 export type * from "./preview";
 export type * from "./integrations";
 export type * from "./network";
+export type * from "./hero";

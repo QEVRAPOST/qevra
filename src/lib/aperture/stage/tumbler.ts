@@ -9,6 +9,7 @@
 import { clamp, lerp, smooth } from "../math";
 import { BRIGHT, COOL, DARK, WARM, drawBox, drawCyl, drawFloor, drawLabel, drawShadow, drawSphere, ease, P, piece } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
+import type { HeroPartId } from "@/types";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
 
@@ -40,7 +41,7 @@ const BEAM_Y = PF + SLOT_Y + SLOT_H / 2;
 function draw(a: SceneArgs): void {
   const { ctx, cam, q, font, form, mis, compact, hot, zoom } = a;
   /* callouts fade out as the camera flies in on a part */
-  const lab = 1 - 0.95 * zoom;
+  const lab = Math.max(0, 1 - 1.15 * zoom);
 
   const pRail = ease.out(piece(form, 0, 0.22));
   const pLamp = ease.back(piece(form, 0.5, 0.16));
@@ -141,12 +142,12 @@ function draw(a: SceneArgs): void {
   });
 
   /* the parts that can be pointed at: each pin, the lamp, the receiver */
-  const reg = (id: string, x: number, y: number, z: number, r: number, zk = 2.6) => {
+  const reg = (id: HeroPartId, x: number, y: number, z: number, r: number, zk = 2.6) => {
     const p = P(cam, x, y, z);
     const rr = Math.max(15, r * cam.s);
     hot.push({ id, x: p[0], y: p[1], r: rr, wx: x, wy: y, wz: z, zoom: zk });
   };
-  const IDS = ["t-recipient", "t-chain", "t-token", "t-amount", "t-deadline"];
+  const IDS: HeroPartId[] = ["t-recipient", "t-chain", "t-token", "t-amount", "t-deadline"];
   PIN_X.forEach((x, i) => reg(IDS[i], x, PF + H * 0.55, 0, 13));
   reg("t-lamp", LAMP_X, BEAM_Y, 0, 9, 3.2);
   reg("t-receiver", RECV_X, BEAM_Y, 0, 9, 3.2);

@@ -14,6 +14,7 @@
 import { clamp, lerp, TAU } from "../math";
 import { BRIGHT, COOL, DARK, WARM, drawBox, drawCyl, drawFloor, drawLabel, drawLine, drawShadow, drawSphere, ease, P, piece } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
+import type { HeroPartId } from "@/types";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
 
@@ -39,7 +40,7 @@ const GATE_HALF = 0.3;
 const PERIOD = 10.4;
 
 interface AgentDef {
-  id: string;
+  id: HeroPartId;
   tag: string;
 }
 /** in order around the hexagon, starting at the gate and going round */
@@ -90,7 +91,7 @@ interface Route {
 function draw(a: SceneArgs): void {
   const { ctx, cam, q, font, form, u, compact, hot, zoom, t } = a;
   /* callouts fade out as the camera flies in on a part */
-  const lab = 1 - 0.95 * zoom;
+  const lab = Math.max(0, 1 - 1.15 * zoom);
 
   const pPlate = ease.out(piece(form, 0, 0.18));
   const pRing = piece(form, 0.14, 0.3);
@@ -414,7 +415,7 @@ function draw(a: SceneArgs): void {
   }
 
   /* the parts that can be pointed at */
-  const reg = (id: string, x: number, y: number, z: number, r: number, zk = 3) => {
+  const reg = (id: HeroPartId, x: number, y: number, z: number, r: number, zk = 3) => {
     const p = P(cam, x, y, z);
     const rr = Math.max(14, r * cam.s);
     hot.push({ id, x: p[0], y: p[1], r: rr, wx: x, wy: y, wz: z, zoom: zk });

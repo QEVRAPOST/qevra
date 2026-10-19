@@ -1,4 +1,4 @@
-import type { Material } from "@/types";
+import type { HeroPart, HeroPartId, Material } from "@/types";
 import { PROJECT_NAME, brandizeProjectName, brandizeDisplayStrings } from "@/lib/project-brand";
 
 export { DEFAULT_PROJECT_NAME } from "@/lib/project-brand";
@@ -83,30 +83,148 @@ export const HERO_SCENES: readonly HeroScene[] = [
  * What the visitor learns by pointing at a part of a hero object. The ids are the ones the scenes register
  * (src/lib/aperture/stage/*.ts). The words restate approved copy; they add no claim past the evidence.
  */
-export const HERO_PARTS: Readonly<Record<string, { name: string; text: string }>> = {
-  "v-wallet": { name: "Your connected wallet", text: "An external account. It signs the way it always has. QEVRA makes no protection claim for it." },
-  "v-account": { name: "QEVRA smart account", text: "A separate address, designed for QEVRA assets. How it is authorized is still under evaluation. No smart account exists yet." },
-  "v-assets": { name: "Example assets", text: "Dashed outlines, because nothing is held. The tokens in this preview are TKN-A and TKN-B, examples only." },
-  "v-link": { name: "No deposit path yet", text: "The line is dotted and crossed because it is not built. Nothing in this preview moves between the two accounts." },
-  "t-recipient": { name: "Recipient", text: "Who receives the swapped tokens. A different address is a different swap." },
-  "t-chain": { name: "Chain", text: "Which network the swap is for. 46630 is Robinhood Testnet." },
-  "t-token": { name: "Token", text: "The two tokens. The design allows only tokens from a reviewed list." },
-  "t-amount": { name: "Amount", text: "How much you pay. If this changes after you review, its slot moves and the light stops." },
-  "t-deadline": { name: "Deadline", text: "When the approval runs out." },
-  "t-lamp": { name: "The details you reviewed", text: "The light starts here. It passes only if every slot is at the same height." },
-  "t-receiver": { name: "The end of the line", text: "Light that reaches this end means every detail matched what you reviewed. It is a picture of a comparison, not a guarantee." },
-  "l-lattice": { name: "Post-quantum research", text: "ML-DSA is the initial candidate scheme (NIST FIPS 204). It is under evaluation and not audited. QEVRA makes no claim that it resists quantum attacks." },
-  "l-coord": { name: "Coordinator", text: "Directs the specialist agents, gathers what they find and hands the cross-checked set to the Report agent. It is not a wallet and holds no keys." },
-  "l-a-research": { name: "Research", text: "Reads public papers, advisories, standards and repositories. Nothing private." },
-  "l-a-analysis": { name: "Analysis", text: "Weighs what was found against how QEVRA is designed, and says what it means." },
-  "l-a-verify": { name: "Verification", text: "Cross-checks the other agents' findings and runs named tests in isolated sandboxes that hold no production secrets." },
-  "l-a-risk": { name: "Risk", text: "Rates what could go wrong, and says what is still unknown. A planned specialty in this illustration." },
-  "l-a-policy": { name: "Policy", text: "Checks findings against the rules: a change needs passing tests, a security review and explicit human approval. A planned specialty in this illustration." },
-  "l-a-report": { name: "Report", text: "Writes the report with its sources and its limits. Reports go to Human review through the gate: the one path out. A planned specialty in this illustration." },
-  "l-ring": { name: "Trust boundary", text: "The agents work inside it, in isolated sandboxes with no production secrets. Only a report leaves, through the gate, to Human review. A design boundary, not a promise that nothing can go wrong." },
-  "l-dock": { name: "Human review", text: "Reports go here. A change needs passing tests, a security review and explicit human approval. The dock is unlit: no review is recorded." },
-  "l-gap": { name: "Air gap", text: "There is no execution or signing path between the Swarm and your wallet. It is a design boundary, not a promise that nothing can go wrong." },
-  "l-wallet": { name: "Your wallet", text: "Signing stays with you. Agents have no authority to access private keys, sign transactions or move funds." },
+export const HERO_PARTS: Readonly<Record<HeroPartId, HeroPart>> = {
+  /* 1. the smart account */
+  "v-wallet": {
+    name: "Your connected wallet",
+    text: "An external account. It signs the way it always has. QEVRA makes no protection claim for it.",
+    type: "EOA",
+    brief: ["The wallet you already use: an external", "account. It signs the way it always has.", "No protection claimed for it."],
+  },
+  "v-account": {
+    name: "QEVRA smart account",
+    text: "A separate address, designed for QEVRA assets. How it is authorized is still under evaluation. No smart account exists yet.",
+    type: "smart account",
+    brief: ["A separate address, designed for the", "assets you choose to use here.", "Experimental: no contract exists yet."],
+  },
+  "v-assets": {
+    name: "Example assets",
+    text: "Dashed outlines, because nothing is held. The tokens in this preview are TKN-A and TKN-B, examples only.",
+    type: "TKN-A · TKN-B",
+    brief: ["Dashed outlines: nothing is held.", "The tokens in this preview are examples."],
+  },
+  "v-link": {
+    name: "No deposit path yet",
+    text: "The line is dotted and crossed because it is not built. Nothing in this preview moves between the two accounts.",
+    type: "not built",
+    brief: ["Dotted and crossed: nothing moves", "between the two accounts yet."],
+  },
+  /* 2. Intent Lock */
+  "t-recipient": {
+    name: "Recipient (R)",
+    text: "Who receives the swapped tokens. A different address is a different swap.",
+    type: "address",
+    brief: ["Who receives the swapped tokens.", "A different address is a different swap."],
+  },
+  "t-chain": {
+    name: "Chain (C)",
+    text: "Which network the swap is for. 46630 is Robinhood Testnet.",
+    type: "chainId",
+    brief: ["Which network the swap is for.", "For example 46630: Robinhood Testnet."],
+  },
+  "t-token": {
+    name: "Token (T)",
+    text: "The two tokens. The design allows only tokens from a reviewed list.",
+    type: "token in → token out",
+    brief: ["The two tokens being swapped.", "Only tokens from a reviewed list."],
+  },
+  "t-amount": {
+    name: "Amount (A)",
+    text: "How much you pay. If this changes after you review, its slot moves and the light stops.",
+    type: "uint256",
+    brief: ["How much you pay.", "Change it after review and its slot", "moves: the light stops here."],
+  },
+  "t-deadline": {
+    name: "Deadline (D)",
+    text: "When the approval runs out.",
+    type: "timestamp",
+    brief: ["When the approval runs out.", "After it, the same approval is void."],
+  },
+  "t-lamp": {
+    name: "The details you reviewed",
+    text: "The light starts here. It passes only if every slot is at the same height.",
+    type: "reviewed set",
+    brief: ["The light starts here, and passes only", "if every slot is at the same height."],
+  },
+  "t-receiver": {
+    name: "The end of the line",
+    text: "Light that reaches this end means every detail matched what you reviewed. It is a picture of a comparison, not a guarantee.",
+    type: "all match",
+    brief: ["Light that arrives here: every detail", "matched. A picture, not a guarantee."],
+  },
+  /* 3. post-quantum research and the Security Swarm */
+  "l-coord": {
+    name: "Coordinator",
+    text: "Directs the specialist agents, gathers what they find and hands the cross-checked set to the Report agent. It is not a wallet and holds no keys.",
+    type: "orchestrator",
+    brief: ["Directs the agents and gathers findings.", "Hands the cross-checked set to Report.", "Holds no keys."],
+  },
+  "l-a-research": {
+    name: "Research",
+    text: "Reads public papers, advisories, standards and repositories. Nothing private.",
+    type: "agent · reads",
+    brief: ["Reads public papers, advisories,", "standards and repositories.", "Nothing private."],
+  },
+  "l-a-analysis": {
+    name: "Analysis",
+    text: "Weighs what was found against how QEVRA is designed, and says what it means.",
+    type: "agent · weighs",
+    brief: ["Weighs what was found against the", "design, and says what it means."],
+  },
+  "l-a-verify": {
+    name: "Verification",
+    text: "Cross-checks the other agents' findings and runs named tests in isolated sandboxes that hold no production secrets.",
+    type: "agent · cross-checks",
+    brief: ["Re-checks the other agents' findings.", "Runs named tests in isolated sandboxes", "that hold no production secrets."],
+  },
+  "l-a-risk": {
+    name: "Risk",
+    text: "Rates what could go wrong, and says what is still unknown. A planned specialty in this illustration.",
+    type: "agent · rates (planned)",
+    brief: ["Rates what could go wrong, and says", "what is still unknown.", "A planned specialty in this illustration."],
+  },
+  "l-a-policy": {
+    name: "Policy",
+    text: "Checks findings against the rules: a change needs passing tests, a security review and explicit human approval. A planned specialty in this illustration.",
+    type: "agent · rules (planned)",
+    brief: ["Checks findings against the rules: tests,", "a security review, human approval.", "A planned specialty in this illustration."],
+  },
+  "l-a-report": {
+    name: "Report",
+    text: "Writes the report with its sources and its limits. Reports go to Human review through the gate: the one path out. A planned specialty in this illustration.",
+    type: "agent · writes (planned)",
+    brief: ["Writes one report, with its sources", "and its limits. It is the only thing", "that leaves, through the gate."],
+  },
+  "l-ring": {
+    name: "Trust boundary",
+    text: "The agents work inside it, in isolated sandboxes with no production secrets. Only a report leaves, through the gate, to Human review. A design boundary, not a promise that nothing can go wrong.",
+    type: "perimeter",
+    brief: ["Agents work inside, in isolated sandboxes.", "Only a report leaves, through the gate."],
+  },
+  "l-lattice": {
+    name: "Post-quantum research",
+    text: "ML-DSA is the initial candidate scheme (NIST FIPS 204). It is under evaluation and not audited. QEVRA makes no claim that it resists quantum attacks.",
+    type: "ML-DSA · FIPS 204",
+    brief: ["The initial candidate scheme.", "Under evaluation, not audited.", "No claim that it resists quantum attacks."],
+  },
+  "l-dock": {
+    name: "Human review",
+    text: "Reports go here. A change needs passing tests, a security review and explicit human approval. The dock is unlit: no review is recorded.",
+    type: "approval · unlit",
+    brief: ["Reports go here. A person decides.", "The dock is unlit: no review is recorded."],
+  },
+  "l-gap": {
+    name: "Air gap",
+    text: "There is no execution or signing path between the Swarm and your wallet. It is a design boundary, not a promise that nothing can go wrong.",
+    type: "no path",
+    brief: ["No execution or signing path between", "the Swarm and your wallet."],
+  },
+  "l-wallet": {
+    name: "Your wallet",
+    text: "Signing stays with you. Agents have no authority to access private keys, sign transactions or move funds.",
+    type: "EOA",
+    brief: ["Signing stays with you.", "Agents cannot reach keys or move funds."],
+  },
 };
 
 export const HERO_ROTATE_LABEL = "Rotate the object";

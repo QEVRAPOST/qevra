@@ -34,6 +34,7 @@ import {
   TRY_LABEL,
   TRY_OPTIONS,
 } from "@/lib/content/landing";
+import type { HeroPartId } from "@/types";
 import { LaunchLink } from "./LaunchLink";
 
 const N = HERO_SCENES.length;
@@ -133,6 +134,10 @@ export function HeroStage({ projectName }: { projectName: string }) {
     }
     stageRef.current = stage;
     stage.projectName = projectName;
+    /* what each part says about itself when it is zoomed on */
+    stage.notes = Object.fromEntries(
+      Object.entries(HERO_PARTS).map(([id, p]) => [id, { title: brandize(p.name, projectName), type: p.type, lines: p.brief.map((l) => brandize(l, projectName)) }]),
+    );
 
     /* The water under the stage: it stays while the objects change, so it is the hero's ground. It is calm and has no
        sculpture to mirror, and it runs only while the stage is on screen and the splash screen (if any) has lifted. */
@@ -387,7 +392,7 @@ export function HeroStage({ projectName }: { projectName: string }) {
   }, [projectName]);
   /* the part the camera is on stays described after the pointer leaves it; otherwise the part under the pointer */
   const shownId = zoomId ?? partId;
-  const part = shownId ? HERO_PARTS[shownId] : null;
+  const part = shownId && shownId in HERO_PARTS ? HERO_PARTS[shownId as HeroPartId] : null;
   const cap = scene === 1 ? HERO_LOCK_CAPTIONS[broken] : s;
   const showTry = scene === 1;
   const turnBy = (d: number) => stageRef.current?.rotateBy(d);
@@ -414,7 +419,7 @@ export function HeroStage({ projectName }: { projectName: string }) {
             <div className="sgrid hgrid">
               <HeroText activeFact={scene} projectName={projectName} />
               <figure className="hfig" ref={figRef}>
-                <div className="hcanvas" tabIndex={0} role="group" aria-label={HERO_STAGE_KEYS} onKeyDown={onStageKey}>
+                <div className="hcanvas" tabIndex={0} role="group" aria-label={HERO_STAGE_KEYS} onKeyDown={onStageKey} data-zoom={zoomId ?? undefined}>
                   <canvas ref={canvasRef} role="img" aria-label={bn(s.label)} />
                   {/* behind the stage: the water that stays while the objects change */}
                   <canvas ref={waterRef} className="hwater" aria-hidden="true" />

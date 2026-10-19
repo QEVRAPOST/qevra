@@ -22,6 +22,7 @@ import { FALLBACK_FONT_MONO } from "../constants";
 import { resolveMonoFamily } from "../engine";
 import { drawStage, SCENES } from "./draw";
 import { drawPointer } from "./gfx";
+import { drawNote, type StageNote } from "./note";
 import type { Hotspot } from "./types";
 
 export interface StageState {
@@ -91,6 +92,10 @@ export class StageScene implements StageView {
   /** the object on show has a slow loop of its own (the swarm's lights): keep drawing while it is on screen. Never under reduced motion. */
   private ambient = false;
   private since = 1;
+  /** the note beside the part the camera is on: what to say about each part, which one is showing and how visible it is */
+  notes: Readonly<Record<string, StageNote>> = {};
+  private noteId: string | null = null;
+  private noteA = 0;
   /** the part the camera has flown in on, or null */
   zoomId: string | null = null;
   /** called when the camera flies in on a part, or back out */
@@ -302,6 +307,8 @@ export class StageScene implements StageView {
     if (prefersReducedMotion()) {
       this.zoomTween = null;
       Object.assign(this.state, to);
+      this.noteId = this.zoomId;
+      this.noteA = this.zoomId ? 1 : 0;
       this.render();
       return;
     }
@@ -515,11 +522,23 @@ export class StageScene implements StageView {
     el.addEventListener("pointerleave", this.onLeave);
   }
 
+  /** The note is fading in, or out: for the new part it waits until the camera has nearly arrived. */
+  private noteMoving(): boolean {
+    return this.noteId !== this.zoomId || (!!this.zoomId && this.noteA < 1);
+  }
+
+  private stepNote(dt: number, settled: boolean): void {
+    if (this.noteId !== this.zoomId) {
+      this.noteA = Math.max(0, this.noteA - dt / 0.14);
+      if (this.noteA === 0) this.noteId = this.zoomId;
+    } else if (this.zoomId && settled) this.noteA = Math.min(1, this.noteA + dt / 0.3);
+  }
+
   /** Something is changing that needs every frame. With `ambient` false, the object's own slow loop of lights does not count. */
   private moving(ambient = true): boolean {
     if (prefersReducedMotion()) return false;
     if (ambient && this.ambient) return true;
-    if (this.tweens.size > 0 || this.zoomTween || this.ringMoving()) return true;
+    if (this.tweens.size > 0 || this.zoomTween || this.ringMoving() || this.noteMoving()) return true;
     for (const k of EASED_KEYS) if (Math.abs(this.target[k] - this.state[k]) > 1e-3) return true;
     return Math.abs(this.tpx - this.px) > 1e-3 || Math.abs(this.tpy - this.py) > 1e-3;
   }
@@ -548,6 +567,7 @@ export class StageScene implements StageView {
       if (p >= 1) this.tweens.delete(key);
     }
     const zt = this.zoomTween;
+    this.stepNote(dt, !zt || (now - zt.t0) / zt.dur > 0.55);
     if (zt) {
       const x = clamp((now - zt.t0) / zt.dur);
       const p = x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; /* ease-in-out cubic */
@@ -586,6 +606,12 @@ export class StageScene implements StageView {
     c.setTransform(d, 0, 0, d, 0, 0);
     c.clearRect(0, 0, this.w, this.h);
     this.hot = drawStage(c, this.w, this.h, this.state, this);
+    const note = this.noteId ? this.notes[this.noteId] : undefined;
+    if (note && this.noteA > 0.01) {
+      const t = this.target;
+      const at = this.hot.find((h) => h.id === this.noteId && h.wx === t.cx && h.wy === t.cy && h.wz === t.cz);
+      drawNote(c, this.w, this.h, note, this.noteA, at ? { x: at.x, y: at.y } : { x: this.w / 2, y: this.h * 0.46 }, this.fontMono, this.w < 560 || this.h < 360);
+    }
     if (this.ring.a > 0.01) {
       /* the marker grows a little as it fades in, so it settles onto the part rather than popping */
       const k = 0.9 + 0.1 * this.ring.a;
