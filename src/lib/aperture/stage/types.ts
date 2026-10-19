@@ -34,6 +34,8 @@ export interface SceneArgs {
   hot: Hotspot[];
   /** the part being pointed at, if any */
   hover: string | null;
+  /** the scene clock in seconds: it advances only while the stage is drawing frames (still under reduced motion) */
+  t: number;
   /** how far the camera has flown in on a part, 0..1; callouts fade out as it does */
   zoom: number;
   /** the project name, for the text engraved on the objects */
@@ -50,6 +52,8 @@ export interface SceneDef {
   limit: number;
   /** corners of the world box that has to fit on screen */
   bounds: V3[];
+  /** the box to fit on a phone-sized stage, when the scene leaves its outer parts out there */
+  compactBounds?: V3[];
   draw(a: SceneArgs): void;
 }
 

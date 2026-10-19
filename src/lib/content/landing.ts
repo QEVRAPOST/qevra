@@ -72,10 +72,10 @@ export const HERO_SCENES: readonly HeroScene[] = [
   {
     tab: "Research + Swarm",
     name: "Post-quantum research and the Security Swarm",
-    lead: "Researched in the open.",
-    text: "ML-DSA signatures are under evaluation, drawn dashed because they are not audited. The Security Swarm researches, tests and reports to a human review dock. It holds no keys and has no path to your wallet.",
+    lead: "The Security Swarm.",
+    text: "A coordinated set of research agents that investigate, cross-check and document risk before anything is approved. It supports review in the open and does not control your wallet or move funds.",
     label:
-      "A small dashed lattice stands for post-quantum research that is under evaluation. Four agents orbit it: the Security Swarm, which holds no keys. Reports travel to a human review dock that is unlit in this preview. A glass wall, the air gap, stands in front of your wallet and the line to it is crossed out.",
+      "An illustration of the Security Swarm. A coordinator stands in the middle of a glass trust boundary with one gate. Around it, six specialist agents: Research, Analysis, Verification, Risk, Policy and Report. Lines join each agent to the coordinator and to its neighbours, and small lights travel along them as the agents cross-check each other. A small dashed lattice floats above the coordinator: post-quantum research that is under evaluation. Through the gate, the Report agent sends one report to a human review dock that is unlit in this preview. A glass wall, the air gap, stands in front of your wallet and the line to it is crossed out.",
   },
 ];
 
@@ -96,7 +96,14 @@ export const HERO_PARTS: Readonly<Record<string, { name: string; text: string }>
   "t-lamp": { name: "The details you reviewed", text: "The light starts here. It passes only if every slot is at the same height." },
   "t-receiver": { name: "The end of the line", text: "Light that reaches this end means every detail matched what you reviewed. It is a picture of a comparison, not a guarantee." },
   "l-lattice": { name: "Post-quantum research", text: "ML-DSA is the initial candidate scheme (NIST FIPS 204). It is under evaluation and not audited. QEVRA makes no claim that it resists quantum attacks." },
-  "l-agents": { name: "Security Swarm", text: "Researches public sources, runs tests in isolated sandboxes and writes reports. It holds no keys and cannot sign." },
+  "l-coord": { name: "Coordinator", text: "Directs the specialist agents, gathers what they find and hands the cross-checked set to the Report agent. It is not a wallet and holds no keys." },
+  "l-a-research": { name: "Research", text: "Reads public papers, advisories, standards and repositories. Nothing private." },
+  "l-a-analysis": { name: "Analysis", text: "Weighs what was found against how QEVRA is designed, and says what it means." },
+  "l-a-verify": { name: "Verification", text: "Cross-checks the other agents' findings and runs named tests in isolated sandboxes that hold no production secrets." },
+  "l-a-risk": { name: "Risk", text: "Rates what could go wrong, and says what is still unknown. A planned specialty in this illustration." },
+  "l-a-policy": { name: "Policy", text: "Checks findings against the rules: a change needs passing tests, a security review and explicit human approval. A planned specialty in this illustration." },
+  "l-a-report": { name: "Report", text: "Writes the report with its sources and its limits. Reports go to Human review through the gate: the one path out. A planned specialty in this illustration." },
+  "l-ring": { name: "Trust boundary", text: "The agents work inside it, in isolated sandboxes with no production secrets. Only a report leaves, through the gate, to Human review. A design boundary, not a promise that nothing can go wrong." },
   "l-dock": { name: "Human review", text: "Reports go here. A change needs passing tests, a security review and explicit human approval. The dock is unlit: no review is recorded." },
   "l-gap": { name: "Air gap", text: "There is no execution or signing path between the Swarm and your wallet. It is a design boundary, not a promise that nothing can go wrong." },
   "l-wallet": { name: "Your wallet", text: "Signing stays with you. Agents have no authority to access private keys, sign transactions or move funds." },
@@ -132,6 +139,10 @@ export const HERO_LOCK_CAPTIONS: ReadonlyArray<{ lead: string; text: string }> =
 
 export const HERO_TABS_LABEL = "Choose an object";
 export const HERO_SCROLL_HINT = "Scroll to change object";
+
+/** One sentence on what the Security Swarm is, at the head of its section (the hero's Research + Swarm tab says the same in its own words). */
+export const SWARM_DEFINITION =
+  "The Security Swarm is a coordinated set of specialist research agents. They investigate, cross-check and document risk, so that a person can review it before anything is approved.";
 
 /** The first frame of the story: the ring sculpture is introduced before it is taken apart. */
 export const STORY_INTRO: StoryStep = {

@@ -233,6 +233,7 @@ export function HeroStage({ projectName }: { projectName: string }) {
       cur = next;
       setScene(next);
       stage.setScene(next);
+      stage.setAmbient(next === 2);
       if (tryRef.current != null && next !== 1) {
         tryRef.current = null;
         setTryValue(null);
@@ -310,6 +311,7 @@ export function HeroStage({ projectName }: { projectName: string }) {
       tabsRef.current?.style.setProperty("--hu", u.toFixed(3));
       stage.jump(stageState({ f0: s === 0 ? 1 : 0, f1: s === 1 ? 1 : 0, f2: s === 2 ? 1 : 0, u }));
       stage.setScene(s);
+      stage.setAmbient(s === 2);
       syncMis();
     } else {
       /* the first object builds when the splash screen (if one is playing) lifts away */

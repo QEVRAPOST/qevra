@@ -88,6 +88,9 @@ export class StageScene implements StageView {
   hover: string | null = null;
   projectName = PROJECT_NAME;
   water = false;
+  /** the object on show has a slow loop of its own (the swarm's lights): keep drawing while it is on screen. Never under reduced motion. */
+  private ambient = false;
+  private since = 1;
   /** the part the camera has flown in on, or null */
   zoomId: string | null = null;
   /** called when the camera flies in on a part, or back out */
@@ -229,6 +232,12 @@ export class StageScene implements StageView {
     Object.assign(this.state, next);
     Object.assign(this.target, next);
     this.render();
+  }
+
+  /** Say whether the object on show has a slow loop of its own that should keep running. */
+  setAmbient(on: boolean): void {
+    this.ambient = on;
+    if (on) this.kick();
   }
 
   /** Tell the stage which object is on show: it sets the rotation limit and starts again from the authored angle. */
@@ -488,8 +497,10 @@ export class StageScene implements StageView {
     el.addEventListener("pointerleave", this.onLeave);
   }
 
-  private moving(): boolean {
+  /** Something is changing that needs every frame. With `ambient` false, the object's own slow loop of lights does not count. */
+  private moving(ambient = true): boolean {
     if (prefersReducedMotion()) return false;
+    if (ambient && this.ambient) return true;
     if (this.tweens.size > 0 || this.zoomTween || this.ringMoving()) return true;
     for (const k of EASED_KEYS) if (Math.abs(this.target[k] - this.state[k]) > 1e-3) return true;
     return Math.abs(this.tpx - this.px) > 1e-3 || Math.abs(this.tpy - this.py) > 1e-3;
@@ -541,7 +552,12 @@ export class StageScene implements StageView {
     const kp = 1 - Math.exp(-4 * dt);
     this.px = lerp(this.px, this.tpx, kp);
     this.py = lerp(this.py, this.tpy, kp);
-    this.render();
+    /* the object's own slow loop of lights is drawn at 30 pictures a second; anything the visitor or a tween moves, at the display's rate */
+    this.since += dt;
+    if (this.moving(false) || this.since >= 1 / 30 - 0.004) {
+      this.since = 0;
+      this.render();
+    }
     if (this.moving()) this.raf = requestAnimationFrame((n) => this.frame(n));
   }
 

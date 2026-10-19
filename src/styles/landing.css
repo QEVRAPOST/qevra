@@ -970,6 +970,16 @@
   gap: 16px;
   padding: 2svh 0 6svh;
 }
+/* the one-sentence definition leads the section, in the display face, in the amber-ruled voice the story's core sentences use */
+.swintro .swdef {
+  max-width: 34ch;
+  padding: 2px 0 2px 16px;
+  border-left: 2px solid var(--exp);
+  color: var(--fg);
+  font: 400 clamp(22px, 2.1vw, 28px) / 1.2 var(--f-display);
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
 .swgroup {
   display: flex;
   align-items: center;

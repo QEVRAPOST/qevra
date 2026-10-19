@@ -3,6 +3,7 @@
  * leaving and one that is arriving can be on screen together while they build and un-build.
  */
 import { clamp, lerp } from "../math";
+import { prefersReducedMotion } from "../motion";
 import { makeCam, P, Queue } from "./gfx";
 import type { StageState, StageView } from "./engine";
 import { LATTICE } from "./lattice";
@@ -13,13 +14,13 @@ import { VAULT } from "./vault";
 export const SCENES: readonly SceneDef[] = [VAULT, TUMBLER, LATTICE];
 
 /** Fit the scene's world box into the canvas (leaving room for callouts), at the scene's own view. */
-function fit(def: SceneDef, w: number, h: number) {
+function fit(def: SceneDef, w: number, h: number, compact: boolean) {
   const base = makeCam({ yaw: def.yaw, pitch: def.pitch, s: 1, ox: 0, oy: 0, dpr: 1, px: 0 });
   let x0 = Infinity;
   let x1 = -Infinity;
   let y0 = Infinity;
   let y1 = -Infinity;
-  for (const b of def.bounds) {
+  for (const b of compact && def.compactBounds ? def.compactBounds : def.bounds) {
     const p = P(base, b[0], b[1], b[2]);
     x0 = Math.min(x0, p[0]);
     x1 = Math.max(x1, p[0]);
@@ -46,7 +47,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, s
   SCENES.forEach((def, i) => {
     const form = forms[i];
     if (form < 0.002) return;
-    const f = fit(def, w, h);
+    const f = fit(def, w, h, compact);
     const yaw = def.yaw + (st.u - 0.5) * def.turn + view.px * 0.12 + st.ry;
     const pitch = clamp(def.pitch + view.py * 0.04 + st.rp, 0.28, 1.05);
     /* Zoom: the scale grows and the clicked part glides from where it stands to the middle of the canvas, so it is the
@@ -67,7 +68,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, s
     cam.bare = view.water;
     /* only the object that is (nearly) whole can be pointed at */
     const own: Hotspot[] = [];
-    def.draw({ ctx, cam, q: new Queue(), font: view.fontMono, w, h, form: clamp(form), u: st.u, mis: st.mis, compact, hot: own, hover: view.hover, zoom: st.zm, name: view.projectName });
+    def.draw({ ctx, cam, q: new Queue(), font: view.fontMono, w, h, form: clamp(form), u: st.u, mis: st.mis, compact, hot: own, hover: view.hover, zoom: st.zm, name: view.projectName, t: prefersReducedMotion() ? 3.1 : view.t });
     if (form > 0.85) hot.push(...own);
   });
   return hot;
