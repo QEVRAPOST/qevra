@@ -105,6 +105,7 @@ export class StageScene implements StageView {
   /** the marker on the part under the pointer: it fades in and glides from part to part instead of jumping */
   private ring = { x: 0, y: 0, r: 20, a: 0 };
   private hoverSpot: Hotspot | null = null;
+  private hoverTimer = 0;
   private zoomTween: { t0: number; dur: number; from: Pick<StageState, "zm" | "zk" | "cx" | "cy" | "cz">; to: Pick<StageState, "zm" | "zk" | "cx" | "cy" | "cz"> } | null = null;
   private scene: 0 | 1 | 2 = 0;
   private limit = 1;
@@ -244,6 +245,7 @@ export class StageScene implements StageView {
   setScene(scene: 0 | 1 | 2): void {
     this.scene = scene;
     this.limit = SCENES[scene].limit;
+    window.clearTimeout(this.hoverTimer);
     this.hoverSpot = null;
     this.setHover(null);
     this.resetView();
@@ -323,8 +325,23 @@ export class StageScene implements StageView {
     this.onView?.(true);
   }
 
-  /** Point at a part (or at nothing). The caption follows the id; the marker follows the part itself. */
-  private pointAt(spot: Hotspot | null): void {
+  /**
+   * Point at a part (or at nothing). The caption follows the id; the marker follows the part itself.
+   * Moving between parts, or off them, is not acted on at once: a short pause keeps the caption and the marker from flickering
+   * as the pointer crosses the gaps between parts. Pointing at a part from nothing, and a click, are immediate.
+   */
+  private pointAt(spot: Hotspot | null, immediate = false): void {
+    const key = (h: Hotspot | null) => (h ? this.spotKey(h) : "");
+    window.clearTimeout(this.hoverTimer);
+    this.hoverTimer = 0;
+    if (key(spot) === key(this.hoverSpot)) return;
+    const delay = immediate || prefersReducedMotion() ? 0 : spot ? (this.hoverSpot ? 60 : 0) : 130;
+    if (delay === 0) this.commitHover(spot);
+    else this.hoverTimer = window.setTimeout(() => this.commitHover(spot), delay);
+  }
+
+  private commitHover(spot: Hotspot | null): void {
+    this.hoverTimer = 0;
     this.hoverSpot = spot;
     this.setHover(spot ? spot.id : null);
     if (prefersReducedMotion()) this.settleRing();
@@ -408,6 +425,7 @@ export class StageScene implements StageView {
         if (!d.moved && Math.hypot(dx, dy) > 5) {
           d.moved = true;
           el.dataset.dragging = "1";
+          window.clearTimeout(this.hoverTimer);
           this.hoverSpot = null;
           this.setHover(null);
         }
@@ -453,7 +471,7 @@ export class StageScene implements StageView {
         const same = this.zoomId === hit.id && this.target.cx === hit.wx && this.target.cy === hit.wy && this.target.cz === hit.wz;
         this.zoomTo(same ? null : hit);
       } else if (this.zoomId != null) this.zoomTo(null);
-      this.pointAt(hit);
+      this.pointAt(hit, true);
     };
     const cancel = () => {
       this.drag = null;
@@ -584,6 +602,7 @@ export class StageScene implements StageView {
     this.io?.disconnect();
     document.removeEventListener("visibilitychange", this.onVisibility);
     this.unsubMotion?.();
+    window.clearTimeout(this.hoverTimer);
     this.teardownInput?.();
     if (this.pointerEl) {
       if (this.onMove) this.pointerEl.removeEventListener("pointermove", this.onMove);

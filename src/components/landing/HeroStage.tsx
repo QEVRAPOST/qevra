@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/Button";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
@@ -377,6 +377,14 @@ export function HeroStage({ projectName }: { projectName: string }) {
 
   const s = HERO_SCENES[scene];
   const bn = (t: string) => brandize(t, projectName);
+  const ghosts = useMemo(() => {
+    const b = (t: string) => brandize(t, projectName);
+    const list: Array<{ lead: string; text: string; hint: string | null }> = [];
+    for (const h of HERO_SCENES) list.push({ lead: b(h.lead), text: b(h.text), hint: `${HERO_POINT_HINT}.` });
+    for (const c of HERO_LOCK_CAPTIONS) list.push({ lead: b(c.lead), text: b(c.text), hint: `${HERO_POINT_HINT}.` });
+    for (const p of Object.values(HERO_PARTS)) list.push({ lead: `${b(p.name)}.`, text: b(p.text), hint: `${HERO_ZOOM_HINT}.` });
+    return list;
+  }, [projectName]);
   /* the part the camera is on stays described after the pointer leaves it; otherwise the part under the pointer */
   const shownId = zoomId ?? partId;
   const part = shownId ? HERO_PARTS[shownId] : null;
@@ -447,21 +455,26 @@ export function HeroStage({ projectName }: { projectName: string }) {
                     </span>
                   </div>
                   <div className="pcap">
-                    <div aria-live="polite" className="min-w-0">
-                      <TabsContent value={String(scene)} className="m-0">
-                        <p className="cap">
-                          {part ? (
-                            <>
-                              <b>{bn(part.name)}.</b> {bn(part.text)}
-                              {zoomId ? <span className="cap-hint"> {HERO_ZOOM_HINT}.</span> : null}
-                            </>
-                          ) : (
-                            <>
-                              <b>{bn(cap.lead)}</b> {bn(cap.text)} <span className="cap-hint">{HERO_POINT_HINT}.</span>
-                            </>
-                          )}
+                    {/* The caption area is as tall as the tallest caption the hero can ever show: every one of them is laid out, hidden, in the
+                        same grid cell as the visible one. Its height therefore never changes when the words do, so the stage above it is never
+                        resized (a resize re-fits the 3D object and made it jump in and out as the pointer crossed its parts). */}
+                    <div className="capstack min-w-0">
+                      <div aria-live="polite" className="min-w-0">
+                        <TabsContent value={String(scene)} className="m-0">
+                          <p className="cap capnow" key={part ? shownId : "scene"}>
+                            {part ? (
+                              <CapBody lead={`${bn(part.name)}.`} text={bn(part.text)} hint={zoomId ? `${HERO_ZOOM_HINT}.` : null} />
+                            ) : (
+                              <CapBody lead={bn(cap.lead)} text={bn(cap.text)} hint={`${HERO_POINT_HINT}.`} />
+                            )}
+                          </p>
+                        </TabsContent>
+                      </div>
+                      {ghosts.map((g, i) => (
+                        <p className="cap capghost" aria-hidden="true" key={i}>
+                          <CapBody lead={g.lead} text={g.text} hint={g.hint} />
                         </p>
-                      </TabsContent>
+                      ))}
                     </div>
                     {/* inert while hidden, so keyboard focus never lands on an invisible control */}
                     <div className={showTry ? "tryit" : "tryit off"} inert={!showTry}>
@@ -484,6 +497,16 @@ export function HeroStage({ projectName }: { projectName: string }) {
         </div>
       </div>
     </section>
+  );
+}
+
+/** The words of a caption: a bold lead, the text and, in a quieter voice, what you can do next. Used for the visible caption and for the hidden ones that size its area. */
+function CapBody({ lead, text, hint }: { lead: string; text: string; hint: string | null }) {
+  return (
+    <>
+      <b>{lead}</b> {text}
+      {hint ? <span className="cap-hint"> {hint}</span> : null}
+    </>
   );
 }
 

@@ -112,7 +112,7 @@ export const HERO_PARTS: Readonly<Record<string, { name: string; text: string }>
 export const HERO_ROTATE_LABEL = "Rotate the object";
 export const HERO_ROTATE_HINT = "Drag to rotate";
 export const HERO_POINT_HINT = "Click a part to zoom in";
-export const HERO_ZOOM_HINT = "Click it again, or press Escape, to zoom out";
+export const HERO_ZOOM_HINT = "Click again to zoom out";
 export const HERO_STAGE_KEYS = "3D object. Left and Right arrows rotate it, Enter flies to the next part, Escape resets the view.";
 
 /**

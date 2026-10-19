@@ -367,6 +367,36 @@
 .hrot-hint.off {
   opacity: 0;
 }
+/* the visible caption and every other caption share one grid cell: the area is the height of the tallest, and never changes */
+.capstack {
+  display: grid;
+}
+/* the hero's captions may run wider than the story's: the area is as tall as the tallest, so fewer lines means a larger stage */
+.hfig .pcap .cap {
+  max-width: 84ch;
+}
+.capstack > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+.capghost {
+  visibility: hidden;
+  pointer-events: none;
+}
+/* a new caption fades in; it replaces the old one in place and takes no extra room */
+.capnow {
+  animation: capin 220ms var(--ease) both;
+}
+@keyframes capin {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 .cap-hint {
   color: var(--muted);
 }
