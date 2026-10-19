@@ -12,6 +12,7 @@ import { prefersReducedMotion } from "@/lib/aperture/motion";
 import { scrollBehavior, scrollToFrame } from "@/lib/aperture/scroll";
 import { whenSplashDone } from "@/lib/splash";
 import { StageScene, stageState } from "@/lib/aperture/stage/engine";
+import { WaterScene } from "@/lib/aperture/water";
 import { CORE_SENTENCE } from "@/lib/content/copy-lock";
 import {
   brandize,
@@ -109,6 +110,7 @@ export function HeroStage({ projectName }: { projectName: string }) {
   const figRef = useRef<HTMLElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const waterRef = useRef<HTMLCanvasElement>(null);
   /* the effect below owns these; handlers reach it through them */
   const tryRef = useRef<0 | 1 | null>(null);
   const gotoRef = useRef<(i: SceneIndex) => void>(() => {});
@@ -129,6 +131,44 @@ export function HeroStage({ projectName }: { projectName: string }) {
     }
     stageRef.current = stage;
     stage.projectName = projectName;
+
+    /* The water under the stage: it stays while the objects change, so it is the hero's ground. It is calm and has no
+       sculpture to mirror, and it runs only while the stage is on screen and the splash screen (if any) has lifted. */
+    let water: WaterScene | null = null;
+    let onScreen = false;
+    let ready = false;
+    let io: IntersectionObserver | undefined;
+    let cancelWater: () => void = () => {};
+    if (waterRef.current) {
+      try {
+        water = new WaterScene(waterRef.current, () => null, {
+          home: { x: 0.5, y: 0.64, plate: 86 },
+          sinT: 0.5,
+          reach: 0.8,
+          strength: 1,
+          fadeLeft: 0,
+          fadeTop: 0.3,
+          waterline: false,
+          path: false,
+          fps: 30,
+        });
+        stage.water = true;
+        const sync = () => water?.setActive(onScreen && ready);
+        if (typeof IntersectionObserver !== "undefined") {
+          io = new IntersectionObserver((es) => {
+            onScreen = es.some((e) => e.isIntersecting);
+            sync();
+          });
+          io.observe(fig);
+        } else onScreen = true;
+        cancelWater = whenSplashDone(() => {
+          ready = true;
+          sync();
+        });
+      } catch {
+        water = null; /* no Canvas 2D: the stage keeps its own floor */
+      }
+    }
     stage.onZoom = setZoomId;
     stage.bindPointer(fig);
     stage.bindInteraction(cv);
@@ -318,6 +358,9 @@ export function HeroStage({ projectName }: { projectName: string }) {
       syncRef.current = () => {};
       stageRef.current = null;
       cancelWait();
+      cancelWater();
+      io?.disconnect();
+      water?.dispose();
       stage.dispose();
     };
   }, [projectName]);
@@ -361,6 +404,8 @@ export function HeroStage({ projectName }: { projectName: string }) {
               <figure className="hfig" ref={figRef}>
                 <div className="hcanvas" tabIndex={0} role="group" aria-label={HERO_STAGE_KEYS} onKeyDown={onStageKey}>
                   <canvas ref={canvasRef} role="img" aria-label={bn(s.label)} />
+                  {/* behind the stage: the water that stays while the objects change */}
+                  <canvas ref={waterRef} className="hwater" aria-hidden="true" />
                   <p className="hbadge" aria-hidden="true">
                     <span>
                       {scene + 1} / {N}

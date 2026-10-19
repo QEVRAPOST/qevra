@@ -63,6 +63,8 @@ export interface StageView {
   readonly hover: string | null;
   /** the project name, for the text engraved on the objects */
   readonly projectName: string;
+  /** water lies under the stage, so the scenes leave their own floor out */
+  readonly water: boolean;
 }
 
 interface Tween {
@@ -84,6 +86,7 @@ export class StageScene implements StageView {
   fontMono: string;
   hover: string | null = null;
   projectName = "QEVRA";
+  water = false;
   /** the part the camera has flown in on, or null */
   zoomId: string | null = null;
   /** called when the camera flies in on a part, or back out */

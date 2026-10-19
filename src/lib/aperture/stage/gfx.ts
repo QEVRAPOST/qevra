@@ -29,6 +29,8 @@ export interface Cam {
   cp: number;
   sp: number;
   dpr: number;
+  /** no engraved floor: water lies under the stage instead */
+  bare?: boolean;
   /** key light in view space, normalised */
   L: V3;
   pitch: number;
@@ -467,6 +469,7 @@ export function drawLine(ctx: CanvasRenderingContext2D, cam: Cam, a: V3, b: V3, 
 
 /** Soft contact shadow and light pool on the floor. */
 export function drawFloor(ctx: CanvasRenderingContext2D, cam: Cam, radius: number, lit: number, alpha: number): void {
+  if (cam.bare) return;
   const c = P(cam, 0, 0, 0);
   ctx.save();
   ctx.globalAlpha = alpha;

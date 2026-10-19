@@ -6,7 +6,8 @@
  *   - small drops landing at random places, each making two rings; farther drops are smaller (perspective)
  *   - a field of glints that twinkle, and a brighter, widening glitter path under the sculpture's line of light
  *   - a thin waterline where the plate meets the water
- * Lifecycle rules match the other canvases: it draws only while it is told it is on screen (`setActive`), the tab is visible
+ * With no sculpture to stand in it (the hero's stage), it is only the water: the pool, the ripples, the drops and the glints,
+ * calmer, spreading from a fixed point (see `WaterOptions`). Lifecycle rules match the other canvases: it draws only while it is told it is on screen (`setActive`), the tab is visible
  * and motion is allowed; with reduced motion it draws one still frame; `dispose()` removes everything. DPR is capped at 1.5.
  */
 import { clamp, lerp, smooth, TAU } from "./math";
@@ -27,6 +28,26 @@ export interface WaterSource {
   plate: number;
   /** how flat a circle on the water looks: the sine of the camera's elevation */
   sinT: number;
+}
+
+/** How the water is laid when it is not under the closing section's sculpture. Every field has the curtain's value as its default. */
+export interface WaterOptions {
+  /** where the rings start when there is no sculpture: a point as fractions of the canvas, and the first ring's radius in pixels */
+  home?: { x: number; y: number; plate: number };
+  /** how flat a circle on the water looks when there is no sculpture */
+  sinT?: number;
+  /** how far the rings spread, as a multiple of the canvas width (the curtain's is at least 900 pixels whatever its width) */
+  reach?: number;
+  /** how strongly everything is drawn, 1 = the curtain's */
+  strength?: number;
+  /** how much of the width, from the left, the water fades out over (where words sit), and how much of the height from the top */
+  fadeLeft?: number;
+  fadeTop?: number;
+  /** the thin ring where a base plate meets the water, and the widening glitter path under a line of light */
+  waterline?: boolean;
+  path?: boolean;
+  /** the most pictures per second it draws (a calm background does not need 60) */
+  fps?: number;
 }
 
 const STEP = 2;
@@ -58,6 +79,7 @@ export class WaterScene {
   private dpr = 1;
   private t = 5;
   private last = 0;
+  private since = 1;
   private raf = 0;
   private active = false;
   private disposed = false;
@@ -69,10 +91,14 @@ export class WaterScene {
   private unsubMotion?: () => void;
   private readonly onVis = () => this.kick();
 
+  private readonly o: Required<WaterOptions>;
+
   constructor(
     private readonly cv: HTMLCanvasElement,
     private readonly source: () => WaterSource | null,
+    options: WaterOptions = {},
   ) {
+    this.o = { home: { x: 0.74, y: 0.6, plate: 120 }, sinT: 0.48, reach: 0, strength: 1, fadeLeft: 0.46, fadeTop: 0.34, waterline: true, path: true, fps: 60, ...options };
     const ctx = cv.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D is not available");
     this.ctx = ctx;
@@ -142,7 +168,11 @@ export class WaterScene {
     this.last = now;
     this.t += dt;
     this.reveal += (this.revealTo - this.reveal) * (1 - Math.exp(-3.2 * dt));
-    this.render();
+    this.since += dt;
+    if (this.since >= 1 / this.o.fps - 0.004) {
+      this.since = 0;
+      this.render();
+    }
     this.raf = requestAnimationFrame((n) => this.frame(n));
   }
 
@@ -155,21 +185,23 @@ export class WaterScene {
     if (!this.active && !prefersReducedMotion()) return;
 
     const src = this.source();
-    const ax = src ? src.ox + src.cx : w * 0.74;
-    const yc = src ? src.oy + src.yc : h * 0.6;
-    const yf = src ? src.oy + src.yf : h * 0.68;
-    const plate = src ? src.plate : 120;
-    const sin = src ? src.sinT : 0.48;
-    const reach = Math.max(w * 0.95, 900);
+    const o = this.o;
+    const st = o.strength;
+    const ax = src ? src.ox + src.cx : w * o.home.x;
+    const yc = src ? src.oy + src.yc : h * o.home.y;
+    const plate = src ? src.plate : o.home.plate;
+    const sin = src ? src.sinT : o.sinT;
+    const yf = src ? src.oy + src.yf : yc + plate * sin;
+    const reach = o.reach > 0 ? w * o.reach : Math.max(w * 0.95, 900);
 
     /* the pool: warm where the sculpture's light falls on it, cool graphite out to the edges, darker toward the viewer */
     c.save();
     c.translate(ax, yc);
     c.scale(1, sin);
     const pool = c.createRadialGradient(0, 0, plate * 0.8, 0, 0, reach);
-    pool.addColorStop(0, "rgba(255,226,170,0.2)");
-    pool.addColorStop(0.16, "rgba(224,186,126,0.1)");
-    pool.addColorStop(0.5, "rgba(44,58,74,0.2)");
+    pool.addColorStop(0, `rgba(255,226,170,${0.2 * st})`);
+    pool.addColorStop(0.16, `rgba(224,186,126,${0.1 * st})`);
+    pool.addColorStop(0.5, `rgba(44,58,74,${0.2 * st})`);
     pool.addColorStop(1, "rgba(10,14,20,0)");
     c.fillStyle = pool;
     c.beginPath();
@@ -178,7 +210,7 @@ export class WaterScene {
     c.restore();
     const dark = c.createLinearGradient(0, yf - 30, 0, h);
     dark.addColorStop(0, "rgba(5,8,12,0)");
-    dark.addColorStop(1, "rgba(5,8,12,0.5)");
+    dark.addColorStop(1, `rgba(5,8,12,${0.5 * st})`);
     c.fillStyle = dark;
     c.fillRect(0, yf - 30, w, h - yf + 30);
 
@@ -208,7 +240,7 @@ export class WaterScene {
       const x = path ? ax + g.du * pw * 0.5 * (0.4 + 0.6 * Math.abs(g.du)) : g.u * w;
       const tw = Math.pow(0.5 + 0.5 * Math.sin(t * g.sp + g.ph), 5);
       const into = path ? 1 : clamp(1 - Math.abs(x - ax) / pw);
-      let a = tw * (0.05 + 0.3 * v) * (path ? 2 : 1 + 2.6 * into);
+      let a = tw * (0.05 + 0.3 * v) * (path ? 2 : 1 + 2.6 * into) * st;
       if (x < w * 0.5) a *= 0.15 + 0.85 * smooth(0, 0.5, x / w);
       if (a < 0.012) return;
       const len = (3 + 46 * v) * g.len;
@@ -229,7 +261,7 @@ export class WaterScene {
       c.stroke();
     };
     for (const g of this.glints) glint(g, false);
-    for (const g of this.pathGlints) glint(g, true);
+    if (o.path) for (const g of this.pathGlints) glint(g, true);
 
     /* ripples from the base plate */
     const ring = (cx: number, cy: number, r: number, alpha: number, lw: number, seed: number) => {
@@ -267,7 +299,7 @@ export class WaterScene {
       if (age < 0 || age > WAVE_LIFE) continue;
       const p = age / WAVE_LIFE;
       const r = r0 + (reach * 0.92 - r0) * (1 - Math.pow(1 - p, 1.7));
-      ring(ax, yc, r, 0.34 * Math.min(1, age / 0.9) * Math.pow(1 - p, 1.6), 1.7 * (1 - p) + 0.7, birth);
+      ring(ax, yc, r, 0.34 * st * Math.min(1, age / 0.9) * Math.pow(1 - p, 1.6), 1.7 * (1 - p) + 0.7, birth);
     }
 
     /* drops landing here and there: two rings each, smaller far away */
@@ -284,38 +316,44 @@ export class WaterScene {
         const age = t - ts - rr * 0.3;
         if (age < 0 || age > DROP_LIFE) continue;
         const p = age / DROP_LIFE;
-        ring(x, y, size * (1 - Math.pow(1 - p, 1.8)) * (rr ? 0.7 : 1), 0.26 * fade * Math.min(1, age * 3) * Math.pow(1 - p, 1.8), 1.1 * (1 - p) + 0.5, j + rr);
+        ring(x, y, size * (1 - Math.pow(1 - p, 1.8)) * (rr ? 0.7 : 1), 0.26 * st * fade * Math.min(1, age * 3) * Math.pow(1 - p, 1.8), 1.1 * (1 - p) + 0.5, j + rr);
       }
     }
 
     /* the waterline: where the plate meets the water */
-    c.save();
-    c.translate(ax, yc);
-    c.scale(1, sin);
-    c.lineWidth = 1;
-    c.strokeStyle = `rgba(255,226,170,${0.14 + 0.05 * Math.sin(t * 0.8)})`;
-    c.beginPath();
-    c.arc(0, 0, plate * 1.012, 0, TAU);
-    c.stroke();
-    c.strokeStyle = "rgba(0,0,0,0.35)";
-    c.lineWidth = 3;
-    c.beginPath();
-    c.arc(0, 2, plate * 1.03, 0, TAU);
-    c.stroke();
-    c.restore();
+    if (o.waterline) {
+      c.save();
+      c.translate(ax, yc);
+      c.scale(1, sin);
+      c.lineWidth = 1;
+      c.strokeStyle = `rgba(255,226,170,${0.14 + 0.05 * Math.sin(t * 0.8)})`;
+      c.beginPath();
+      c.arc(0, 0, plate * 1.012, 0, TAU);
+      c.stroke();
+      c.strokeStyle = "rgba(0,0,0,0.35)";
+      c.lineWidth = 3;
+      c.beginPath();
+      c.arc(0, 2, plate * 1.03, 0, TAU);
+      c.stroke();
+      c.restore();
+    }
 
-    /* let the water fade out toward the left (where the words are) and toward the top (the far shore) */
+    /* let the water fade out toward the left (where there are words) and toward the top (the far shore) */
     c.globalCompositeOperation = "destination-out";
-    const fl = c.createLinearGradient(0, 0, w * 0.46, 0);
-    fl.addColorStop(0, "rgba(0,0,0,0.92)");
-    fl.addColorStop(1, "rgba(0,0,0,0)");
-    c.fillStyle = fl;
-    c.fillRect(0, 0, w * 0.46, h);
-    const ft = c.createLinearGradient(0, 0, 0, h * 0.34);
-    ft.addColorStop(0, "rgba(0,0,0,1)");
-    ft.addColorStop(1, "rgba(0,0,0,0)");
-    c.fillStyle = ft;
-    c.fillRect(0, 0, w, h * 0.34);
+    if (o.fadeLeft > 0) {
+      const fl = c.createLinearGradient(0, 0, w * o.fadeLeft, 0);
+      fl.addColorStop(0, "rgba(0,0,0,0.92)");
+      fl.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = fl;
+      c.fillRect(0, 0, w * o.fadeLeft, h);
+    }
+    if (o.fadeTop > 0) {
+      const ft = c.createLinearGradient(0, 0, 0, h * o.fadeTop);
+      ft.addColorStop(0, "rgba(0,0,0,1)");
+      ft.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = ft;
+      c.fillRect(0, 0, w, h * o.fadeTop);
+    }
     c.globalCompositeOperation = "source-over";
   }
 

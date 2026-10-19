@@ -1,7 +1,7 @@
 /*
- * The splash screen (the ring sculpture assembling, as in the Launch App transition) plays on every full load of the landing
- * page, before the hero builds. It does not play again when you come back to the landing from the app by a link (the page
- * is not reloaded then), and not for reduced motion or for a link to a section (`/#status`).
+ * The splash screen (the ring sculpture assembling, as in the Launch App transition) plays every time the landing page appears:
+ * on a full load or a refresh, and when you come back to it from the app (by the logo, a link or the back button). It does not
+ * play for reduced motion or for a link to a section (`/#status`).
  *   - `splashExpected()` says whether a splash is waiting to play (the element is server-rendered as `data-state="run"`)
  *   - `whenSplashDone(cb)` runs `cb` when it has finished, or at once if there is none
  * The page needs no script to decide before first paint: the server-rendered splash covers it, and CSS removes the cover for
@@ -36,6 +36,11 @@ export function markSplashSeen(): void {
   } catch {
     /* storage is blocked: the splash simply plays again on the next full page load */
   }
+}
+
+/** A new splash element has mounted (a visit to the landing that was not a full page load): it plays again. */
+export function resetSplash(): void {
+  done = false;
 }
 
 export function whenSplashDone(cb: () => void): () => void {

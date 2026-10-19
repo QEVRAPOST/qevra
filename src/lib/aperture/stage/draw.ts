@@ -64,6 +64,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, s
       oy = lerp(hy, h * 0.46, st.zm) - u[1] * s;
     }
     const cam = makeCam({ yaw, pitch, s, ox, oy, dpr: view.dpr, px: view.px });
+    cam.bare = view.water;
     /* only the object that is (nearly) whole can be pointed at */
     const own: Hotspot[] = [];
     def.draw({ ctx, cam, q: new Queue(), font: view.fontMono, w, h, form: clamp(form), u: st.u, mis: st.mis, compact, hot: own, hover: view.hover, zoom: st.zm, name: view.projectName });

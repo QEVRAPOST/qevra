@@ -321,6 +321,20 @@
   -webkit-user-select: none;
   user-select: none;
 }
+/* the water lies under the stage's canvas, and the badge and the rotate buttons lie over it */
+.hcanvas canvas {
+  z-index: 1;
+}
+.hcanvas canvas.hwater {
+  z-index: 0;
+  cursor: default;
+  pointer-events: none;
+  touch-action: auto;
+}
+.hbadge,
+.hrot {
+  z-index: 2;
+}
 .hcanvas[data-dragging] canvas,
 .hcanvas canvas:active {
   cursor: grabbing;

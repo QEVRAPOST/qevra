@@ -5,7 +5,7 @@ import { ApertureScene } from "@/lib/aperture/engine";
 import { INTRO_FROM } from "@/lib/aperture/keyframes";
 import { lerp, smooth } from "@/lib/aperture/math";
 import { prefersReducedMotion } from "@/lib/aperture/motion";
-import { finishSplash, markSplashSeen, splashExpected, splashMounted, splashSeen, splashUnmounted } from "@/lib/splash";
+import { finishSplash, markSplashSeen, resetSplash, splashExpected, splashMounted, splashSeen, splashUnmounted } from "@/lib/splash";
 
 /*
  * Splash screen: the same sculpture as the Launch App transition, drawn by the same renderer. The rings start scattered and
@@ -13,7 +13,8 @@ import { finishSplash, markSplashSeen, splashExpected, splashMounted, splashSeen
  * and a beam of light passes down the aligned notches. Then the screen lifts away like a curtain and the hero builds beneath it.
  * About 2.2 seconds, on every full load of the page, never with reduced motion.
  *
- * It cannot hold the page: any key, click, touch or scroll skips it; a timer ends it at 4.5 seconds whatever happens;
+ * It cannot hold the page: any key, click, touch or scroll skips it (after a short grace period, so the tail of the gesture
+ * that loaded the page, such as a trackpad's coasting scroll, never skips it); a timer ends it at 4.5 seconds whatever happens;
  * a canvas that fails to start ends it at once. The page beneath is already there (the markup is server-rendered).
  */
 const DRAG_MS = 900;
@@ -23,6 +24,8 @@ const BEAM_MS = 450;
 const HOLD_MS = 1500;
 const LIFT_MS = 720;
 const HARD_CAP_MS = 4500;
+/** inputs in the first moments are ignored: the page was just loaded by a gesture whose last events are still arriving */
+const GRACE_MS = 800;
 
 export function Splash({ projectName }: { projectName: string }) {
   const root = useRef<HTMLDivElement>(null);
@@ -32,6 +35,8 @@ export function Splash({ projectName }: { projectName: string }) {
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
+    /* a splash element that has just been rendered is a new visit to the landing, even if this page has shown one before */
+    if (el.dataset.state === "run") resetSplash();
     if (!splashExpected() || splashSeen() || prefersReducedMotion() || window.location.hash) {
       el.dataset.state = "off";
       finishSplash();
@@ -107,15 +112,18 @@ export function Splash({ projectName }: { projectName: string }) {
     timers.push(window.setTimeout(lift, HARD_CAP_MS - LIFT_MS));
 
     const opts = { passive: true } as const;
-    window.addEventListener("pointerdown", lift, opts);
-    window.addEventListener("keydown", lift);
-    window.addEventListener("wheel", lift, opts);
-    window.addEventListener("touchstart", lift, opts);
+    const skip = () => {
+      if (performance.now() - t0 >= GRACE_MS) lift();
+    };
+    window.addEventListener("pointerdown", skip, opts);
+    window.addEventListener("keydown", skip);
+    window.addEventListener("wheel", skip, opts);
+    window.addEventListener("touchstart", skip, opts);
     return () => {
-      window.removeEventListener("pointerdown", lift);
-      window.removeEventListener("keydown", lift);
-      window.removeEventListener("wheel", lift);
-      window.removeEventListener("touchstart", lift);
+      window.removeEventListener("pointerdown", skip);
+      window.removeEventListener("keydown", skip);
+      window.removeEventListener("wheel", skip);
+      window.removeEventListener("touchstart", skip);
       /* An unmount that is followed at once by a mount (React's development check) restarts the splash from the top;
          a real unmount releases the hero a tick later (see splashUnmounted). */
       if (!ended) {
