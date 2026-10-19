@@ -21,6 +21,7 @@ export interface ActivityRow {
 }
 
 export interface ActivityView {
+  origin: "demo" | "live";
   /** "ready" shows the rows, "empty" shows the empty state, "unavailable" says the feed is not connected */
   status: "ready" | "empty" | "unavailable";
   rows: ActivityRow[];

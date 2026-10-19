@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { connectReadOnlyWallet, disconnectReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
+import { getInjectedReadOnlyProvider } from "@/features/wallet/browser";
+import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
+
+test("local disconnect invalidates a pending wallet read", () => {
+  const guard = createWalletRequestGuard();
+  const pendingRead = guard.begin();
+  guard.invalidate();
+
+  assert.equal(guard.isCurrent(pendingRead), false);
+});
 
 test("wallet reads address, testnet, balance, and block using only allowlisted RPC methods", async () => {
   const methods: string[] = [];
@@ -64,4 +73,32 @@ test("disconnect is local and sends no request to the wallet", () => {
     status: "disconnected",
     message: "Wallet disconnected from this view. No wallet request was sent.",
   });
+});
+
+test("browser provider discovery does not request accounts until the user-triggered connect function runs", async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const methods: string[] = [];
+  const injected = {
+    async request({ method }: { method: string }) {
+      methods.push(method);
+      if (method === "eth_requestAccounts") return ["0x0000000000000000000000000000000000000004"];
+      if (method === "eth_chainId") return "0xb626";
+      if (method === "eth_getBlockByNumber") return { number: "0x20", hash: `0x${"c".repeat(64)}` };
+      if (method === "eth_getBalance") return "0x0";
+      throw new Error("unexpected provider method");
+    },
+  };
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { ethereum: injected } });
+  try {
+    const provider = getInjectedReadOnlyProvider();
+    assert.ok(provider);
+    assert.deepEqual(methods, [], "provider discovery must be passive");
+    const state = await connectReadOnlyWallet(provider);
+    assert.equal(state.status, "connected");
+    assert.equal(methods[0], "eth_requestAccounts", "account access is requested only after explicit connect");
+    assert.equal(methods.some((method) => /sign|send|approve|switch/i.test(method)), false);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "window", original);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
 });

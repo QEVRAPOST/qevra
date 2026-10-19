@@ -22,56 +22,6 @@
   align-items: center;
   gap: 10px;
 }
-/* the network menu: it looks like the chip it replaced, and it is a real select */
-.netsel {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  color: var(--exp);
-}
-.netsel .mat {
-  position: absolute;
-  left: 10px;
-  pointer-events: none;
-}
-.netsel select {
-  appearance: none;
-  -webkit-appearance: none;
-  /* a select is as wide as its longest option unless told otherwise; this is the width of the selected name */
-  width: 256px;
-  max-width: 100%;
-  text-overflow: ellipsis;
-  height: 32px;
-  margin: 0;
-  padding: 0 28px 0 29px;
-  background: transparent;
-  border: 1px solid var(--exp);
-  border-radius: var(--r);
-  color: inherit;
-  font: 400 12px/1 var(--f-mono);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background var(--t-fast) var(--ease);
-}
-.netsel select:hover {
-  background: color-mix(in srgb, var(--exp) 8%, transparent);
-}
-.netsel select:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-.netsel select option {
-  background: var(--bg-2);
-  color: var(--fg);
-}
-.netsel select option:disabled {
-  color: var(--muted);
-}
-.netsel .netcaret {
-  position: absolute;
-  right: 10px;
-  pointer-events: none;
-}
 .appshell {
   display: grid;
   grid-template-columns: 244px minmax(0, 1fr);
@@ -1036,17 +986,6 @@ html[data-arrive] .appmain {
 }
 
 @media (max-width: 560px) {
-  .netsel select {
-    width: 104px;
-    padding: 0 22px 0 24px;
-    font-size: 11.5px;
-  }
-  .netsel .mat {
-    left: 8px;
-  }
-  .netsel .netcaret {
-    right: 8px;
-  }
   .panel {
     padding: 16px;
   }

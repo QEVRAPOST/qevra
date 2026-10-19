@@ -7,7 +7,7 @@
  * plate and the vault is a dotted line with a cross: "no deposit path yet".
  */
 import { clamp } from "../math";
-import { BRIGHT, COOL, DARK, drawBox, drawCyl, drawFloor, drawLabel, drawLine, drawShadow, ease, P, piece, WARM } from "./gfx";
+import { BRIGHT, COOL, DARK, drawBox, drawCyl, drawFloor, drawLabel, drawLine, drawPointer, drawShadow, ease, P, piece, WARM } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
@@ -20,7 +20,9 @@ const WALL = 30;
 const RIGHT = 16;
 
 function draw(a: SceneArgs): void {
-  const { ctx, cam, q, font, form, compact } = a;
+  const { ctx, cam, q, font, form, compact, hot, hover } = a;
+  /* depth is taken from each part's centre, so the order stays right when the visitor turns the object */
+  const dep = (x: number, y: number, z: number) => P(cam, x, y, z)[2];
 
   const pBase = ease.out(piece(form, 0, 0.22));
   const pBack = ease.out(piece(form, 0.12, 0.24));
@@ -50,7 +52,7 @@ function draw(a: SceneArgs): void {
   const back = rise(pBack, WALL);
   const left = rise(pLeft, WALL);
   const right = rise(pRight, RIGHT);
-  q.add(-9e5, () =>
+  q.add(dep(0, TOP + WALL / 2, -56), () =>
     drawBox(ctx, cam, font, {
       c: [0, back.cy, -56],
       size: [170, back.h, 8],
@@ -59,7 +61,7 @@ function draw(a: SceneArgs): void {
       text: [{ face: "front", text: "QEVRA", size: 13, color: `rgba(236,232,223,${0.78 * pText})`, dy: 0 }],
     }),
   );
-  q.add(-8.9e5, () => drawBox(ctx, cam, font, { c: [-81, left.cy, 0], size: [8, left.h, 104], tone: COOL, alpha: pLeft }));
+  q.add(dep(-81, TOP + WALL / 2, 0), () => drawBox(ctx, cam, font, { c: [-81, left.cy, 0], size: [8, left.h, 104], tone: COOL, alpha: pLeft }));
 
   /* dividers drop in from above and make three compartments */
   for (const [x, p] of [
@@ -86,7 +88,7 @@ function draw(a: SceneArgs): void {
     }
   });
 
-  q.add(1e6, () => drawBox(ctx, cam, font, { c: [81, right.cy, 0], size: [8, right.h, 104], tone: COOL, alpha: pRight }));
+  q.add(dep(81, TOP + RIGHT / 2, 0), () => drawBox(ctx, cam, font, { c: [81, right.cy, 0], size: [8, right.h, 104], tone: COOL, alpha: pRight }));
 
   /* the connected wallet: a flat plate in front, apart from the vault */
   const plate: BoxOpts = {
@@ -96,7 +98,7 @@ function draw(a: SceneArgs): void {
     alpha: pWallet,
     text: [{ face: "top", text: "YOUR WALLET", size: 6.8, color: `rgba(12,13,15,${0.74 * pWallet})` }],
   };
-  q.add(1.2e6, () => drawBox(ctx, cam, font, plate));
+  q.add(dep(-58, 2, 112), () => drawBox(ctx, cam, font, plate));
 
   q.flush();
 
@@ -118,12 +120,26 @@ function draw(a: SceneArgs): void {
     ctx.restore();
   }
 
+  /* the parts that can be pointed at */
+  const reg = (id: string, x: number, y: number, z: number, r: number) => {
+    const p = P(cam, x, y, z);
+    const rr = Math.max(15, r * cam.s);
+    hot.push({ id, x: p[0], y: p[1], r: rr });
+    if (hover === id) drawPointer(ctx, p[0], p[1], rr * 0.85);
+  };
+  reg("v-wallet", -58, 4, 112, 30);
+  reg("v-account", 52, TOP + 4, 24, 36);
+  reg("v-assets", -54, TOP + 10, 0, 24);
+  reg("v-assets", 0, TOP + 8, 0, 22);
+  reg("v-link", -58, 5, 76, 9);
+
   /* labels */
   const f1 = compact ? 10 : 11.5;
   const f2 = compact ? 9 : 10;
   const wal = P(cam, -58, 4, 112);
   const acc = P(cam, 46, 6, 60);
   const ast = P(cam, 0, TOP + 14, 0);
+  const rim = P(cam, 0, TOP + WALL, -60)[1];
   drawLabel(ctx, font, {
     ax: wal[0],
     ay: wal[1] + 4,
@@ -131,7 +147,7 @@ function draw(a: SceneArgs): void {
     y: wal[1] + (compact ? 32 : 38),
     side: "center",
     lines: compact ? ["Your wallet", "no deposit path yet"] : ["Your connected wallet", "an external account", "no deposit path to QEVRA yet"],
-    color: "rgba(236,232,223,1)",
+    color: hover === "v-wallet" || hover === "v-link" ? "rgba(255,233,184,1)" : "rgba(236,232,223,1)",
     alpha: pText,
     w: a.w,
     f1,
@@ -144,20 +160,21 @@ function draw(a: SceneArgs): void {
     y: acc[1] + (compact ? 38 : 44),
     side: "right",
     lines: compact ? ["QEVRA account"] : ["QEVRA smart account", "a separate address", "experimental, not live"],
-    color: AMBER,
+    color: hover === "v-account" ? "rgba(255,233,184,1)" : AMBER,
     alpha: pText,
     w: a.w,
     f1,
     f2,
   });
+  /* above the walls, so it never sits on top of the QEVRA plaque */
   drawLabel(ctx, font, {
     ax: ast[0],
     ay: ast[1],
-    x: ast[0] + (compact ? 20 : 34),
-    y: ast[1] - (compact ? 74 : 92),
+    x: ast[0] + (compact ? 14 : 30),
+    y: rim - (compact ? 22 : 30),
     side: "right",
     lines: compact ? ["Example assets"] : ["Example assets", "outlined: none are held"],
-    color: GRAY,
+    color: hover === "v-assets" ? "rgba(255,233,184,1)" : GRAY,
     alpha: pText,
     w: a.w,
     f1,
@@ -169,6 +186,7 @@ export const VAULT: SceneDef = {
   yaw: -0.58,
   pitch: 0.6,
   turn: 0.5,
+  limit: 1,
   bounds: box8(-96, 90, 0, 42, -60, 134),
   draw,
 };

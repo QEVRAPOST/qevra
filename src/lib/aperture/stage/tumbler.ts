@@ -7,7 +7,7 @@
  * It is a design demonstration of the comparison QEVRA is designed to make: nothing here checks a real swap.
  */
 import { clamp, lerp, smooth } from "../math";
-import { BRIGHT, COOL, WARM, drawBox, drawCyl, drawFloor, drawLabel, drawShadow, drawSphere, ease, P, piece } from "./gfx";
+import { BRIGHT, COOL, WARM, drawBox, drawCyl, drawFloor, drawLabel, drawPointer, drawShadow, drawSphere, ease, P, piece } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
@@ -30,7 +30,7 @@ const LAMP_X = -104;
 const RECV_X = 104;
 
 function draw(a: SceneArgs): void {
-  const { ctx, cam, q, font, form, mis, compact } = a;
+  const { ctx, cam, q, font, form, mis, compact, hot, hover } = a;
 
   const pRail = ease.out(piece(form, 0, 0.22));
   const pLamp = ease.back(piece(form, 0.5, 0.16));
@@ -75,7 +75,7 @@ function draw(a: SceneArgs): void {
 
   /* lamp and receiver */
   const lampLit = clamp(sweep * 3);
-  q.add(-5e5, () => {
+  q.add(P(cam, LAMP_X, BASE + 14, 0)[2], () => {
     drawSphere(ctx, cam, [LAMP_X, BASE + 14, 0], 6 * Math.max(0.01, pLamp), WARM, clamp(pLamp));
     if (lampLit > 0.02) {
       const l = P(cam, LAMP_X, BASE + 14, 0);
@@ -92,9 +92,21 @@ function draw(a: SceneArgs): void {
     }
   });
   const reach = head >= RECV_X - 1 && blocked < 0.05 ? 1 : 0;
-  q.add(-4.9e5, () => {
+  q.add(P(cam, RECV_X, BASE + 14, 0)[2], () => {
     drawSphere(ctx, cam, [RECV_X, BASE + 14, 0], 6 * Math.max(0.01, pRecv), reach ? BRIGHT : COOL, clamp(pRecv));
   });
+
+  /* the parts that can be pointed at: each pin, the lamp, the receiver */
+  const reg = (id: string, x: number, y: number, z: number, r: number) => {
+    const p = P(cam, x, y, z);
+    const rr = Math.max(15, r * cam.s);
+    hot.push({ id, x: p[0], y: p[1], r: rr });
+    if (hover === id) q.add(1e9, () => drawPointer(ctx, p[0], p[1], rr * 0.95));
+  };
+  const IDS = ["t-recipient", "t-chain", "t-token", "t-amount", "t-deadline"];
+  PIN_X.forEach((x, i) => reg(IDS[i], x, BASE + H * 0.55, 0, 13));
+  reg("t-lamp", LAMP_X, BASE + 14, 0, 9);
+  reg("t-receiver", RECV_X, BASE + 14, 0, 9);
 
   q.flush();
 
@@ -204,6 +216,7 @@ export const TUMBLER: SceneDef = {
   yaw: -0.34,
   pitch: 0.5,
   turn: 0.3,
+  limit: 0.6,
   bounds: box8(-122, 122, 0, 62, -22, 22),
   draw,
 };

@@ -1,7 +1,9 @@
 import type { StatusBadge } from "./status";
+import type { ResearchRunDetail, ResearchRunSummary, SecurityResearchCapabilities } from "./integrations";
 
 /** A Security Swarm run as the UI needs it. Engineering owns the real run events. */
 export interface SwarmRun {
+  origin?: "demo" | "live";
   id: string;
   role: string;
   goal: string;
@@ -20,11 +22,20 @@ export interface SwarmRun {
   humanReview: { recorded: false } | { recorded: true; by: string; at: string };
   /** fixture runs carry EXAMPLE; real runs leave this undefined */
   exampleTag?: string;
+  liveSummary?: ResearchRunSummary;
+  liveDetail?: ResearchRunDetail;
+  detailUnavailable?: string;
 }
 
 export interface SecurityView {
+  origin: "demo" | "live";
   /** "unavailable" means the run feed is not connected, which says nothing about whether the system is safe */
-  status: "ready" | "empty" | "unavailable";
+  status: "loading" | "ready" | "empty" | "unavailable";
   runs: SwarmRun[];
   sourceTag?: string;
+  capabilities?: SecurityResearchCapabilities;
+  isRefreshing?: boolean;
+  isCreating?: boolean;
+  actionMessage?: string;
+  unavailableMessage?: string;
 }

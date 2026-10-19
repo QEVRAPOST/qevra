@@ -17,16 +17,16 @@ export interface DemoInputs {
 
 function buildSecurity(mode: RunsMode): SecurityView {
   const sourceTag = "EXAMPLE RUNS";
-  if (mode === "empty") return { status: "empty", runs: [], sourceTag };
-  if (mode === "unavailable") return { status: "unavailable", runs: [], sourceTag };
-  return { status: "ready", runs: [...(mode === "more" ? DEMO_RUNS_ALL : DEMO_RUNS_DEFAULT)], sourceTag };
+  if (mode === "empty") return { origin: "demo", status: "empty", runs: [], sourceTag };
+  if (mode === "unavailable") return { origin: "demo", status: "unavailable", runs: [], sourceTag };
+  return { origin: "demo", status: "ready", runs: [...(mode === "more" ? DEMO_RUNS_ALL : DEMO_RUNS_DEFAULT)], sourceTag };
 }
 
 function buildActivity(mode: ActsMode): ActivityView {
   const sourceTag = "EXAMPLE ROWS";
-  if (mode === "empty") return { status: "empty", rows: [], sourceTag };
-  if (mode === "unavailable") return { status: "unavailable", rows: [], sourceTag };
-  return { status: "ready", rows: [...DEMO_ACTIVITY], sourceTag };
+  if (mode === "empty") return { origin: "demo", status: "empty", rows: [], sourceTag };
+  if (mode === "unavailable") return { origin: "demo", status: "unavailable", rows: [], sourceTag };
+  return { origin: "demo", status: "ready", rows: [...DEMO_ACTIVITY], sourceTag };
 }
 
 /** Assemble the demo view model. Pure: the same inputs always give the same model. */

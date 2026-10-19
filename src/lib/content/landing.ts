@@ -69,6 +69,33 @@ export const HERO_SCENES: readonly HeroScene[] = [
   },
 ];
 
+/**
+ * What the visitor learns by pointing at a part of a hero object. The ids are the ones the scenes register
+ * (src/lib/aperture/stage/*.ts). The words restate approved copy; they add no claim past the evidence.
+ */
+export const HERO_PARTS: Readonly<Record<string, { name: string; text: string }>> = {
+  "v-wallet": { name: "Your connected wallet", text: "An external account. It signs the way it always has. QEVRA makes no protection claim for it." },
+  "v-account": { name: "QEVRA smart account", text: "A separate address, designed for QEVRA assets. How it is authorized is still under evaluation. No smart account exists yet." },
+  "v-assets": { name: "Example assets", text: "Dashed outlines, because nothing is held. The tokens in this preview are TKN-A and TKN-B, examples only." },
+  "v-link": { name: "No deposit path yet", text: "The line is dotted and crossed because it is not built. Nothing in this preview moves between the two accounts." },
+  "t-recipient": { name: "Recipient", text: "Who receives the swapped tokens. A different address is a different swap." },
+  "t-chain": { name: "Chain", text: "Which network the swap is for. 46630 is Robinhood Testnet." },
+  "t-token": { name: "Token", text: "The two tokens. The design allows only tokens from a reviewed list." },
+  "t-amount": { name: "Amount", text: "How much you pay. If this changes after you review, its slot moves and the light stops." },
+  "t-deadline": { name: "Deadline", text: "When the approval runs out." },
+  "t-lamp": { name: "The details you reviewed", text: "The light starts here. It passes only if every slot is at the same height." },
+  "t-receiver": { name: "The end of the line", text: "Light that reaches this end means every detail matched what you reviewed. It is a picture of a comparison, not a guarantee." },
+  "l-lattice": { name: "Post-quantum research", text: "ML-DSA is the initial candidate scheme (NIST FIPS 204). It is under evaluation and not audited. QEVRA makes no claim that it resists quantum attacks." },
+  "l-agents": { name: "Security Swarm", text: "Researches public sources, runs tests in isolated sandboxes and writes reports. It holds no keys and cannot sign." },
+  "l-dock": { name: "Human review", text: "Reports go here. A change needs passing tests, a security review and explicit human approval. The dock is unlit: no review is recorded." },
+  "l-gap": { name: "Air gap", text: "There is no execution or signing path between the Swarm and your wallet. It is a design boundary, not a promise that nothing can go wrong." },
+  "l-wallet": { name: "Your wallet", text: "Signing stays with you. Agents have no authority to access private keys, sign transactions or move funds." },
+};
+
+export const HERO_ROTATE_LABEL = "Rotate the object";
+export const HERO_ROTATE_HINT = "Drag to rotate";
+export const HERO_POINT_HINT = "Point at a part to read it";
+
 /** What the Intent Lock object says while its slots line up, and when one detail has changed. */
 export const HERO_LOCK_CAPTIONS: ReadonlyArray<{ lead: string; text: string }> = [
   {
@@ -228,6 +255,39 @@ export const SWARM_CANNOT: readonly string[] = [
   "Change signers, recovery rules, router allowlists or spending limits.",
   "Merge a fix. Tests, a human review and explicit approval come first.",
 ];
+
+/**
+ * Each line of "It can" and "It cannot" points at a part of the Swarm diagram: scrolling to it lights the part, and the
+ * rows (a row is a fact on a card, counted from 0) that say the same thing. `note` is the one line shown under the diagram.
+ * They restate the approved lists above and add no capability.
+ */
+export type SwarmPart = "swarm" | "review" | "wallet" | "gap";
+export interface SwarmFocus {
+  /** where in the diagram it points, in words */
+  ref: string;
+  note: string;
+  parts: SwarmPart[];
+  rows: Partial<Record<Exclude<SwarmPart, "gap">, number[]>>;
+  /** the reports path lights up */
+  report?: boolean;
+}
+
+export const SWARM_CAN_FOCUS: readonly SwarmFocus[] = [
+  { ref: "Security Swarm · reads", note: "Reads public sources only: papers, advisories, standards and repositories. Nothing private.", parts: ["swarm"], rows: { swarm: [0] } },
+  { ref: "Security Swarm · runs", note: "Runs named tests in isolated sandboxes that hold no production secrets.", parts: ["swarm"], rows: { swarm: [1] } },
+  { ref: "Security Swarm · writes", note: "Writes reports with their sources and limits. They go to Human review, the one path that exists.", parts: ["swarm", "review"], rows: { swarm: [2], review: [2] }, report: true },
+  { ref: "Security Swarm · writes", note: "A proposed fix is a patch on a development branch. It reaches a person the same way a report does.", parts: ["swarm", "review"], rows: { swarm: [2], review: [2] }, report: true },
+];
+
+export const SWARM_CANNOT_FOCUS: readonly SwarmFocus[] = [
+  { ref: "Security Swarm · holds, Your wallet · keys", note: "Holds no keys: no private keys, post-quantum keys, seed phrases or signing sessions.", parts: ["swarm", "wallet"], rows: { swarm: [3], wallet: [1] } },
+  { ref: "Security Swarm · can sign, Your wallet · signs", note: "Can sign nothing. Signing stays with you, only you.", parts: ["swarm", "wallet"], rows: { swarm: [4], wallet: [0] } },
+  { ref: "Air gap · Your wallet · Swarm", note: "No path crosses the air gap, so production contracts are out of the Swarm's reach.", parts: ["gap", "wallet"], rows: { wallet: [2] } },
+  { ref: "Air gap · Your wallet · Swarm", note: "Signers, recovery rules, router allowlists and spending limits are out of its reach too.", parts: ["gap", "wallet"], rows: { wallet: [2, 3] } },
+  { ref: "Human review · needs, decides", note: "A fix is merged only after passing tests, a security review and explicit human approval.", parts: ["review"], rows: { review: [1, 3, 4] } },
+];
+
+export const SWARM_DEFAULT_NOTE = "Scroll the list, or select a part of the diagram, to read what it can do and what it cannot.";
 
 export const GAP_FIGURE_TITLE =
   "Three cards: Security Swarm, Human review, and Your wallet. Reports pass from the Swarm to Human review. Nothing passes from the Swarm to your wallet, and the span between them is marked as an air gap.";

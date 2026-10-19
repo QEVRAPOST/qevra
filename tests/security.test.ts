@@ -6,6 +6,7 @@ import { createQueuedRun, type StoredSource } from "@/features/security/model";
 import { processResearchRun } from "@/features/security/orchestrator";
 import { getModelProvider, ModelProviderError, OpenAICompatibleProvider, type ModelProvider, type StructuredModelRequest } from "@/features/security/provider";
 import { fetchApprovedSource } from "@/features/security/sources";
+import { GET as getSecurityCapabilities } from "@/app/api/security/capabilities/route";
 import {
   analysisAgentOutputSchema,
   createResearchRunRequestSchema,
@@ -68,6 +69,20 @@ const verificationOutput = {
   testArtifactChecks: [],
   limitations: ["Exact quote matching does not prove the broader interpretation."],
 };
+
+test("unauthenticated Security API messages use the configured project name", async () => {
+  const originalProjectName = process.env.NEXT_PUBLIC_PROJECT_NAME;
+  process.env.NEXT_PUBLIC_PROJECT_NAME = "Atlas Labs";
+  try {
+    const response = await getSecurityCapabilities(new Request("http://localhost/api/security/capabilities"));
+    const body = await response.json() as { error: { message: string } };
+    assert.equal(response.status, 401);
+    assert.equal(body.error.message, "A valid Atlas Labs session is required.");
+  } finally {
+    if (originalProjectName === undefined) delete process.env.NEXT_PUBLIC_PROJECT_NAME;
+    else process.env.NEXT_PUBLIC_PROJECT_NAME = originalProjectName;
+  }
+});
 
 function mockProvider(failAgent?: string): ModelProvider {
   return {

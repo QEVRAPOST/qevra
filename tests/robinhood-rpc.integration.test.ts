@@ -13,12 +13,21 @@ const verifiedTestnetUrl = (() => {
 })();
 
 async function readRpc(method: "eth_chainId" | "eth_getBlockByNumber" | "eth_getBalance", params: unknown[] = []): Promise<unknown> {
-  const response = await fetch(rpcUrl!, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-    signal: AbortSignal.timeout(12_000),
-  });
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 2 && !response; attempt++) {
+    try {
+      response = await fetch(rpcUrl!, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        signal: AbortSignal.timeout(12_000),
+      });
+    } catch (error) {
+      if (attempt === 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  assert.ok(response);
   assert.equal(response.ok, true, `RPC returned HTTP ${response.status}`);
   const payload = await response.json() as { result?: unknown; error?: { code?: number } };
   assert.equal(payload.error, undefined, `RPC error code ${payload.error?.code ?? "unknown"}`);

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { toLiveDashboardSnapshot, toLiveSecurityRun } from "@/features/dashboard/live-adapters";
 import { createSecurityRun } from "@/features/security/client";
+import { buildLiveAppModel } from "@/features/dashboard/live-model";
 import { createResearchRunRequestSchema } from "@/features/security/schemas";
+import { buildDemoModel } from "@/lib/demo/model";
 import type { ReadOnlyWalletState, ResearchRunDetail, SecurityResearchCapabilities } from "@/types/integrations";
 
 test("live dashboard adapter keeps live provenance separate from demo fixtures and custody", () => {
@@ -85,4 +87,49 @@ test("typed security client sends same-origin cookie requests and rejects invali
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("live model shows backend failures honestly without demo fallback or executable swap actions", () => {
+  const model = buildLiveAppModel({
+    wallet: { status: "disconnected" },
+    capabilities: {
+      provider: "not_configured",
+      authentication: "available",
+      persistence: "unavailable",
+      worker: "unavailable",
+      deterministicExperiments: "not_configured",
+      sourceCount: 3,
+    },
+    runs: null,
+    dataError: "persistence_unavailable: Database is currently unreachable.",
+    isRefreshing: false,
+    isCreating: false,
+  });
+  assert.equal(model.mode, "live");
+  assert.equal(model.security.origin, "live");
+  assert.equal(model.security.status, "unavailable");
+  assert.deepEqual(model.security.runs, []);
+  assert.equal(model.activity.origin, "live");
+  assert.equal(model.activity.status, "unavailable");
+  assert.equal(model.swap.button.disabled, true);
+  assert.equal(model.swap.button.key, "route");
+  assert.equal(model.wallet.qevra.address, undefined);
+  assert.equal(model.wallet.qevra.actions.length, 0);
+});
+
+test("demo model remains explicitly fixture-backed and separate from live origin", () => {
+  const model = buildDemoModel({
+    stage: 0,
+    forced: null,
+    reviewed: null,
+    amount: "100",
+    runsMode: "examples",
+    actsMode: "examples",
+    network: "testnet",
+  });
+  assert.equal(model.mode, "demo");
+  assert.equal(model.security.origin, "demo");
+  assert.equal(model.activity.origin, "demo");
+  assert.ok(model.security.runs.every((run) => run.exampleTag));
+  assert.ok(model.activity.rows.every((row) => row.exampleTag));
 });

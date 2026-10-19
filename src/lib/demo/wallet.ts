@@ -75,6 +75,7 @@ export function buildWalletView(stage: SetupStage): WalletView {
     return { title: d.title, detail: d.detail, tag: d.tag || (stage > i ? "Done in this preview" : ""), state };
   });
   return {
+    origin: "demo",
     stage,
     setupDone: Math.min(4, stage),
     walletButtonLabel: stage === 0 ? "Connect wallet" : "Example wallet",

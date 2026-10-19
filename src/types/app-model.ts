@@ -13,8 +13,8 @@ import type { LedgerActionId, WalletView } from "./wallet";
  * AppModelProvider instead of the demo provider. Nothing here creates a key, signs, or sends a transaction.
  */
 export interface AppModel {
-  /** "demo" means every value is a labelled fixture. There is no "live" provider yet. */
-  mode: "demo";
+  /** `demo` values are labelled fixtures; `live` values must come from real APIs or user-consented RPC reads. */
+  mode: "demo" | "live";
   statusBar: StatusBarItem[];
   coverage: CoverageRow[];
   /** the network the app is pointed at, and the ones the menu lists (unavailable ones cannot be picked) */
@@ -31,8 +31,7 @@ export interface AppModel {
  */
 export interface AppActions {
   /**
-   * The network menu in the top bar. A real provider switches its chain and RPC; the demo provider only records the
-   * choice. A network that is not available is refused.
+   * Demo mode records the chosen target. Live read-only mode never asks the wallet to switch networks.
    */
   setNetwork(id: NetworkId): void;
   setAmount(value: string): void;
@@ -42,6 +41,10 @@ export interface AppActions {
   pressWalletButton(): void;
   /** a button inside a ledger */
   pressLedgerAction(id: LedgerActionId): void;
+  /** Starts a server-side, approved-topic research run only when live capabilities allow it. */
+  createSecurityRun(topicId: import("./integrations").ResearchTopicId): void;
+  /** Clears the server-issued session cookie. */
+  logout(): void;
 }
 
 export interface AppModelValue {

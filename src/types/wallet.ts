@@ -1,9 +1,10 @@
 /** Presentational contracts for Wallet and PQ Vault. No account is created and no funds move here. */
+import type { ReadOnlyWalletState } from "./integrations";
 
 /** 0 not connected, 1 wallet connected, 2 account created, 3 key registered, 4 funded (example). */
 export type SetupStage = 0 | 1 | 2 | 3 | 4;
 
-export type LedgerActionId = "connect" | "createAccount" | "registerKey" | "fund" | "deposit" | "withdraw";
+export type LedgerActionId = "connect" | "disconnect" | "createAccount" | "registerKey" | "fund" | "deposit" | "withdraw";
 
 export interface LedgerAction {
   id: LedgerActionId;
@@ -54,6 +55,8 @@ export interface SetupStepView {
 }
 
 export interface WalletView {
+  origin: "demo" | "live";
+  connection?: ReadOnlyWalletState;
   stage: SetupStage;
   /** steps finished, 0 to 4 */
   setupDone: number;
