@@ -1,31 +1,20 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { DEFAULT_NETWORK_ID, isNetworkAvailable } from "@/lib/config/networks";
 import { buildDemoModel } from "@/lib/demo/model";
 import type { ActsMode, AppActions, AppModelValue, NetworkId, PreviewControls, RunsMode, SetupStage, SwapButtonKey } from "@/types";
+import { ModelContext, PreviewContext } from "./AppModelContext";
+
+export { useAppModel, usePreviewControls } from "./AppModelContext";
 
 /*
  * DEMO PROVIDER. Every value it produces is a labelled example from src/lib/demo-fixtures.ts.
  * It moves example state only: no wallet is connected, no chain is read, nothing is signed or sent.
  *
- * Engineering integration point: replace this provider with one that supplies a real AppModelValue
- * (src/types/app-model.ts). The screens under src/components/dashboard read only useAppModel().
+ * QEVRA_APP_MODE selects a separate live provider when explicitly requested. The screens under
+ * src/components/dashboard read only useAppModel(); this provider remains fixtures-only.
  */
-const ModelContext = createContext<AppModelValue | null>(null);
-const PreviewContext = createContext<PreviewControls | null>(null);
-
-export function useAppModel(): AppModelValue {
-  const v = useContext(ModelContext);
-  if (!v) throw new Error("useAppModel must be used inside an app model provider");
-  return v;
-}
-
-/** Preview controls exist only in demo mode. Returns null when the provider does not supply them. */
-export function usePreviewControls(): PreviewControls | null {
-  return useContext(PreviewContext);
-}
-
 const DEFAULT_AMOUNT = "100";
 
 export function DemoAppProvider({ children }: { children: React.ReactNode }) {
@@ -86,6 +75,12 @@ export function DemoAppProvider({ children }: { children: React.ReactNode }) {
         else if (id === "registerKey") advance(3);
         else if (id === "fund") advance(4);
         /* deposit and withdraw are not built: nothing happens */
+      },
+      createSecurityRun() {
+        /* The demo provider never starts a live Security Swarm run. */
+      },
+      logout() {
+        /* Demo mode has no authenticated live-service session. */
       },
     };
   }, [amount, forced, model.swap.button.key, stage]);

@@ -230,6 +230,57 @@ test("model provider parses structured output and enforces the response schema",
   );
 });
 
+test("Groq GPT-OSS uses documented JSON/reasoning fields and captures token limits", async () => {
+  let requestBody: Record<string, unknown> | undefined;
+  const provider = new OpenAICompatibleProvider({
+    apiKey: "mock-groq-key",
+    model: "openai/gpt-oss-20b",
+    baseUrl: "https://api.groq.com/openai/v1",
+    maxOutputTokens: 400,
+    timeoutMs: 1_000,
+    fetchImpl: async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({
+        choices: [{ message: { content: JSON.stringify({ summary: "Verified.", claims: [], scopeLimitations: [] }) } }],
+        usage: {
+          prompt_tokens: 120,
+          completion_tokens: 40,
+          total_tokens: 160,
+          completion_tokens_details: { reasoning_tokens: 12 },
+        },
+      }, {
+        headers: {
+          "x-request-id": "mock-groq-request",
+          "x-ratelimit-limit-tokens": "8000",
+          "x-ratelimit-remaining-tokens": "7840",
+          "x-ratelimit-reset-tokens": "10s",
+        },
+      });
+    },
+  });
+
+  const result = await provider.completeJson({
+    agent: "research",
+    systemPrompt: "Return JSON.",
+    input: { question: "Use only this mocked input." },
+    schema: researchAgentOutputSchema,
+  });
+
+  assert.equal(requestBody?.max_completion_tokens, 400);
+  assert.equal("max_tokens" in (requestBody ?? {}), false);
+  assert.equal(requestBody?.reasoning_effort, "low");
+  assert.equal(requestBody?.include_reasoning, false);
+  assert.equal("reasoning_format" in (requestBody ?? {}), false);
+  assert.deepEqual(requestBody?.response_format, { type: "json_object" });
+  assert.equal(result.usage?.reasoningTokens, 12);
+  assert.deepEqual(result.usage?.rateLimit, {
+    tokensLimit: 8_000,
+    tokensRemaining: 7_840,
+    tokensReset: "10s",
+  });
+  assert.equal(result.requestId, "mock-groq-request");
+});
+
 test("model provider refuses over-budget input before making a network request", async () => {
   let fetchCalled = false;
   const provider = new OpenAICompatibleProvider({
