@@ -7,7 +7,7 @@
  * plate and the vault is a dotted line with a cross: "no deposit path yet".
  */
 import { clamp } from "../math";
-import { BRIGHT, COOL, DARK, drawBox, drawCyl, drawFloor, drawLabel, drawLine, drawPointer, drawShadow, ease, P, piece, WARM } from "./gfx";
+import { BRIGHT, COOL, DARK, drawBox, drawCyl, drawFloor, drawLabel, drawLine, drawShadow, ease, P, piece, WARM } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
@@ -20,7 +20,13 @@ const WALL = 30;
 const RIGHT = 16;
 
 function draw(a: SceneArgs): void {
-  const { ctx, cam, q, font, form, compact, hot, hover } = a;
+  const { ctx, cam, q, font, form, compact, hot, hover, zoom, name } = a;
+  const NAME = name.toUpperCase();
+  /* a longer name is set smaller, so it still fits the wall and the slab */
+  const plaque = Math.max(5, 13 * Math.min(1, 9 / NAME.length));
+  const engrave = Math.max(3.2, 5.6 * Math.min(1, 37 / (NAME.length + 30)));
+  /* callouts fade out as the camera flies in on a part: the caption under the stage takes over */
+  const lab = 1 - 0.95 * zoom;
   /* depth is taken from each part's centre, so the order stays right when the visitor turns the object */
   const dep = (x: number, y: number, z: number) => P(cam, x, y, z)[2];
 
@@ -43,7 +49,7 @@ function draw(a: SceneArgs): void {
       size: [170, TOP, 120],
       tone: COOL,
       alpha: pBase,
-      text: [{ face: "front", text: "QEVRA SMART ACCOUNT · EXAMPLE ADDRESS", size: 5.6, color: `rgba(227,169,59,${0.95 * pText})` }],
+      text: [{ face: "front", text: `${NAME} SMART ACCOUNT · EXAMPLE ADDRESS`, size: engrave, color: `rgba(227,169,59,${0.95 * pText})` }],
     }),
   );
 
@@ -58,7 +64,7 @@ function draw(a: SceneArgs): void {
       size: [170, back.h, 8],
       tone: COOL,
       alpha: pBack,
-      text: [{ face: "front", text: "QEVRA", size: 13, color: `rgba(236,232,223,${0.78 * pText})`, dy: 0 }],
+      text: [{ face: "front", text: NAME, size: plaque, color: `rgba(236,232,223,${0.78 * pText})`, dy: 0 }],
     }),
   );
   q.add(dep(-81, TOP + WALL / 2, 0), () => drawBox(ctx, cam, font, { c: [-81, left.cy, 0], size: [8, left.h, 104], tone: COOL, alpha: pLeft }));
@@ -83,7 +89,7 @@ function draw(a: SceneArgs): void {
       const p = ease.back(piece(form, 0.56 + si * 0.05 + j * 0.03, 0.2));
       const c: V3 = [s.x, TOP + j * 5 + 50 * (1 - p), 0];
       q.add(P(cam, c[0], c[1], c[2])[2], () =>
-        drawCyl(ctx, cam, font, { c, r: 16, h: 4, tone: WARM, alpha: clamp(p) * (s.empty ? 0.55 : 1), ghost: s.empty ? GRAY : AMBER }),
+        drawCyl(ctx, cam, font, { c, r: 16, h: 4, tone: WARM, alpha: clamp(p) * (s.empty ? 0.7 : 1), ghost: s.empty ? GRAY : AMBER, ghostTop: j === s.n - 1 }),
       );
     }
   });
@@ -121,17 +127,16 @@ function draw(a: SceneArgs): void {
   }
 
   /* the parts that can be pointed at */
-  const reg = (id: string, x: number, y: number, z: number, r: number) => {
+  const reg = (id: string, x: number, y: number, z: number, r: number, zk = 2.2) => {
     const p = P(cam, x, y, z);
     const rr = Math.max(15, r * cam.s);
-    hot.push({ id, x: p[0], y: p[1], r: rr });
-    if (hover === id) drawPointer(ctx, p[0], p[1], rr * 0.85);
+    hot.push({ id, x: p[0], y: p[1], r: rr, wx: x, wy: y, wz: z, zoom: zk });
   };
-  reg("v-wallet", -58, 4, 112, 30);
-  reg("v-account", 52, TOP + 4, 24, 36);
-  reg("v-assets", -54, TOP + 10, 0, 24);
-  reg("v-assets", 0, TOP + 8, 0, 22);
-  reg("v-link", -58, 5, 76, 9);
+  reg("v-wallet", -58, 4, 112, 30, 2.3);
+  reg("v-account", 52, TOP + 4, 24, 36, 2);
+  reg("v-assets", -54, TOP + 10, 0, 24, 2.7);
+  reg("v-assets", 0, TOP + 8, 0, 22, 2.7);
+  reg("v-link", -58, 5, 76, 9, 3.4);
 
   /* labels */
   const f1 = compact ? 10 : 11.5;
@@ -146,9 +151,9 @@ function draw(a: SceneArgs): void {
     x: wal[0] - (compact ? 0 : 20),
     y: wal[1] + (compact ? 32 : 38),
     side: "center",
-    lines: compact ? ["Your wallet", "no deposit path yet"] : ["Your connected wallet", "an external account", "no deposit path to QEVRA yet"],
+    lines: compact ? ["Your wallet", "no deposit path yet"] : ["Your connected wallet", "an external account", `no deposit path to ${name} yet`],
     color: hover === "v-wallet" || hover === "v-link" ? "rgba(255,233,184,1)" : "rgba(236,232,223,1)",
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,
@@ -159,14 +164,14 @@ function draw(a: SceneArgs): void {
     x: acc[0] + 26,
     y: acc[1] + (compact ? 38 : 44),
     side: "right",
-    lines: compact ? ["QEVRA account"] : ["QEVRA smart account", "a separate address", "experimental, not live"],
+    lines: compact ? [`${name} account`] : [`${name} smart account`, "a separate address", "experimental, not live"],
     color: hover === "v-account" ? "rgba(255,233,184,1)" : AMBER,
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,
   });
-  /* above the walls, so it never sits on top of the QEVRA plaque */
+  /* above the walls, so it never sits on top of the name plaque */
   drawLabel(ctx, font, {
     ax: ast[0],
     ay: ast[1],
@@ -175,7 +180,7 @@ function draw(a: SceneArgs): void {
     side: "right",
     lines: compact ? ["Example assets"] : ["Example assets", "outlined: none are held"],
     color: hover === "v-assets" ? "rgba(255,233,184,1)" : GRAY,
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,

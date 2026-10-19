@@ -8,7 +8,7 @@
  * is dotted and crossed. Reports are the only thing that moves, and they go to a person, not to the wallet.
  */
 import { clamp, lerp, TAU } from "../math";
-import { BRIGHT, COOL, DARK, WARM, drawBox, drawFloor, drawLabel, drawLine, drawPointer, drawShadow, drawSphere, ease, P, piece } from "./gfx";
+import { BRIGHT, COOL, DARK, WARM, drawBox, drawFloor, drawLabel, drawLine, drawShadow, drawSphere, ease, P, piece } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
@@ -28,7 +28,9 @@ const seed = (n: number) => {
 };
 
 function draw(a: SceneArgs): void {
-  const { ctx, cam, q, font, form, u, compact, hot, hover } = a;
+  const { ctx, cam, q, font, form, u, compact, hot, zoom } = a;
+  /* callouts fade out as the camera flies in on a part */
+  const lab = 1 - 0.95 * zoom;
 
   const pPlate = ease.out(piece(form, 0, 0.2));
   const pEdges = piece(form, 0.34, 0.2);
@@ -134,17 +136,16 @@ function draw(a: SceneArgs): void {
   }
 
   /* the parts that can be pointed at */
-  const reg = (id: string, x: number, y: number, z: number, r: number) => {
+  const reg = (id: string, x: number, y: number, z: number, r: number, zk = 2.4) => {
     const p = P(cam, x, y, z);
     const rr = Math.max(15, r * cam.s);
-    hot.push({ id, x: p[0], y: p[1], r: rr });
-    if (hover === id) q.add(1e9, () => drawPointer(ctx, p[0], p[1], rr * 0.9));
+    hot.push({ id, x: p[0], y: p[1], r: rr, wx: x, wy: y, wz: z, zoom: zk });
   };
-  reg("l-lattice", 0, ORB_Y, 0, 30);
-  agents.forEach((g) => reg("l-agents", g[0], g[1], g[2], 9));
-  reg("l-dock", DOCK[0], 4, DOCK[2], 24);
-  reg("l-gap", WALL_X, 28, 0, 26);
-  reg("l-wallet", -124, 4, 34, 24);
+  reg("l-lattice", 0, ORB_Y, 0, 30, 2.4);
+  agents.forEach((g) => reg("l-agents", g[0], g[1], g[2], 9, 3.4));
+  reg("l-dock", DOCK[0], 4, DOCK[2], 24, 2.9);
+  reg("l-gap", WALL_X, 28, 0, 26, 2.1);
+  reg("l-wallet", -124, 4, 34, 24, 2.9);
 
   q.flush();
 
@@ -195,7 +196,7 @@ function draw(a: SceneArgs): void {
     side: "center",
     lines: compact ? ["Post-quantum research"] : ["Post-quantum research", "ML-DSA, under evaluation", "dashed: not audited"],
     color: AMBER,
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,
@@ -210,7 +211,7 @@ function draw(a: SceneArgs): void {
     side: "right",
     lines: compact ? ["Security Swarm"] : ["Security Swarm", "researches, tests, reports", "holds no keys"],
     color: "rgba(236,232,223,1)",
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,
@@ -224,7 +225,7 @@ function draw(a: SceneArgs): void {
     side: "center",
     lines: compact ? ["Review"] : ["Human review", "unlit in this preview"],
     color: GRAY,
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,
@@ -238,7 +239,7 @@ function draw(a: SceneArgs): void {
     side: "left",
     lines: compact ? ["Air gap"] : ["Air gap", "no signing path"],
     color: "rgba(236,232,223,1)",
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,

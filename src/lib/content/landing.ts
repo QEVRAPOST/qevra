@@ -10,6 +10,13 @@ export const HERO = {
   note: "Explore the preview with example data. Wallet and swap are not live yet.",
 } as const;
 
+/** The closing section (the curtain at the bottom of the page). The words restate the approved hero and story copy. */
+export const CURTAIN = {
+  kicker: "Design preview",
+  title: "One swap, with every detail reviewed before you sign.",
+  body: "Open the app preview to try it. It uses example data only, and nothing in it can move funds.",
+} as const;
+
 /** Frame indexes the nav and the hero button jump to (frame 0 is the story intro, frames 1 to 7 are the steps). */
 export const FRAME_HOW_IT_WORKS = 1;
 export const FRAME_SWARM = 6;
@@ -94,7 +101,16 @@ export const HERO_PARTS: Readonly<Record<string, { name: string; text: string }>
 
 export const HERO_ROTATE_LABEL = "Rotate the object";
 export const HERO_ROTATE_HINT = "Drag to rotate";
-export const HERO_POINT_HINT = "Point at a part to read it";
+export const HERO_POINT_HINT = "Click a part to zoom in";
+export const HERO_ZOOM_HINT = "Click it again, or press Escape, to zoom out";
+export const HERO_STAGE_KEYS = "3D object. Left and Right arrows rotate it, Enter flies to the next part, Escape resets the view.";
+
+/**
+ * The hero copy is written with the default project name. The name is a setting (NEXT_PUBLIC_PROJECT_NAME, read on the
+ * server by getProjectName), so the hero swaps it in where it shows the name.
+ */
+export const DEFAULT_PROJECT_NAME = "QEVRA";
+export const brandize = (text: string, name: string): string => (name === DEFAULT_PROJECT_NAME ? text : text.replaceAll(DEFAULT_PROJECT_NAME, name));
 
 /** What the Intent Lock object says while its slots line up, and when one detail has changed. */
 export const HERO_LOCK_CAPTIONS: ReadonlyArray<{ lead: string; text: string }> = [

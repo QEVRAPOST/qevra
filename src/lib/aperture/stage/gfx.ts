@@ -261,8 +261,10 @@ export interface CylOpts {
   h: number;
   tone: Tone;
   alpha?: number;
-  /** outline only, dashed (experimental) */
+  /** outline only (experimental, nothing held): translucent glass with a dashed rim, in this colour */
   ghost?: string;
+  /** a ghost under another one skips its top rim (the one above hides it) */
+  ghostTop?: boolean;
   /** engraved text on the top face */
   topText?: { text: string; size: number; color: string };
   /** a lit or dark window on the front of the wall: height above the bottom, and its state */
@@ -279,13 +281,52 @@ export function drawCyl(ctx: CanvasRenderingContext2D, cam: Cam, font: string, o
   ctx.save();
   ctx.globalAlpha = o.alpha ?? 1;
   if (o.ghost) {
-    /* outline only: top ellipse, front half of the bottom ellipse, two side lines */
-    ctx.strokeStyle = o.ghost;
-    ctx.lineWidth = 1.1;
-    ctx.setLineDash([4, 3]);
+    /* An outline-only part (nothing held, not evidenced), drawn as translucent glass: the dashed rim says "example", and
+       the shaded wall, the lit top and the dark foot give it volume instead of leaving it a few dashes. */
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(o.ghost);
+    const [cr, cg, cb] = m ? [+m[1], +m[2], +m[3]] : [227, 169, 59];
+    const tint = (a: number) => `rgba(${cr},${cg},${cb},${a})`;
+    const topRim = o.ghostTop !== false;
+    /* contact shadow on whatever it stands on */
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.beginPath();
+    ctx.ellipse(B[0] + rp * 0.06, B[1] + ry * 0.2, rp * 1.04, ry * 1.08, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+    /* wall */
+    ctx.beginPath();
+    ctx.ellipse(T[0], T[1], rp, ry, 0, 0, Math.PI, false);
+    ctx.ellipse(B[0], B[1], rp, ry, 0, Math.PI, 0, true);
+    ctx.closePath();
+    const gw = ctx.createLinearGradient(B[0] - rp, 0, B[0] + rp, 0);
+    const L0 = cam.L;
+    for (let k = 0; k <= 12; k++) {
+      const u = k / 12;
+      const sx = u * 2 - 1;
+      const c = Math.sqrt(Math.max(0, 1 - sx * sx));
+      const d1 = Math.max(0, sx * L0[0] + c * L0[2]);
+      gw.addColorStop(u, tint(Math.min(0.5, 0.1 + 0.34 * d1 + 0.06 * c)));
+    }
+    ctx.fillStyle = gw;
+    ctx.fill();
+    /* top */
     ctx.beginPath();
     ctx.ellipse(T[0], T[1], rp, ry, 0, 0, TAU);
-    ctx.stroke();
+    const gt = ctx.createRadialGradient(T[0] - rp * 0.3, T[1] - ry * 0.3, 1, T[0], T[1], rp);
+    gt.addColorStop(0, tint(0.46));
+    gt.addColorStop(1, tint(0.14));
+    ctx.fillStyle = gt;
+    ctx.fill();
+    /* rim: dashed, as before, and a thin lit edge on the lit side */
+    ctx.strokeStyle = tint(0.95);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    if (topRim) {
+      ctx.beginPath();
+      ctx.ellipse(T[0], T[1], rp, ry, 0, 0, TAU);
+      ctx.stroke();
+    }
     ctx.beginPath();
     ctx.ellipse(B[0], B[1], rp, ry, 0, 0, Math.PI, false);
     ctx.stroke();
@@ -296,6 +337,11 @@ export function drawCyl(ctx: CanvasRenderingContext2D, cam: Cam, font: string, o
     ctx.lineTo(B[0] + rp, B[1]);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(255,244,214,0.5)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(T[0], T[1], rp * 0.94, ry * 0.94, 0, Math.PI * 1.08, Math.PI * 1.6, false);
+    ctx.stroke();
     ctx.restore();
     return;
   }
@@ -325,6 +371,9 @@ export function drawCyl(ctx: CanvasRenderingContext2D, cam: Cam, font: string, o
     const y0 = P(cam, o.c[0], o.c[1] + w.y, o.c[2] + o.r);
     const hw = (w.w / 2) * cam.s;
     const hh = w.h * cam.cp * cam.s;
+    /* a lit bezel around the slot, so it reads as cut into the metal */
+    ctx.fillStyle = "rgba(255,244,222,0.22)";
+    ctx.fillRect(y0[0] - hw - 1.4, y0[1] - hh - 1.4, hw * 2 + 2.8, hh + 2.8);
     ctx.fillStyle = "#050607";
     ctx.fillRect(y0[0] - hw, y0[1] - hh, hw * 2, hh);
     if (w.lit > 0.01) {
@@ -489,8 +538,13 @@ export function drawLabel(ctx: CanvasRenderingContext2D, font: string, o: LabelO
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(o.ax, o.ay);
-  if (o.side === "center") ctx.lineTo(clamp(o.ax, tx + 4, tx + tw - 4), o.y - o.f1 - 3);
-  else ctx.lineTo(o.side === "right" ? tx - 6 : tx + tw + 6, o.y - 4);
+  if (o.side === "center") {
+    /* the leader meets the text block on the side it comes from: a part below the label gets a line that ends under the
+       last line, so the line never runs through the words */
+    const top = o.y - o.f1 - 3;
+    const bottom = o.y + 12 * (o.lines.length - 1) + 6;
+    ctx.lineTo(clamp(o.ax, tx + 4, tx + tw - 4), o.ay > (top + bottom) / 2 ? bottom : top);
+  } else ctx.lineTo(o.side === "right" ? tx - 6 : tx + tw + 6, o.y - 4);
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(o.ax, o.ay, 2.2, 0, TAU);
@@ -506,14 +560,15 @@ export function drawLabel(ctx: CanvasRenderingContext2D, font: string, o: LabelO
 }
 
 /** A ring around the part being pointed at. */
-export function drawPointer(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color = "rgba(255,233,184,0.95)"): void {
+export function drawPointer(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, alpha = 1, color = "rgba(255,233,184,0.95)"): void {
   ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.4;
   ctx.beginPath();
   ctx.arc(x, y, r, 0, TAU);
   ctx.stroke();
-  ctx.globalAlpha = 0.18;
+  ctx.globalAlpha = 0.18 * alpha;
   ctx.fillStyle = color;
   ctx.fill();
   ctx.restore();

@@ -2,7 +2,7 @@
  * drawStage: fits each hero scene to the canvas and draws it. Every scene has its own camera, so a scene that is
  * leaving and one that is arriving can be on screen together while they build and un-build.
  */
-import { clamp } from "../math";
+import { clamp, lerp } from "../math";
 import { makeCam, P, Queue } from "./gfx";
 import type { StageState, StageView } from "./engine";
 import { LATTICE } from "./lattice";
@@ -47,18 +47,26 @@ export function drawStage(ctx: CanvasRenderingContext2D, w: number, h: number, s
     const form = forms[i];
     if (form < 0.002) return;
     const f = fit(def, w, h);
-    const cam = makeCam({
-      yaw: def.yaw + (st.u - 0.5) * def.turn + view.px * 0.12 + st.ry,
-      pitch: clamp(def.pitch + view.py * 0.04 + st.rp, 0.28, 1.05),
-      s: f.s,
-      ox: f.ox,
-      oy: f.oy,
-      dpr: view.dpr,
-      px: view.px,
-    });
+    const yaw = def.yaw + (st.u - 0.5) * def.turn + view.px * 0.12 + st.ry;
+    const pitch = clamp(def.pitch + view.py * 0.04 + st.rp, 0.28, 1.05);
+    /* Zoom: the scale grows and the clicked part glides from where it stands to the middle of the canvas, so it is the
+       point the camera flies in on. The unit projection tells where that part is at this view, at scale 1. */
+    let s = f.s;
+    let ox = f.ox;
+    let oy = f.oy;
+    if (st.zm > 0.0005) {
+      const unit = makeCam({ yaw, pitch, s: 1, ox: 0, oy: 0, dpr: 1, px: 0 });
+      const u = P(unit, st.cx, st.cy, st.cz);
+      const hx = f.ox + u[0] * f.s;
+      const hy = f.oy + u[1] * f.s;
+      s = f.s * (1 + st.zm * (st.zk - 1));
+      ox = lerp(hx, w / 2, st.zm) - u[0] * s;
+      oy = lerp(hy, h * 0.46, st.zm) - u[1] * s;
+    }
+    const cam = makeCam({ yaw, pitch, s, ox, oy, dpr: view.dpr, px: view.px });
     /* only the object that is (nearly) whole can be pointed at */
     const own: Hotspot[] = [];
-    def.draw({ ctx, cam, q: new Queue(), font: view.fontMono, w, h, form: clamp(form), u: st.u, mis: st.mis, compact, hot: own, hover: view.hover });
+    def.draw({ ctx, cam, q: new Queue(), font: view.fontMono, w, h, form: clamp(form), u: st.u, mis: st.mis, compact, hot: own, hover: view.hover, zoom: st.zm, name: view.projectName });
     if (form > 0.85) hot.push(...own);
   });
   return hot;

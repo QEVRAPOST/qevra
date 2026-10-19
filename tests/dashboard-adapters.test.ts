@@ -5,7 +5,7 @@ import { createSecurityRun } from "@/features/security/client";
 import { buildLiveAppModel } from "@/features/dashboard/live-model";
 import { createResearchRunRequestSchema } from "@/features/security/schemas";
 import { buildDemoModel } from "@/lib/demo/model";
-import type { ReadOnlyWalletState, ResearchRunDetail, SecurityResearchCapabilities } from "@/types/integrations";
+import type { ReadOnlyWalletState, ResearchRunDetail, ResearchRunSummary, SecurityResearchCapabilities } from "@/types/integrations";
 
 test("live dashboard adapter keeps live provenance separate from demo fixtures and custody", () => {
   const wallet: ReadOnlyWalletState = {
@@ -94,6 +94,8 @@ test("live model shows backend failures honestly without demo fallback or execut
     wallet: { status: "disconnected" },
     capabilities: {
       provider: "not_configured",
+      providerName: "Credentials missing",
+      unavailableReason: "model_provider_credentials_missing",
       authentication: "available",
       persistence: "unavailable",
       worker: "unavailable",
@@ -108,6 +110,7 @@ test("live model shows backend failures honestly without demo fallback or execut
   assert.equal(model.mode, "live");
   assert.equal(model.security.origin, "live");
   assert.equal(model.security.status, "unavailable");
+  assert.equal(model.security.capabilities?.providerName, "Credentials missing");
   assert.deepEqual(model.security.runs, []);
   assert.equal(model.activity.origin, "live");
   assert.equal(model.activity.status, "unavailable");
@@ -115,6 +118,75 @@ test("live model shows backend failures honestly without demo fallback or execut
   assert.equal(model.swap.button.key, "route");
   assert.equal(model.wallet.qevra.address, undefined);
   assert.equal(model.wallet.qevra.actions.length, 0);
+});
+
+test("live run labels distinguish rate limits and explicit research lifecycle states", () => {
+  const baseRun: ResearchRunSummary = {
+    id: "77777777-7777-4777-8777-777777777777",
+    topicId: "robinhood-readonly-wallet",
+    topic: "Read-only wallet evidence",
+    status: "failed",
+    currentStage: "failed",
+    createdAt: "2026-10-19T00:00:00.000Z",
+    updatedAt: "2026-10-19T00:01:00.000Z",
+    agents: [],
+    sourceCount: 1,
+    availableSourceCount: 1,
+    findingCount: 0,
+    events: [],
+  };
+  const labels = [
+    { status: "queued" as const, expected: "Research queued" },
+    { status: "running" as const, expected: "Research running" },
+    { status: "completed" as const, expected: "Research completed" },
+    { status: "failed" as const, errorCode: "provider_http_error", expected: "Research failed" },
+    { status: "failed" as const, errorCode: "provider_rate_limited", expected: "Rate-limited" },
+  ];
+  for (const entry of labels) {
+    const model = buildLiveAppModel({
+      wallet: { status: "disconnected" },
+      runs: [{ ...baseRun, status: entry.status, ...(entry.errorCode ? { errorCode: entry.errorCode } : {}) }],
+      isRefreshing: false,
+      isCreating: false,
+    });
+    assert.equal(model.security.runs[0]?.status.label, entry.expected);
+  }
+});
+
+test("live dashboard adapter preserves unverified evidence status", () => {
+  const detail: ResearchRunDetail = {
+    id: "99999999-9999-4999-8999-999999999999",
+    topicId: "robinhood-readonly-wallet",
+    topic: "Read-only wallet evidence",
+    status: "completed",
+    currentStage: "completed",
+    createdAt: "2026-10-19T00:00:00.000Z",
+    updatedAt: "2026-10-19T00:01:00.000Z",
+    agents: [],
+    sourceCount: 1,
+    availableSourceCount: 1,
+    findingCount: 1,
+    events: [],
+    summary: "An unverified claim.",
+    sources: [],
+    findings: [{
+      id: "claim-1",
+      claim: "The source does not support this claim.",
+      modelAssessment: "unclear",
+      evidenceStatus: "not_verified",
+      evidence: [{ sourceId: "robinhood-chain-docs", quote: "Unsupported quote.", exactQuoteMatched: false }],
+      rationale: "The quote was not present in the supplied excerpt.",
+    }],
+    assumptions: [],
+    limitations: ["Evidence not verified."],
+    recommendations: [],
+    deterministicTests: [],
+    humanReview: { status: "not_reviewed" },
+  };
+
+  const adapted = toLiveSecurityRun(detail);
+  assert.equal(adapted.findings[0]?.evidenceStatus, "not_verified");
+  assert.equal(adapted.findings[0]?.evidence[0]?.exactQuoteMatched, false);
 });
 
 test("demo model remains explicitly fixture-backed and separate from live origin", () => {

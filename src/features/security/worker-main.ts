@@ -6,10 +6,11 @@ import { processResearchRun } from "./orchestrator";
 import { getModelProvider, ModelProviderError, type ModelProvider } from "./provider";
 import { fetchApprovedSources } from "./sources";
 import { getResearchStore } from "./store";
+import { isGroqGptOssProfile, resolveMaxConcurrentRuns } from "./groq-profile";
 
 const workerId = randomUUID();
 const pollMs = boundedInteger(process.env.QEVRA_WORKER_POLL_MS, 1_000, 250, 10_000);
-const maxConcurrentRuns = boundedInteger(process.env.QEVRA_MAX_CONCURRENT_RUNS, 2, 1, 4);
+const maxConcurrentRuns = resolveMaxConcurrentRuns(process.env);
 let stopping = false;
 
 process.on("SIGINT", () => { stopping = true; });
@@ -27,7 +28,15 @@ function wait(ms: number): Promise<void> {
 
 async function main() {
   const store = getResearchStore();
-  const providerConfig = getModelProvider();
+  const groqGptOssProfile = isGroqGptOssProfile(process.env.QEVRA_AI_MODEL, process.env.QEVRA_AI_BASE_URL);
+  const providerConfig = getModelProvider(process.env, groqGptOssProfile ? {
+    beforeRequest: async () => {
+      const callSlot = await store.takeRateLimit(hashRateLimitKey("qevra:groq-free-call-window"), 1, 61_000);
+      if (!callSlot.allowed) {
+        throw new ModelProviderError("provider_rate_limited", "A shared Groq Free Plan call slot is unavailable; this run will not retry.");
+      }
+    },
+  } : {});
   let databaseUnavailable = false;
   await store.heartbeatWorker(workerId);
   const workerHeartbeat = setInterval(() => {
@@ -103,6 +112,7 @@ async function main() {
           fetchSources: fetchApprovedSources,
           runExperiment: runApprovedExperiment,
           persist: (current) => store.saveRun(current),
+          maxSourceTextChars: providerConfig.profile.maxModelSourceChars,
         });
       } catch (error) {
         console.error("[qevra-security-worker] run processing failed", error instanceof Error ? error.name : "unknown_error");

@@ -1,11 +1,17 @@
 import type { Cam, Queue, V3 } from "./gfx";
 
-/** A part of a scene the visitor can point at: a circle in canvas pixels. */
+/** A part of a scene the visitor can point at: a circle in canvas pixels, and where the part is in the scene. */
 export interface Hotspot {
   id: string;
   x: number;
   y: number;
   r: number;
+  /** the part's place in the scene (world units), so the camera can fly to it */
+  wx: number;
+  wy: number;
+  wz: number;
+  /** how far the camera zooms in on it when it is clicked */
+  zoom: number;
 }
 
 /** Everything a hero scene needs to draw itself. */
@@ -28,6 +34,10 @@ export interface SceneArgs {
   hot: Hotspot[];
   /** the part being pointed at, if any */
   hover: string | null;
+  /** how far the camera has flown in on a part, 0..1; callouts fade out as it does */
+  zoom: number;
+  /** the project name, for the text engraved on the objects */
+  name: string;
 }
 
 /** A hero scene: where the camera sits, the box that must fit the canvas, and how to draw it. */

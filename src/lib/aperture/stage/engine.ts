@@ -20,6 +20,7 @@ import { onReducedMotionChange, prefersReducedMotion } from "../motion";
 import { FALLBACK_FONT_MONO } from "../constants";
 import { resolveMonoFamily } from "../engine";
 import { drawStage, SCENES } from "./draw";
+import { drawPointer } from "./gfx";
 import type { Hotspot } from "./types";
 
 export interface StageState {
@@ -33,6 +34,17 @@ export interface StageState {
   /** the visitor's rotation: yaw and pitch offsets from the authored view, radians */
   ry: number;
   rp: number;
+  /** zoom: how far the camera has flown in (0..1), how far it zooms at 1, and the point in the scene it flies to */
+  zm: number;
+  zk: number;
+  cx: number;
+  cy: number;
+  cz: number;
+}
+
+/** All-zero state, with any patch applied. */
+export function stageState(patch: Partial<StageState> = {}): StageState {
+  return { f0: 0, f1: 0, f2: 0, u: 0.5, mis: 0, ry: 0, rp: 0, zm: 0, zk: 1, cx: 0, cy: 0, cz: 0, ...patch };
 }
 
 export type StageKey = keyof StageState;
@@ -49,6 +61,8 @@ export interface StageView {
   readonly fontMono: string;
   /** the part being pointed at, or null */
   readonly hover: string | null;
+  /** the project name, for the text engraved on the objects */
+  readonly projectName: string;
 }
 
 interface Tween {
@@ -69,6 +83,11 @@ export class StageScene implements StageView {
   dpr = 1;
   fontMono: string;
   hover: string | null = null;
+  projectName = "QEVRA";
+  /** the part the camera has flown in on, or null */
+  zoomId: string | null = null;
+  /** called when the camera flies in on a part, or back out */
+  onZoom?: (id: string | null) => void;
   /** called when the part being pointed at changes (a hover, or a tap on touch) */
   onHover?: (id: string | null) => void;
   /** called when the object is turned away from, or back to, its authored view by the visitor */
@@ -76,6 +95,10 @@ export class StageScene implements StageView {
   /** the parts of the object on show, in canvas pixels, from the last frame */
   hot: Hotspot[] = [];
 
+  /** the marker on the part under the pointer: it fades in and glides from part to part instead of jumping */
+  private ring = { x: 0, y: 0, r: 20, a: 0 };
+  private hoverSpot: Hotspot | null = null;
+  private zoomTween: { t0: number; dur: number; from: Pick<StageState, "zm" | "zk" | "cx" | "cy" | "cz">; to: Pick<StageState, "zm" | "zk" | "cx" | "cy" | "cz"> } | null = null;
   private scene: 0 | 1 | 2 = 0;
   private limit = 1;
   private rotated = false;
@@ -208,6 +231,7 @@ export class StageScene implements StageView {
   setScene(scene: 0 | 1 | 2): void {
     this.scene = scene;
     this.limit = SCENES[scene].limit;
+    this.hoverSpot = null;
     this.setHover(null);
     this.resetView();
   }
@@ -231,7 +255,8 @@ export class StageScene implements StageView {
   resetView(): void {
     this.target.ry = 0;
     this.target.rp = 0;
-    this.onView?.(false);
+    if (this.zoomId != null) this.zoomTo(null);
+    this.onView?.(this.zoomId != null);
     if (prefersReducedMotion()) {
       this.state.ry = 0;
       this.state.rp = 0;
@@ -243,9 +268,78 @@ export class StageScene implements StageView {
     return Math.abs(this.target.ry) > 0.01 || Math.abs(this.target.rp) > 0.01;
   }
 
+  /** The view is away from the authored one: turned, or zoomed in. */
+  get isChanged(): boolean {
+    return this.isRotated || this.zoomId != null;
+  }
+
+  /**
+   * Fly the camera in on a part, or back out (null). A time tween with ease-in-out, so it starts and lands softly. Going from
+   * one part to another while zoomed glides along instead of zooming out and in.
+   */
+  zoomTo(h: Hotspot | null): void {
+    const cur = { zm: this.state.zm, zk: this.state.zk, cx: this.state.cx, cy: this.state.cy, cz: this.state.cz };
+    const to = h ? { zm: 1, zk: h.zoom, cx: h.wx, cy: h.wy, cz: h.wz } : { ...cur, zm: 0 };
+    this.zoomId = h ? h.id : null;
+    Object.assign(this.target, { cx: to.cx, cy: to.cy, cz: to.cz });
+    this.onZoom?.(this.zoomId);
+    this.onView?.(this.isChanged);
+    if (prefersReducedMotion()) {
+      this.zoomTween = null;
+      Object.assign(this.state, to);
+      this.render();
+      return;
+    }
+    /* coming in from rest, take a little longer than gliding between parts */
+    this.zoomTween = { t0: performance.now(), dur: h && cur.zm > 0.05 ? 760 : 920, from: cur, to };
+    this.kick();
+  }
+
+  /** Keyboard: fly to the next (or previous) part of the object on show; past the last, back out. */
+  cycleZoom(step = 1): void {
+    const parts = [...this.hot].sort((a, b) => a.id.localeCompare(b.id) || a.wx - b.wx);
+    if (parts.length === 0) return;
+    const at = this.zoomId == null ? -1 : parts.findIndex((p) => p.id === this.zoomId && p.wx === this.target.cx && p.wy === this.target.cy);
+    const next = at + step;
+    if (next >= parts.length || next < -1) this.zoomTo(null);
+    else this.zoomTo(next === -1 ? null : parts[next]);
+  }
+
   private noteRotated(): void {
     this.rotated = true;
     this.onView?.(true);
+  }
+
+  /** Point at a part (or at nothing). The caption follows the id; the marker follows the part itself. */
+  private pointAt(spot: Hotspot | null): void {
+    this.hoverSpot = spot;
+    this.setHover(spot ? spot.id : null);
+    if (prefersReducedMotion()) this.settleRing();
+    else this.kick();
+  }
+
+  private spotKey(h: Hotspot): string {
+    return `${h.id}|${h.wx}|${h.wy}|${h.wz}`;
+  }
+
+  /** where the marker should be right now: on the part being pointed at, at its current place on screen */
+  private ringWant(): Hotspot | null {
+    if (!this.hoverSpot || this.state.zm > 0.2) return null;
+    const key = this.spotKey(this.hoverSpot);
+    return this.hot.find((h) => this.spotKey(h) === key) ?? null;
+  }
+
+  private settleRing(): void {
+    const w = this.ringWant();
+    if (w) this.ring = { x: w.x, y: w.y, r: w.r * 0.88, a: 1 };
+    else this.ring.a = 0;
+    this.render();
+  }
+
+  private ringMoving(): boolean {
+    const w = this.ringWant();
+    if (!w) return this.ring.a > 0.01;
+    return this.ring.a < 0.99 || Math.hypot(w.x - this.ring.x, w.y - this.ring.y) > 0.4 || Math.abs(w.r * 0.88 - this.ring.r) > 0.4;
   }
 
   private setHover(id: string | null): void {
@@ -256,17 +350,21 @@ export class StageScene implements StageView {
     if (prefersReducedMotion()) this.render();
   }
 
-  private hitTest(x: number, y: number): string | null {
-    let best: string | null = null;
+  private hitSpot(x: number, y: number): Hotspot | null {
+    let best: Hotspot | null = null;
     let bd = Infinity;
     for (const h of this.hot) {
       const d = Math.hypot(h.x - x, h.y - y);
       if (d <= h.r && d < bd) {
-        best = h.id;
+        best = h;
         bd = d;
       }
     }
     return best;
+  }
+
+  private hitTest(x: number, y: number): string | null {
+    return this.hitSpot(x, y)?.id ?? null;
   }
 
   /**
@@ -297,6 +395,7 @@ export class StageScene implements StageView {
         if (!d.moved && Math.hypot(dx, dy) > 5) {
           d.moved = true;
           el.dataset.dragging = "1";
+          this.hoverSpot = null;
           this.setHover(null);
         }
         if (d.moved) {
@@ -316,7 +415,7 @@ export class StageScene implements StageView {
         return;
       }
       if (e.pointerType === "touch") return;
-      this.setHover(this.hitTest(p.x, p.y));
+      this.pointAt(this.hitSpot(p.x, p.y));
     };
     const up = (e: PointerEvent) => {
       const d = this.drag;
@@ -334,16 +433,21 @@ export class StageScene implements StageView {
         this.kick();
         return;
       }
-      /* a tap or click: point at the part under it (the same as hovering, for touch) */
+      /* a click or tap: fly in on the part under it, and back out on the same part, on empty space, or on Escape */
       const p = local(e);
-      this.setHover(this.hitTest(p.x, p.y));
+      const hit = this.hitSpot(p.x, p.y);
+      if (hit) {
+        const same = this.zoomId === hit.id && this.target.cx === hit.wx && this.target.cy === hit.wy && this.target.cz === hit.wz;
+        this.zoomTo(same ? null : hit);
+      } else if (this.zoomId != null) this.zoomTo(null);
+      this.pointAt(hit);
     };
     const cancel = () => {
       this.drag = null;
       delete el.dataset.dragging;
     };
     const leave = (e: PointerEvent) => {
-      if (e.pointerType !== "touch" && !this.drag) this.setHover(null);
+      if (e.pointerType !== "touch" && !this.drag) this.pointAt(null);
     };
     const dbl = () => this.resetView();
     el.addEventListener("pointerdown", down);
@@ -382,7 +486,7 @@ export class StageScene implements StageView {
 
   private moving(): boolean {
     if (prefersReducedMotion()) return false;
-    if (this.tweens.size > 0) return true;
+    if (this.tweens.size > 0 || this.zoomTween || this.ringMoving()) return true;
     for (const k of EASED_KEYS) if (Math.abs(this.target[k] - this.state[k]) > 1e-3) return true;
     return Math.abs(this.tpx - this.px) > 1e-3 || Math.abs(this.tpy - this.py) > 1e-3;
   }
@@ -410,6 +514,26 @@ export class StageScene implements StageView {
       this.state[key as "f0" | "f1" | "f2"] = el <= 0 ? tw.from : lerp(tw.from, tw.to, p);
       if (p >= 1) this.tweens.delete(key);
     }
+    const zt = this.zoomTween;
+    if (zt) {
+      const x = clamp((now - zt.t0) / zt.dur);
+      const p = x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; /* ease-in-out cubic */
+      for (const k of ["zm", "zk", "cx", "cy", "cz"] as const) this.state[k] = lerp(zt.from[k], zt.to[k], p);
+      if (x >= 1) this.zoomTween = null;
+    }
+    /* the marker: fade and glide toward the part being pointed at (or fade out where it was) */
+    const want = this.ringWant();
+    if (want) {
+      if (this.ring.a < 0.02) this.ring = { x: want.x, y: want.y, r: want.r * 0.8, a: this.ring.a };
+      const kr = 1 - Math.exp(-15 * dt);
+      this.ring.x += (want.x - this.ring.x) * kr;
+      this.ring.y += (want.y - this.ring.y) * kr;
+      this.ring.r += (want.r * 0.88 - this.ring.r) * kr;
+      this.ring.a += (1 - this.ring.a) * (1 - Math.exp(-10 * dt));
+    } else {
+      this.ring.a += (0 - this.ring.a) * (1 - Math.exp(-12 * dt));
+      if (this.ring.a < 0.01) this.ring.a = 0;
+    }
     const kp = 1 - Math.exp(-4 * dt);
     this.px = lerp(this.px, this.tpx, kp);
     this.py = lerp(this.py, this.tpy, kp);
@@ -424,6 +548,11 @@ export class StageScene implements StageView {
     c.setTransform(d, 0, 0, d, 0, 0);
     c.clearRect(0, 0, this.w, this.h);
     this.hot = drawStage(c, this.w, this.h, this.state, this);
+    if (this.ring.a > 0.01) {
+      /* the marker grows a little as it fades in, so it settles onto the part rather than popping */
+      const k = 0.9 + 0.1 * this.ring.a;
+      drawPointer(c, this.ring.x, this.ring.y, this.ring.r * k, this.ring.a);
+    }
   }
 
   dispose(): void {

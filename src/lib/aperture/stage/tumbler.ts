@@ -7,7 +7,7 @@
  * It is a design demonstration of the comparison QEVRA is designed to make: nothing here checks a real swap.
  */
 import { clamp, lerp, smooth } from "../math";
-import { BRIGHT, COOL, WARM, drawBox, drawCyl, drawFloor, drawLabel, drawPointer, drawShadow, drawSphere, ease, P, piece } from "./gfx";
+import { BRIGHT, COOL, DARK, WARM, drawBox, drawCyl, drawFloor, drawLabel, drawShadow, drawSphere, ease, P, piece } from "./gfx";
 import type { BoxOpts, V3 } from "./gfx";
 import { box8 } from "./types";
 import type { SceneArgs, SceneDef } from "./types";
@@ -23,14 +23,21 @@ const PIN_X = [-64, -32, 0, 32, 64];
 const BAD = 3;
 const R = 11;
 const BASE = 8;
+/** each pin stands on its own block, a tier above the rail */
+const PED = 4;
+const PB = BASE + PED;
 const H = 38;
 const SLOT_Y = 21;
 const SLOT_H = 8;
-const LAMP_X = -104;
-const RECV_X = 104;
+const LAMP_X = -98;
+const RECV_X = 98;
+/** the height of the line of light: through the middle of the slots */
+const BEAM_Y = PB + SLOT_Y + SLOT_H / 2;
 
 function draw(a: SceneArgs): void {
-  const { ctx, cam, q, font, form, mis, compact, hot, hover } = a;
+  const { ctx, cam, q, font, form, mis, compact, hot, zoom } = a;
+  /* callouts fade out as the camera flies in on a part */
+  const lab = 1 - 0.95 * zoom;
 
   const pRail = ease.out(piece(form, 0, 0.22));
   const pLamp = ease.back(piece(form, 0.5, 0.16));
@@ -48,6 +55,9 @@ function draw(a: SceneArgs): void {
     alpha: pRail,
     text: [{ face: "front", text: "INTENT LOCK · DESIGN DEMONSTRATION", size: 5.4, color: `rgba(227,169,59,${0.95 * pText})` }],
   };
+  /* a plinth wider than the rail, so the rail sits on something */
+  const plinth: BoxOpts = { c: [-70 * (1 - pRail), 1.5, 0], size: [248, 3, 56], tone: DARK, alpha: pRail };
+  q.add(-1.1e6, () => drawBox(ctx, cam, font, plinth));
   q.add(-1e6, () => drawBox(ctx, cam, font, rail));
 
   /* where the light is, and where it stops */
@@ -60,59 +70,89 @@ function draw(a: SceneArgs): void {
     const shifted = i === BAD ? 9 * smooth(0, 0.7, mis) : 0;
     const reached = head > x + R ? 1 : 0;
     const lit = reached * (i >= BAD ? 1 - blocked : 1) * (i === BAD ? 1 - smooth(0, 0.5, mis) : 1);
-    const c: V3 = [x, BASE, 0];
-    q.add(P(cam, x, BASE + H / 2, 0)[2], () =>
+    const c: V3 = [x, PB, 0];
+    const body = Math.max(0.5, H * p);
+    const moved = i === BAD && mis > 0.3;
+    /* the pedestal block on the rail, and the shadow the pin throws on it */
+    const ped: BoxOpts = { c: [x, BASE + PED / 2, 0], size: [29, PED * Math.max(0.05, ease.out(p * 1.6)), 29], tone: [104, 96, 84], alpha: clamp(p * 4) };
+    q.add(P(cam, x, BASE + PED / 2, 0)[2] - 2, () => {
+      drawBox(ctx, cam, font, { ...ped, c: [x, BASE + (PED * Math.max(0.05, ease.out(p * 1.6))) / 2, 0] });
+      drawShadow(ctx, cam, [x, PB + 0.2, 0], R * 1.45, R * 1.45, 0.45 * clamp(p * 3));
+    });
+    /* the pin: a collar on the block, the pipe standing in it, and a head carrying the detail's initial.
+       The collar is drawn first (the pipe rises out of its top face); the head sits on top of the pipe, so it comes after it. */
+    const dz = P(cam, x, PB + H / 2, 0)[2];
+    q.add(dz - 0.4, () => drawCyl(ctx, cam, font, { c: [x, PB, 0], r: R + 2.1, h: 3.2, tone: WARM, alpha: clamp(p * 4) }));
+    q.add(dz, () =>
       drawCyl(ctx, cam, font, {
         c,
         r: R,
-        h: Math.max(0.5, H * p),
-        tone: i === BAD && mis > 0.3 ? WARM : COOL,
+        h: body,
+        tone: moved ? WARM : COOL,
         alpha: clamp(p * 4),
         window: p > 0.85 ? { y: SLOT_Y + shifted, h: SLOT_H, w: 9, lit, bad: i === BAD && mis > 0.5 } : undefined,
       }),
     );
-  });
-
-  /* lamp and receiver */
-  const lampLit = clamp(sweep * 3);
-  q.add(P(cam, LAMP_X, BASE + 14, 0)[2], () => {
-    drawSphere(ctx, cam, [LAMP_X, BASE + 14, 0], 6 * Math.max(0.01, pLamp), WARM, clamp(pLamp));
-    if (lampLit > 0.02) {
-      const l = P(cam, LAMP_X, BASE + 14, 0);
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      const g = ctx.createRadialGradient(l[0], l[1], 1, l[0], l[1], 26);
-      g.addColorStop(0, `rgba(255,214,150,${0.5 * lampLit})`);
-      g.addColorStop(1, "rgba(255,214,150,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(l[0], l[1], 26, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+    if (p > 0.5) {
+      const pa = clamp((p - 0.5) / 0.4);
+      q.add(dz + 0.5, () =>
+        drawCyl(ctx, cam, font, {
+          c: [x, PB + H, 0],
+          r: R + 1.8,
+          h: 2.6,
+          tone: moved ? BRIGHT : WARM,
+          alpha: pa,
+          topText: { text: DETAILS[i][0], size: 9, color: moved && i === BAD ? "rgba(229,96,77,0.95)" : "rgba(12,13,15,0.78)" },
+        }),
+      );
     }
   });
+
+  /* lamp and receiver: each is a small housing with a lens; the lamp glows once the light is sent, the receiver when it arrives */
+  const lampLit = clamp(sweep * 3);
   const reach = head >= RECV_X - 1 && blocked < 0.05 ? 1 : 0;
-  q.add(P(cam, RECV_X, BASE + 14, 0)[2], () => {
-    drawSphere(ctx, cam, [RECV_X, BASE + 14, 0], 6 * Math.max(0.01, pRecv), reach ? BRIGHT : COOL, clamp(pRecv));
+  const HOUSE = BEAM_Y - BASE + 9;
+  const housing = (x: number, side: -1 | 1, grow: number): BoxOpts => ({ c: [x + side * 10, BASE + (HOUSE * Math.max(0.05, grow)) / 2, 0], size: [14, HOUSE * Math.max(0.05, grow), 24], tone: COOL, alpha: clamp(grow * 3) });
+  q.add(P(cam, LAMP_X - 10, BASE + HOUSE / 2, 0)[2], () => drawBox(ctx, cam, font, housing(LAMP_X, -1, pLamp)));
+  q.add(P(cam, RECV_X + 10, BASE + HOUSE / 2, 0)[2] - 6, () => drawBox(ctx, cam, font, housing(RECV_X, 1, pRecv)));
+  const glow = (x: number, k: number, r: number) => {
+    const l = P(cam, x, BEAM_Y, 0);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const g = ctx.createRadialGradient(l[0], l[1], 1, l[0], l[1], r);
+    g.addColorStop(0, `rgba(255,214,150,${0.5 * k})`);
+    g.addColorStop(1, "rgba(255,214,150,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(l[0], l[1], r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+  q.add(P(cam, LAMP_X, BEAM_Y, 0)[2], () => {
+    drawSphere(ctx, cam, [LAMP_X, BEAM_Y, 0], 6 * Math.max(0.01, pLamp), WARM, clamp(pLamp));
+    if (lampLit > 0.02) glow(LAMP_X, lampLit, 26);
+  });
+  q.add(P(cam, RECV_X, BEAM_Y, 0)[2], () => {
+    drawSphere(ctx, cam, [RECV_X, BEAM_Y, 0], 6 * Math.max(0.01, pRecv), reach ? BRIGHT : COOL, clamp(pRecv));
+    if (reach) glow(RECV_X, 0.9, 24);
   });
 
   /* the parts that can be pointed at: each pin, the lamp, the receiver */
-  const reg = (id: string, x: number, y: number, z: number, r: number) => {
+  const reg = (id: string, x: number, y: number, z: number, r: number, zk = 2.6) => {
     const p = P(cam, x, y, z);
     const rr = Math.max(15, r * cam.s);
-    hot.push({ id, x: p[0], y: p[1], r: rr });
-    if (hover === id) q.add(1e9, () => drawPointer(ctx, p[0], p[1], rr * 0.95));
+    hot.push({ id, x: p[0], y: p[1], r: rr, wx: x, wy: y, wz: z, zoom: zk });
   };
   const IDS = ["t-recipient", "t-chain", "t-token", "t-amount", "t-deadline"];
-  PIN_X.forEach((x, i) => reg(IDS[i], x, BASE + H * 0.55, 0, 13));
-  reg("t-lamp", LAMP_X, BASE + 14, 0, 9);
-  reg("t-receiver", RECV_X, BASE + 14, 0, 9);
+  PIN_X.forEach((x, i) => reg(IDS[i], x, PB + H * 0.55, 0, 13));
+  reg("t-lamp", LAMP_X, BEAM_Y, 0, 9, 3.2);
+  reg("t-receiver", RECV_X, BEAM_Y, 0, 9, 3.2);
 
   q.flush();
 
   /* the beam, in the gaps between pins and at the window height, on top of the rail */
   if (sweep > 0.01) {
-    const y = BASE + SLOT_Y + SLOT_H / 2;
+    const y = BEAM_Y;
     const z = R;
     const segs: Array<[number, number]> = [];
     let from = LAMP_X + 4;
@@ -163,9 +203,9 @@ function draw(a: SceneArgs): void {
   PIN_X.forEach((x, i) => {
     const t = clamp(piece(form, 0.8 + i * 0.03, 0.14));
     if (t < 0.03) return;
-    const top = P(cam, x, BASE + H, 0);
+    const top = P(cam, x, PB + H + 3.2, 0);
     const bad = i === BAD && mis > 0.5;
-    ctx.globalAlpha = t;
+    ctx.globalAlpha = t * lab;
     ctx.strokeStyle = bad ? RED : GRAY;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -179,8 +219,8 @@ function draw(a: SceneArgs): void {
   ctx.restore();
 
   /* the labels sit just under the rail, below each end, so nothing crosses the pins or their tags */
-  const lamp = P(cam, LAMP_X, BASE + 14, 0);
-  const recv = P(cam, RECV_X, BASE + 14, 0);
+  const lamp = P(cam, LAMP_X, BEAM_Y, 0);
+  const recv = P(cam, RECV_X, BEAM_Y, 0);
   const lampFoot = P(cam, LAMP_X, 0, 24);
   const recvFoot = P(cam, RECV_X, 0, 24);
   drawLabel(ctx, font, {
@@ -191,7 +231,7 @@ function draw(a: SceneArgs): void {
     side: "right",
     lines: compact ? ["Reviewed"] : ["The details you reviewed", "five of eight, as an example"],
     color: AMBER,
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,
@@ -205,7 +245,7 @@ function draw(a: SceneArgs): void {
     side: "left",
     lines: ok ? (compact ? ["All match"] : ["All details match", "the light gets through"]) : compact ? ["Stopped"] : ["One detail changed", "the light stops there"],
     color: ok ? "rgba(236,232,223,1)" : RED,
-    alpha: pText,
+    alpha: pText * lab,
     w: a.w,
     f1,
     f2,

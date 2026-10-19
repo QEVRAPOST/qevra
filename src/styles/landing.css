@@ -590,10 +590,43 @@
   transition: opacity var(--t) var(--ease), color var(--t);
 }
 .gapfig .gbox {
-  fill: var(--bg);
   pointer-events: all;
   rx: 2px;
   transition: stroke-width var(--t), fill var(--t);
+}
+/* the slab under each card: a lit top face and a darker side face */
+.gapfig .gface {
+  stroke: var(--line-2);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.gapfig .gtop {
+  fill: color-mix(in srgb, var(--fg) 15%, var(--bg-2));
+}
+.gapfig .gside {
+  fill: color-mix(in srgb, var(--fg) 4%, var(--bg));
+}
+.gapfig .gp.on .gface {
+  stroke: currentColor;
+}
+.gapfig .gshadow {
+  fill: rgba(0, 0, 0, 0.5);
+}
+.gapfig .gico {
+  color: var(--exp);
+}
+.gapfig .gtagbox {
+  fill: transparent;
+  stroke: var(--line-2);
+  stroke-width: 1;
+}
+.gapfig .gpl {
+  fill: var(--bg);
+  stroke: var(--line-2);
+  stroke-width: 1;
+}
+.gapfig .grow-bg.z {
+  fill: color-mix(in srgb, var(--fg) 3%, transparent);
 }
 .gapfig .gsep,
 .gapfig .gline {
@@ -611,11 +644,11 @@
   stroke-dasharray: 2 2;
 }
 .gapfig .gtitle {
-  font: 500 13.5px var(--f-ui);
+  font: 500 13px var(--f-ui);
   fill: var(--fg);
 }
 .gapfig .gtag {
-  font: 400 10.5px var(--f-mono);
+  font: 400 10px var(--f-mono);
   fill: var(--muted);
 }
 .gapfig .gk {
@@ -669,9 +702,39 @@
   transition: opacity var(--t) var(--ease), color var(--t);
 }
 /* reports flow from the Swarm to Human review: this path exists, so it is the only one that moves */
-.gapfig .link .flow,
-.gapfig .link .packet {
+.gapfig .link .flow {
   opacity: 0;
+}
+.gapfig .pipe-back {
+  stroke: var(--bg);
+  stroke-width: 8;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+.gapfig .pipe {
+  stroke-width: 3.6;
+  stroke-linecap: round;
+}
+.gapfig .pipe-head {
+  fill: var(--fg-2);
+  stroke: none;
+}
+.gapfig .xbadge {
+  fill: var(--bg);
+  stroke: var(--fail);
+  stroke-width: 1.4;
+  opacity: 0.9;
+}
+.gapfig .gband {
+  stroke: var(--line-2);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.9;
+}
+.gapfig .gtick {
+  stroke: currentColor;
+  stroke-width: 1.2;
+  opacity: 0.7;
 }
 .gapfig .link.on {
   color: var(--fg);
@@ -686,17 +749,26 @@
     stroke-dashoffset: -16;
   }
 }
-/* a report travelling to the dock, over and over while the figure is on screen. It stops at the dock: the dock stays unlit. */
+/* reports travelling to the dock, one after another while the figure is on screen. They stop at the dock: the dock stays unlit. */
 .gapfig .packet {
-  fill: var(--exp);
-  stroke: none;
   --d: 66px;
+  opacity: 0;
 }
 .gapfig .packet.v {
-  --d: 52px;
+  --d: 54px;
+}
+.gapfig .packet-dot {
+  fill: var(--exp);
+  stroke: none;
+}
+.gapfig .packet-halo {
+  fill: var(--exp);
+  stroke: none;
+  opacity: 0.22;
 }
 .gapfig svg.live .packet {
-  animation: gappacket 3600ms var(--ease) 1800ms infinite;
+  animation: gappacket 3600ms var(--ease) infinite;
+  animation-delay: var(--pd, 1800ms);
 }
 .gapfig svg.live .packet.v {
   animation-name: gappacketv;
@@ -739,7 +811,8 @@
 }
 /* the missing path is drawn in once, never as a flow */
 .gapfig .cross .x {
-  opacity: 0.8;
+  opacity: 0.85;
+  stroke: var(--fail);
   stroke-width: 1.6;
 }
 .gapfig .cross .dotted {
@@ -1027,18 +1100,177 @@
   color: var(--fg-2);
   max-width: 70ch;
 }
-.lfoot {
+/* ---------- the curtain: the closing section stands still at the bottom of the window while the page scrolls off it ---------- */
+.curtain-main {
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
+  /* the page's lower edge casts a shadow on the curtain it uncovers */
+  box-shadow: 0 30px 60px -10px rgba(0, 0, 0, 0.7);
+}
+.curtain {
+  --rv: 1;
+  position: sticky;
+  bottom: 0;
+  z-index: 0;
+  display: flex;
+  /* never taller than the window, or its top could not be uncovered */
+  height: min(88vh, 800px);
+  height: min(88svh, 800px);
+  overflow: hidden;
+  background: var(--bg-2);
   border-top: 1px solid var(--line);
-  padding: 32px 0 64px;
+}
+.cu-glow {
+  position: absolute;
+  inset: auto -10% -30% -10%;
+  height: 90%;
+  background: radial-gradient(50% 60% at 50% 100%, rgba(227, 169, 59, 0.14), transparent 72%);
+  opacity: calc(0.25 + 0.75 * var(--rv));
+  pointer-events: none;
+}
+.cu-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 28px;
+  padding-top: clamp(28px, 6svh, 64px);
+  padding-bottom: 0;
+}
+.cu-top {
+  display: grid;
+  max-width: 62ch;
+  gap: 18px;
+  opacity: calc(0.15 + 0.85 * var(--rv));
+  transform: translateY(calc((1 - var(--rv)) * 36px));
+}
+.cu-kicker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 400 12.5px/1.3 var(--f-mono);
+  color: var(--muted);
+}
+.cu-kicker::before {
+  content: "";
+  width: 34px;
+  height: 1px;
+  background: var(--line-2);
+}
+.cu-title {
+  font-family: var(--f-display);
+  font-weight: 400;
+  font-size: clamp(34px, min(5vw, 8svh), 64px);
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.cu-body {
+  color: var(--fg-2);
+  font-size: 17px;
+  line-height: 1.55;
+  max-width: 48ch;
+}
+.cu-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-left: -14px;
+  opacity: calc(0.1 + 0.9 * var(--rv));
+}
+/* the sculpture on the right of the closing section; it is put together ring by ring once the curtain is uncovered */
+.cu-art {
+  position: absolute;
+  top: clamp(20px, 4svh, 48px);
+  right: 0;
+  width: min(50%, 700px);
+  height: 62%;
+  opacity: 0;
+  transform: translateX(24px);
+  transition:
+    opacity 700ms var(--ease),
+    transform 900ms var(--ease);
+  pointer-events: none;
+}
+.cu-art[data-built] {
+  opacity: 1;
+  transform: none;
+}
+.cu-art canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 1024px) {
+  .cu-art {
+    display: none;
+  }
+}
+/* the name, very large, as the floor of the page: it stands on the bottom edge of the window and about three quarters of its height shows */
+.cu-name {
+  margin: 0 0 -0.2em;
+  font-family: var(--f-display);
+  font-size: clamp(88px, min(23vw, 31svh, 300px), 400px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-align: center;
+  white-space: nowrap;
+  user-select: none;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--fg) 34%, var(--bg-2)), color-mix(in srgb, var(--fg) 10%, var(--bg-2)) 88%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  transform: translateY(calc((1 - var(--rv)) * 22%));
+}
+.cu-foot {
+  display: grid;
+  max-width: min(100%, 44rem);
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 13.5px;
+  position: relative;
+  z-index: 1;
 }
-.lfoot .wrap {
-  display: grid;
-  gap: 10px;
-}
-.lfoot p {
+.cu-foot p {
   max-width: 80ch;
+}
+/* a shorter window gives up the paragraph, so the name keeps its size and about three quarters of it shows */
+@media (max-height: 960px) {
+  .cu-body {
+    display: none;
+  }
+}
+@media (max-height: 820px) {
+  .cu-name {
+    font-size: clamp(88px, min(23vw, 27svh), 400px);
+  }
+}
+/* where the window is too small for a curtain, the closing section is an ordinary footer */
+@media (max-width: 760px), (max-height: 600px) {
+  .curtain {
+    position: relative;
+    height: auto;
+    min-height: 0;
+  }
+  .curtain-main {
+    box-shadow: none;
+  }
+  .cu-body {
+    display: block;
+  }
+  .cu-name {
+    font-size: clamp(64px, 24vw, 160px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cu-top,
+  .cu-name {
+    transform: none;
+  }
 }
 
 /* ---------- Launch App transition: the same sculpture, drawn by the same renderer, over the page ---------- */
@@ -1218,4 +1450,38 @@ html[data-launching] .stage canvas {
   .step {
     opacity: 1;
   }
+}
+
+/* ---------- splash screen: the ring sculpture assembling, then the screen lifts away ---------- */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  transition: transform 720ms cubic-bezier(0.76, 0, 0.24, 1);
+  will-change: transform;
+}
+.splash canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.splash-name {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 26px);
+  left: 0;
+  right: 0;
+  text-align: center;
+  font: 400 12.5px/1 var(--f-mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.splash[data-state="lift"] {
+  transform: translateY(-100%);
+}
+.splash[data-state="off"] {
+  display: none;
 }
