@@ -36,10 +36,11 @@ export const researchAgentOutputSchema = z
                 quote: boundedText(800),
               }).strict(),
             )
-            .max(4),
+            .min(1)
+            .max(2),
         }).strict(),
       )
-      .max(10),
+      .max(2),
     scopeLimitations: z.array(boundedText(500)).max(8),
   })
   .strict();

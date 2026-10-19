@@ -24,12 +24,29 @@ export interface RunEvent {
   message: string;
 }
 
+export type ProviderFinishReason = "stop" | "length" | "tool_calls" | "function_call" | "content_filter" | "other";
+
+export type ModelOutputValidationCategory =
+  | "provider_response_json_parse"
+  | "provider_response_shape"
+  | "structured_output_json_parse"
+  | "schema_validation"
+  | "truncated";
+
+export interface ModelOutputDiagnostic {
+  finishReason?: ProviderFinishReason;
+  validationCategory?: ModelOutputValidationCategory;
+  validationIssueCount?: number;
+  validationIssues?: Array<{ code: string; path: Array<string | number> }>;
+}
+
 export interface ModelUsage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
   reasoningTokens?: number;
   requestId?: string;
+  outputDiagnostics?: ModelOutputDiagnostic;
   rateLimit?: {
     tokensLimit?: number;
     tokensRemaining?: number;

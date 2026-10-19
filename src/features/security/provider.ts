@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import { GROQ_GPT_OSS_MODEL, isGroqGptOssProfile } from "./groq-profile";
-import type { ModelUsage } from "./model";
+import type { ModelOutputDiagnostic, ModelUsage, ProviderFinishReason } from "./model";
 
 export type ProviderErrorCode =
   | "provider_not_configured"
@@ -80,6 +80,7 @@ const providerUsageSchema = z.object({
 }).passthrough();
 const providerResponseSchema = z.object({
   choices: z.array(z.object({
+    finish_reason: z.string().nullable().optional(),
     message: z.object({ content: z.string().nullable().optional() }).passthrough(),
   }).passthrough()).min(1),
   usage: providerUsageSchema.optional(),
@@ -119,7 +120,12 @@ function parseRateLimitHeaders(headers: Headers): ModelUsage["rateLimit"] {
   };
 }
 
-function modelUsageFrom(value: unknown, rateLimit?: ModelUsage["rateLimit"], requestId?: string): ModelUsage | undefined {
+function modelUsageFrom(
+  value: unknown,
+  rateLimit?: ModelUsage["rateLimit"],
+  requestId?: string,
+  outputDiagnostics?: ModelOutputDiagnostic,
+): ModelUsage | undefined {
   const parsed = providerUsageSchema.safeParse(value);
   const usage: ModelUsage = {
     ...(parsed.success && parsed.data.prompt_tokens !== undefined ? { promptTokens: parsed.data.prompt_tokens } : {}),
@@ -129,9 +135,39 @@ function modelUsageFrom(value: unknown, rateLimit?: ModelUsage["rateLimit"], req
       ? { reasoningTokens: parsed.data.completion_tokens_details.reasoning_tokens }
       : {}),
     ...(requestId ? { requestId } : {}),
+    ...(outputDiagnostics ? { outputDiagnostics } : {}),
     ...(rateLimit ? { rateLimit } : {}),
   };
   return Object.keys(usage).length > 0 ? usage : undefined;
+}
+
+function safeFinishReason(value: unknown): ProviderFinishReason | undefined {
+  if (value === "stop" || value === "length" || value === "tool_calls" || value === "function_call" || value === "content_filter") {
+    return value;
+  }
+  return typeof value === "string" ? "other" : undefined;
+}
+
+function finishReasonFromResponse(raw: unknown): ProviderFinishReason | undefined {
+  const response = z.object({
+    choices: z.array(z.object({ finish_reason: z.unknown().optional() }).passthrough()).optional(),
+  }).passthrough().safeParse(raw);
+  return response.success ? safeFinishReason(response.data.choices?.[0]?.finish_reason) : undefined;
+}
+
+function safeValidationIssues(error: z.ZodError): Pick<ModelOutputDiagnostic, "validationIssueCount" | "validationIssues"> {
+  const pathSegment = (segment: PropertyKey): string | number => {
+    if (typeof segment === "number" && Number.isInteger(segment) && segment >= 0) return segment;
+    if (typeof segment === "string" && /^[A-Za-z_][A-Za-z0-9_-]{0,47}$/.test(segment)) return segment;
+    return "<field>";
+  };
+  return {
+    validationIssueCount: error.issues.length,
+    validationIssues: error.issues.slice(0, 8).map((issue) => ({
+      code: issue.code,
+      path: issue.path.slice(0, 8).map(pathSegment),
+    })),
+  };
 }
 
 async function readLimitedResponse(response: Response): Promise<string> {
@@ -311,7 +347,16 @@ export class OpenAICompatibleProvider implements ModelProvider {
     try {
       raw = JSON.parse(responseText) as unknown;
     } catch {
-      throw new ModelProviderError("provider_invalid_response", "The configured model provider returned invalid JSON.", false, response.status, rateLimit, requestId);
+      const outputDiagnostic: ModelOutputDiagnostic = { validationCategory: "provider_response_json_parse" };
+      throw new ModelProviderError(
+        "provider_invalid_response",
+        "The configured model provider returned invalid JSON.",
+        false,
+        response.status,
+        rateLimit,
+        requestId,
+        modelUsageFrom(undefined, rateLimit, requestId, outputDiagnostic),
+      );
     }
 
     const rawObject = z.record(z.string(), z.unknown()).safeParse(raw);
@@ -319,11 +364,35 @@ export class OpenAICompatibleProvider implements ModelProvider {
       const groqMetadata = z.object({ id: z.string().optional() }).passthrough().safeParse(rawObject.data.x_groq);
       if (groqMetadata.success) requestId = groqMetadata.data.id;
     }
-    const usage = modelUsageFrom(rawObject.success ? rawObject.data.usage : undefined, rateLimit, requestId);
+    const finishReason = finishReasonFromResponse(raw);
+    const initialDiagnostic: ModelOutputDiagnostic | undefined = finishReason ? { finishReason } : undefined;
+    let usage = modelUsageFrom(rawObject.success ? rawObject.data.usage : undefined, rateLimit, requestId, initialDiagnostic);
     const parsed = providerResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      const outputDiagnostic: ModelOutputDiagnostic = {
+        ...(initialDiagnostic ?? {}),
+        validationCategory: finishReason === "length" ? "truncated" : "provider_response_shape",
+        ...safeValidationIssues(parsed.error),
+      };
+      usage = modelUsageFrom(rawObject.success ? rawObject.data.usage : undefined, rateLimit, requestId, outputDiagnostic);
+      throw new ModelProviderError(
+        "provider_invalid_response",
+        "The configured model provider returned an invalid response shape.",
+        false,
+        response.status,
+        rateLimit,
+        requestId,
+        usage,
+      );
+    }
     requestId ??= parsed.success ? parsed.data.x_groq?.id : undefined;
     const content = parsed.success ? parsed.data.choices[0]?.message.content : undefined;
     if (typeof content !== "string") {
+      const outputDiagnostic: ModelOutputDiagnostic = {
+        ...(initialDiagnostic ?? {}),
+        validationCategory: finishReason === "length" ? "truncated" : "provider_response_shape",
+      };
+      usage = modelUsageFrom(rawObject.success ? rawObject.data.usage : undefined, rateLimit, requestId, outputDiagnostic);
       throw new ModelProviderError("provider_invalid_response", "The configured model provider returned no JSON content.", false, response.status, rateLimit, requestId, usage);
     }
 
@@ -331,12 +400,29 @@ export class OpenAICompatibleProvider implements ModelProvider {
     try {
       decoded = JSON.parse(content);
     } catch {
+      const outputDiagnostic: ModelOutputDiagnostic = {
+        ...(initialDiagnostic ?? {}),
+        validationCategory: finishReason === "length" ? "truncated" : "structured_output_json_parse",
+      };
+      usage = modelUsageFrom(rawObject.success ? rawObject.data.usage : undefined, rateLimit, requestId, outputDiagnostic);
       throw new ModelProviderError("provider_invalid_response", "The configured model provider returned malformed structured output.", false, response.status, rateLimit, requestId, usage);
     }
 
     const output = request.schema.safeParse(decoded);
     if (!output.success) {
+      const outputDiagnostic: ModelOutputDiagnostic = {
+        ...(initialDiagnostic ?? {}),
+        validationCategory: finishReason === "length" ? "truncated" : "schema_validation",
+        ...safeValidationIssues(output.error),
+      };
+      usage = modelUsageFrom(rawObject.success ? rawObject.data.usage : undefined, rateLimit, requestId, outputDiagnostic);
       throw new ModelProviderError("provider_output_invalid", "The model response did not match the required output schema.", false, response.status, rateLimit, requestId, usage);
+    }
+
+    if (finishReason === "length") {
+      const outputDiagnostic: ModelOutputDiagnostic = { ...(initialDiagnostic ?? {}), validationCategory: "truncated" };
+      usage = modelUsageFrom(rawObject.success ? rawObject.data.usage : undefined, rateLimit, requestId, outputDiagnostic);
+      throw new ModelProviderError("provider_output_invalid", "The model response reached the output token limit and may be incomplete.", false, response.status, rateLimit, requestId, usage);
     }
 
     if (this.isGroqGptOss && usage?.completionTokens !== undefined && usage.completionTokens > this.options.maxOutputTokens) {

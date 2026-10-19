@@ -42,7 +42,25 @@ export interface AgentExecutionState {
   startedAt?: string;
   completedAt?: string;
   errorCode?: string;
-  providerReportedUsage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  providerReportedUsage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    reasoningTokens?: number;
+    requestId?: string;
+    outputDiagnostics?: {
+      finishReason?: "stop" | "length" | "tool_calls" | "function_call" | "content_filter" | "other";
+      validationCategory?: "provider_response_json_parse" | "provider_response_shape" | "structured_output_json_parse" | "schema_validation" | "truncated";
+      validationIssueCount?: number;
+      validationIssues?: Array<{ code: string; path: Array<string | number> }>;
+    };
+    rateLimit?: {
+      tokensLimit?: number;
+      tokensRemaining?: number;
+      tokensReset?: string;
+      retryAfter?: string;
+    };
+  };
 }
 
 export interface ResearchEvidenceSource {

@@ -468,7 +468,7 @@ test("model provider parses structured output and enforces the response schema",
     maxOutputTokens: 128,
     timeoutMs: 1_000,
     fetchImpl: async () => Response.json({
-      choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ summary: "Missing fields" }) } }],
+      choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ summary: "Missing fields", private_diagnostic_marker: "must-not-be-stored" }) } }],
       usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
     }),
   });
@@ -478,7 +478,9 @@ test("model provider parses structured output and enforces the response schema",
       && error.code === "provider_output_invalid"
       && error.usage?.totalTokens === 7
       && error.usage.outputDiagnostics?.validationCategory === "schema_validation"
-      && error.usage.outputDiagnostics.validationIssues?.some((issue) => issue.path[0] === "claims" && issue.code === "invalid_type"),
+      && error.usage.outputDiagnostics.validationIssues?.some((issue) => issue.path[0] === "claims" && issue.code === "invalid_type")
+      && !JSON.stringify(error.usage).includes("private_diagnostic_marker")
+      && !JSON.stringify(error.usage).includes("must-not-be-stored"),
   );
 });
 
@@ -521,7 +523,7 @@ test("model provider classifies malformed structured JSON and truncation without
   await assert.rejects(
     makeProvider("malformed secret-shaped response", "stop").completeJson(request),
     (error: unknown) => error instanceof ModelProviderError
-      && error.usage?.outputDiagnostics?.validationCategory === "structured_json_parse"
+      && error.usage?.outputDiagnostics?.validationCategory === "structured_output_json_parse"
       && error.usage.outputDiagnostics.finishReason === "stop"
       && !JSON.stringify(error.usage).includes("malformed secret-shaped response"),
   );
@@ -531,6 +533,27 @@ test("model provider classifies malformed structured JSON and truncation without
       && error.usage?.outputDiagnostics?.validationCategory === "truncated"
       && error.usage.outputDiagnostics.finishReason === "length"
       && error.usage.totalTokens === 19,
+  );
+  await assert.rejects(
+    makeProvider(JSON.stringify({ summary: "Complete-looking but provider stopped at its token limit.", claims: [], scopeLimitations: [] }), "length").completeJson(request),
+    (error: unknown) => error instanceof ModelProviderError
+      && error.code === "provider_output_invalid"
+      && error.usage?.outputDiagnostics?.validationCategory === "truncated",
+  );
+
+  const invalidProviderJson = new OpenAICompatibleProvider({
+    apiKey: "mock-key",
+    model: "test-model",
+    baseUrl: "https://api.example.test/v1",
+    maxOutputTokens: 128,
+    timeoutMs: 1_000,
+    fetchImpl: async () => new Response("private raw body", { headers: { "content-type": "application/json" } }),
+  });
+  await assert.rejects(
+    invalidProviderJson.completeJson(request),
+    (error: unknown) => error instanceof ModelProviderError
+      && error.usage?.outputDiagnostics?.validationCategory === "provider_response_json_parse"
+      && !JSON.stringify(error.usage).includes("private raw body"),
   );
 });
 
@@ -559,6 +582,18 @@ test("Research Agent prompt enumerates the exact bounded schema and short exact-
   assert.match(researchPrompt, /exact quote/i);
   assert.match(researchPrompt, /empty array/i);
   assert.match(researchPrompt, /no markdown/i);
+});
+
+test("Research Agent schema caps quote-bearing claims to the documented response budget", () => {
+  assert.equal(researchAgentOutputSchema.safeParse(researchOutput).success, true);
+  assert.equal(researchAgentOutputSchema.safeParse({
+    ...researchOutput,
+    claims: [{ ...researchOutput.claims[0]!, evidence: [] }],
+  }).success, false);
+  assert.equal(researchAgentOutputSchema.safeParse({
+    ...researchOutput,
+    claims: [...researchOutput.claims, { ...researchOutput.claims[0]!, id: "third-claim" }],
+  }).success, false);
 });
 
 test("model provider classifies authentication, quota, malformed JSON, and schema failures without exposing bodies", async () => {
