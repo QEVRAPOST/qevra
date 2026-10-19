@@ -504,3 +504,17 @@ export function drawLabel(ctx: CanvasRenderingContext2D, font: string, o: LabelO
   });
   ctx.restore();
 }
+
+/** A ring around the part being pointed at. */
+export function drawPointer(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color = "rgba(255,233,184,0.95)"): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}

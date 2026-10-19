@@ -19,7 +19,7 @@ export function SwapView() {
     <section className="route" aria-labelledby="h-swap">
       <div className="rhead">
         <h1 id="h-swap">Simple swap</h1>
-        <p>One swap, with every detail reviewed before you sign.</p>
+        <p>{model.mode === "live" ? "Swaps remain disabled. No reviewed route, quote, or transaction interface is active." : "One swap, with every detail reviewed before you sign."}</p>
       </div>
       <div className="swapgrid">
         <Panel
@@ -37,6 +37,7 @@ export function SwapView() {
                 inputMode="decimal"
                 autoComplete="off"
                 value={s.amount}
+                disabled={model.mode === "live"}
                 aria-labelledby="amt-l"
                 aria-describedby="amt-h"
                 onChange={(e) => actions.setAmount(e.target.value)}

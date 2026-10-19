@@ -1,5 +1,6 @@
 "use client";
 
+import { buttonVariants } from "@/components/ui/Button";
 import Link from "next/link";
 import type { StoryStep } from "@/lib/content/landing";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
@@ -31,7 +32,7 @@ export function StepFrame({ step, active }: { step: StoryStep; active: boolean }
         </ol>
       ) : null}
       {step.cta ? (
-        <Link className="btn ghost small" href={step.cta.href}>
+        <Link className={buttonVariants({ variant: "ghost", size: "small" })} href={step.cta.href}>
           {step.cta.label}
         </Link>
       ) : null}

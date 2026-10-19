@@ -85,15 +85,15 @@ export function WalletView() {
   return (
     <section className="route" aria-labelledby="h-wallet">
       <div className="rhead">
-        <h1 id="h-wallet">Wallet and PQ Vault</h1>
-        <p>Your connected wallet and your QEVRA account are two different accounts.</p>
+        <h1 id="h-wallet">{model.mode === "live" ? "Read-only wallet" : "Wallet and PQ Vault"}</h1>
+        <p>{model.mode === "live" ? "Read-only external wallet observations. No QEVRA smart account exists in this mode." : "Your connected wallet and your QEVRA account are two different accounts."}</p>
       </div>
       <Panel
         title="Accounts"
         aside={
-          <Chip tone="exp" material="outline">
-            Experimental
-          </Chip>
+          model.mode === "live"
+            ? <Chip tone="unk" material="dotted">Read-only · no custody</Chip>
+            : <Chip tone="exp" material="outline">Experimental</Chip>
         }
       >
         <div className="ledgers">
@@ -102,15 +102,15 @@ export function WalletView() {
         </div>
         <p className="nototal">
           <StatusMaterial material="outline" />
-          <span>{TWO_LEDGERS}</span>
+          <span>{model.mode === "live" ? "No QEVRA ledger exists in this read-only mode. The external wallet balance is shown separately." : TWO_LEDGERS}</span>
         </p>
       </Panel>
       <Panel
-        title="Set up your QEVRA account"
+        title={model.mode === "live" ? "Read-only status" : "Set up your QEVRA account"}
         aside={
-          <Chip tone={complete ? "neutral" : "unk"} material={complete ? "outline" : "dotted"}>
-            {w.setupDone} of 4 done
-          </Chip>
+          model.mode === "live"
+            ? <Chip tone="unk" material="dotted">Account setup disabled</Chip>
+            : <Chip tone={complete ? "neutral" : "unk"} material={complete ? "outline" : "dotted"}>{w.setupDone} of 4 done</Chip>
         }
       >
         <ol className="setup" aria-label="Setup steps">

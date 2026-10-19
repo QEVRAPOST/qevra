@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { prefersReducedMotion } from "@/lib/aperture/motion";
-import { GAP_FIGURE_CAPTION, GAP_FIGURE_TITLE } from "@/lib/content/landing";
+import { GAP_FIGURE_CAPTION, GAP_FIGURE_TITLE, SWARM_DEFAULT_NOTE, type SwarmFocus } from "@/lib/content/landing";
 
 type Part = "swarm" | "review" | "wallet" | "gap";
 type Card = Exclude<Part, "gap">;
@@ -107,36 +107,41 @@ const CARDS: readonly CardDef[] = [
   },
 ];
 
-const HEAD = 34;
-const ROW = 26;
-const CARD_H = HEAD + ROW * 5 + 4;
 
 /** Where the cards go and where the paths between them run, for the wide layout (a row) and the narrow one (a column). */
 interface Layout {
   w: number;
   h: number;
   cw: number;
+  /** header height, row height, and the whole card's height (a header and five rows) */
+  head: number;
+  row: number;
+  ch: number;
   pos: Record<Card, { x: number; y: number }>;
 }
 
-const WIDE: Layout = { w: 780, h: 292, cw: 200, pos: { swarm: { x: 6, y: 20 }, review: { x: 290, y: 20 }, wallet: { x: 574, y: 20 } } };
-const NARROW: Layout = { w: 350, h: 650, cw: 292, pos: { swarm: { x: 8, y: 8 }, review: { x: 8, y: 244 }, wallet: { x: 8, y: 480 } } };
+const WIDE: Layout = { w: 780, h: 336, cw: 204, head: 38, row: 32, ch: 38 + 32 * 5 + 4, pos: { swarm: { x: 4, y: 20 }, review: { x: 288, y: 20 }, wallet: { x: 572, y: 20 } } };
+const NARROW: Layout = { w: 350, h: 650, cw: 292, head: 34, row: 26, ch: 34 + 26 * 5 + 4, pos: { swarm: { x: 8, y: 8 }, review: { x: 8, y: 244 }, wallet: { x: 8, y: 480 } } };
 
 interface FigureProps {
   layout: Layout;
   vertical: boolean;
   idp: string;
   sel: Part | null;
+  /** what the page is pointing at while nothing is selected (the list beside it, scrolled) */
+  focus: SwarmFocus | null;
   cls: (p: Part) => string;
   handlers: (p: Part) => Record<string, unknown>;
   phase: string;
 }
 
-function Figure({ layout, vertical, idp, sel, cls, handlers, phase }: FigureProps) {
-  const { w, h, cw, pos } = layout;
+function Figure({ layout, vertical, idp, sel, focus, cls, handlers, phase }: FigureProps) {
+  const { w, h, cw, pos, head: HEAD, row: ROW, ch: CARD_H } = layout;
   const rowY = (c: Card, i: number) => pos[c].y + HEAD + ROW * i + ROW / 2 + 4;
-  const reportOn = sel === "swarm" || sel === "review";
-  const crossOn = sel === "wallet" || sel === "gap";
+  const reportOn = sel === "swarm" || sel === "review" || (!sel && !!focus?.report);
+  const crossOn = sel === "wallet" || sel === "gap" || (!sel && !!focus?.parts.includes("gap"));
+  const gapOn = sel === "gap" || (!sel && !!focus?.parts.includes("gap"));
+  const hlRow = (c: Card, i: number) => !sel && !!focus?.rows[c]?.includes(i);
 
   /* the path that exists: Swarm "writes" to Human review "receives". The path that does not: review to wallet. */
   const report = vertical
@@ -165,7 +170,7 @@ function Figure({ layout, vertical, idp, sel, cls, handlers, phase }: FigureProp
 
   return (
     <svg
-      className={[vertical ? "gv" : "gw", sel ? "sel" : "", phase].filter(Boolean).join(" ")}
+      className={[vertical ? "gv" : "gw", sel || focus ? "sel" : "", phase].filter(Boolean).join(" ")}
       viewBox={`0 0 ${w} ${h}`}
       role="group"
       aria-labelledby={`${idp}-t`}
@@ -195,7 +200,8 @@ function Figure({ layout, vertical, idp, sel, cls, handlers, phase }: FigureProp
               {c.tag}
             </text>
             {c.rows.map(([k, v], ri) => (
-              <g key={k + ri} className="grow" style={{ ["--r" as string]: ri }}>
+              <g key={k + ri} className={hlRow(c.id, ri) ? "grow hl" : "grow"} style={{ ["--r" as string]: ri }}>
+                <rect className="grow-bg" x={x + 4} y={y + HEAD + ROW * ri + 1} width={cw - 8} height={ROW - 2} rx="1.5" stroke="none" />
                 {ri > 0 ? <path className="gline" d={`M${x + 10} ${y + HEAD + ROW * ri}H${x + cw - 10}`} /> : null}
                 <text className="gk" x={x + 14} y={rowY(c.id, ri)} stroke="none" fill="currentColor">
                   {k}
@@ -231,7 +237,7 @@ function Figure({ layout, vertical, idp, sel, cls, handlers, phase }: FigureProp
       {/* the air gap: the whole span from the Swarm to the wallet */}
       <g className={cls("gap")} {...handlers("gap")}>
         <rect className="hit" {...gapHit} stroke="none" />
-        <g className={sel === "gap" ? "gapline on" : "gapline"} style={{ ["--e" as string]: 2 }}>
+        <g className={gapOn ? "gapline on" : "gapline"} style={{ ["--e" as string]: 2 }}>
           {gapDrops ? <path className="gdrop" d={gapDrops} strokeDasharray="2 3" opacity=".5" /> : null}
           <path className="draw" d={gapPath} pathLength="1" opacity=".75" />
           <path d={gapTicks} opacity=".75" />
@@ -258,8 +264,14 @@ function Figure({ layout, vertical, idp, sel, cls, handlers, phase }: FigureProp
  * path to the wallet is never animated as a flow, only drawn as a crossed-out dotted line.
  * The figure draws itself in once, when it first comes into view (not at all under reduced motion).
  */
-export function SwarmDiagram() {
-  const [sel, setSel] = useState<Part | null>(null);
+export function SwarmDiagram({ focus = null, focusKey = -1 }: { focus?: SwarmFocus | null; focusKey?: number }) {
+  /* a selection belongs to the step it was made on: scrolling to another step hands the diagram back to the list */
+  const [picked, setPicked] = useState<{ part: Part; at: number } | null>(null);
+  const sel = picked && picked.at === focusKey ? picked.part : null;
+  const setSel = (next: Part | null | ((cur: Part | null) => Part | null)) => {
+    const part = typeof next === "function" ? next(sel) : next;
+    setPicked(part ? { part, at: focusKey } : null);
+  };
   /* "" renders everything (server, no JS, reduced motion); "arm" hides it, "in" plays the draw-in and "live" keeps the packet moving */
   const [phase, setPhase] = useState<"" | "arm" | "in">("");
   const [onScreen, setOnScreen] = useState(false);
@@ -293,7 +305,10 @@ export function SwarmDiagram() {
   }, []);
 
   const cls = (part: Part) => {
-    if (!sel) return "gp";
+    if (!sel) {
+      if (!focus) return "gp";
+      return focus.parts.includes(part) ? "gp on" : "gp off";
+    }
     if (sel === part) return "gp on";
     return RELATED[sel].includes(part) ? "gp rel" : "gp off";
   };
@@ -319,8 +334,8 @@ export function SwarmDiagram() {
   return (
     <figure className="gapfig" ref={figRef} onKeyDown={(e) => e.key === "Escape" && setSel(null)}>
       <div className="gapbox">
-        <Figure layout={WIDE} vertical={false} idp="gw" sel={sel} cls={cls} handlers={handlers} phase={fphase} />
-        <Figure layout={NARROW} vertical idp="gn" sel={sel} cls={cls} handlers={handlers} phase={fphase} />
+        <Figure layout={WIDE} vertical={false} idp="gw" sel={sel} focus={focus} cls={cls} handlers={handlers} phase={fphase} />
+        <Figure layout={NARROW} vertical idp="gn" sel={sel} focus={focus} cls={cls} handlers={handlers} phase={fphase} />
       </div>
       <p className="gleg" aria-hidden="true">
         <span className="k solid" />a path that exists in the design
@@ -341,8 +356,16 @@ export function SwarmDiagram() {
               Show the whole diagram
             </Button>
           </>
+        ) : focus ? (
+          <>
+            <p className="gi-t">
+              <StatusMaterial material={focus.parts.includes("gap") || focus.parts.includes("wallet") ? "solid" : "outline"} />
+              <b>{focus.ref}</b>
+            </p>
+            <p className="gi-b">{focus.note}</p>
+          </>
         ) : (
-          <p className="gi-h">Select a part to read what it can do, and what it cannot.</p>
+          <p className="gi-h">{SWARM_DEFAULT_NOTE}</p>
         )}
       </div>
       <figcaption>{GAP_FIGURE_CAPTION}</figcaption>

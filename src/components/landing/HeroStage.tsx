@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/Button";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup } from "@/components/ui/ToggleGroup";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { clamp } from "@/lib/aperture/math";
 import { prefersReducedMotion } from "@/lib/aperture/motion";
 import { scrollBehavior, scrollToFrame } from "@/lib/aperture/scroll";
@@ -13,6 +17,10 @@ import {
   HERO,
   HERO_FACTS,
   HERO_LOCK_CAPTIONS,
+  HERO_PARTS,
+  HERO_POINT_HINT,
+  HERO_ROTATE_HINT,
+  HERO_ROTATE_LABEL,
   HERO_SCENES,
   HERO_SCROLL_HINT,
   HERO_TABS_LABEL,
@@ -28,7 +36,7 @@ const HYST = 0.02;
 /** The Intent Lock object breaks its own line of light once the visitor has scrolled this far into it. */
 const AUTO_BREAK_AT = 0.62;
 /** Auto tour: when each object arrives, in ms from load. It ends back on the first object. */
-const TOUR = { lock: 3400, lockBreak: 5300, swarm: 7000, home: 10400 } as const;
+const TOUR = { sway: 1900, lock: 3400, lockBreak: 5300, swarm: 7000, home: 10400 } as const;
 
 type SceneIndex = 0 | 1 | 2;
 
@@ -42,7 +50,7 @@ function HeroText({ activeFact }: { activeFact: number }) {
       <div className="ctas">
         <LaunchLink>Launch App</LaunchLink>
         <a
-          className="btn ghost"
+          className={buttonVariants({ variant: "ghost" })}
           href="#swarm"
           onClick={(e) => {
             e.preventDefault();
@@ -85,6 +93,10 @@ export function HeroStage() {
   const [scene, setScene] = useState<SceneIndex>(0);
   const [tryValue, setTryValue] = useState<0 | 1 | null>(null);
   const [broken, setBroken] = useState<0 | 1>(0);
+  /** the part being pointed at (a hover, or a tap on touch), and whether the visitor has turned the object */
+  const [partId, setPartId] = useState<string | null>(null);
+  const [turned, setTurned] = useState(false);
+  const [hinted, setHinted] = useState(false);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const pinRef = useRef<HTMLDivElement>(null);
@@ -95,6 +107,7 @@ export function HeroStage() {
   const tryRef = useRef<0 | 1 | null>(null);
   const gotoRef = useRef<(i: SceneIndex) => void>(() => {});
   const syncRef = useRef<() => void>(() => {});
+  const stageRef = useRef<StageScene | null>(null);
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -104,11 +117,21 @@ export function HeroStage() {
     if (!cv || !fig || !track || !pin) return;
     let stage: StageScene;
     try {
-      stage = new StageScene(cv, { f0: 0, f1: 0, f2: 0, u: 0.5, mis: 0 });
+      stage = new StageScene(cv, { f0: 0, f1: 0, f2: 0, u: 0.5, mis: 0, ry: 0, rp: 0 });
     } catch {
       return; /* no Canvas 2D: the copy and the tabs still work */
     }
+    stageRef.current = stage;
     stage.bindPointer(fig);
+    stage.bindInteraction(cv);
+    stage.onHover = (id) => {
+      setPartId(id);
+      cv.style.cursor = id ? "pointer" : "";
+    };
+    stage.onView = (t) => {
+      setTurned(t);
+      if (t) setHinted(true);
+    };
 
     let cur = -1;
     let u = 0.5;
@@ -158,6 +181,7 @@ export function HeroStage() {
       const prev = cur;
       cur = next;
       setScene(next);
+      stage.setScene(next);
       if (tryRef.current != null && next !== 1) {
         tryRef.current = null;
         setTryValue(null);
@@ -233,12 +257,16 @@ export function HeroStage() {
       setScene(s);
       u = clamp((progress() - s / N) * N);
       tabsRef.current?.style.setProperty("--hu", u.toFixed(3));
-      stage.jump({ f0: s === 0 ? 1 : 0, f1: s === 1 ? 1 : 0, f2: s === 2 ? 1 : 0, u, mis: 0 });
+      stage.jump({ f0: s === 0 ? 1 : 0, f1: s === 1 ? 1 : 0, f2: s === 2 ? 1 : 0, u, mis: 0, ry: 0, rp: 0 });
+      stage.setScene(s);
       syncMis();
     } else {
       tourOn = true;
       show(0);
       timers.push(
+        /* a small sway once the first object is built, to show it can be turned (not if the visitor already has) */
+        window.setTimeout(() => tourOn && !stage.userRotated && stage.rotateBy(0.32, 0, false), TOUR.sway),
+        window.setTimeout(() => tourOn && !stage.userRotated && stage.resetView(), TOUR.sway + 850),
         window.setTimeout(() => tourOn && show(1), TOUR.lock),
         window.setTimeout(() => {
           if (!tourOn) return;
@@ -276,6 +304,7 @@ export function HeroStage() {
       timers.forEach((t) => window.clearTimeout(t));
       gotoRef.current = () => {};
       syncRef.current = () => {};
+      stageRef.current = null;
       stage.dispose();
     };
   }, []);
@@ -287,8 +316,10 @@ export function HeroStage() {
   }, []);
 
   const s = HERO_SCENES[scene];
+  const part = partId ? HERO_PARTS[partId] : null;
   const cap = scene === 1 ? HERO_LOCK_CAPTIONS[broken] : s;
   const showTry = scene === 1;
+  const turnBy = (d: number) => stageRef.current?.rotateBy(d);
 
   return (
     <section className="hstage" id="hero" aria-label="QEVRA at a glance" data-scene={scene}>
@@ -306,42 +337,86 @@ export function HeroStage() {
                     </span>
                     {s.name}
                   </p>
+                  <TooltipProvider>
+                    <div className="hrot" role="group" aria-label={HERO_ROTATE_LABEL}>
+                      <span className={hinted ? "hrot-hint off" : "hrot-hint"} aria-hidden="true">
+                        {HERO_ROTATE_HINT}
+                      </span>
+                      <RotateButton label="Rotate left" onClick={() => turnBy(-0.35)}>
+                        <ChevronLeft aria-hidden="true" />
+                      </RotateButton>
+                      <RotateButton label="Rotate right" onClick={() => turnBy(0.35)}>
+                        <ChevronRight aria-hidden="true" />
+                      </RotateButton>
+                      <RotateButton label="Reset view" onClick={() => stageRef.current?.resetView()} disabled={!turned}>
+                        <RotateCcw aria-hidden="true" />
+                      </RotateButton>
+                    </div>
+                  </TooltipProvider>
                 </div>
-                <div className="htabs" ref={tabsRef}>
-                  <div className="htabs-row" role="group" aria-label={HERO_TABS_LABEL}>
-                    {HERO_SCENES.map((h, i) => (
-                      <button key={h.tab} type="button" className="htab" aria-pressed={scene === i} onClick={() => gotoRef.current(i as SceneIndex)}>
-                        {h.tab}
-                      </button>
-                    ))}
+                <Tabs value={String(scene)} onValueChange={(v) => gotoRef.current(Number(v) as SceneIndex)} activationMode="manual" className="contents">
+                  <div className="htabs" ref={tabsRef}>
+                    <TabsList className="htabs-row" aria-label={HERO_TABS_LABEL}>
+                      {HERO_SCENES.map((h, i) => (
+                        <TabsTrigger key={h.tab} value={String(i)} className="htab">
+                          {h.tab}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                    <span className="hhint" aria-hidden="true">
+                      {HERO_SCROLL_HINT}
+                    </span>
                   </div>
-                  <span className="hhint" aria-hidden="true">
-                    {HERO_SCROLL_HINT}
-                  </span>
-                </div>
-                <figcaption className="pcap">
-                  <p className="cap" aria-live="polite">
-                    <b>{cap.lead}</b> {cap.text}
-                  </p>
-                  {/* inert while hidden, so keyboard focus never lands on an invisible control */}
-                  <div className={showTry ? "tryit" : "tryit off"} inert={!showTry}>
-                    <span>{TRY_LABEL}</span>
-                    <ToggleGroup
-                      label={TRY_GROUP_LABEL}
-                      options={[
-                        { value: 0, label: TRY_OPTIONS[0] },
-                        { value: 1, label: TRY_OPTIONS[1] },
-                      ]}
-                      value={tryValue ?? broken}
-                      onChange={onTry}
-                    />
+                  <div className="pcap">
+                    <div aria-live="polite" className="min-w-0">
+                      <TabsContent value={String(scene)} className="m-0">
+                        <p className="cap">
+                          {part ? (
+                            <>
+                              <b>{part.name}.</b> {part.text}
+                            </>
+                          ) : (
+                            <>
+                              <b>{cap.lead}</b> {cap.text} <span className="cap-hint">{HERO_POINT_HINT}.</span>
+                            </>
+                          )}
+                        </p>
+                      </TabsContent>
+                    </div>
+                    {/* inert while hidden, so keyboard focus never lands on an invisible control */}
+                    <div className={showTry ? "tryit" : "tryit off"} inert={!showTry}>
+                      <span>{TRY_LABEL}</span>
+                      <ToggleGroup
+                        label={TRY_GROUP_LABEL}
+                        options={[
+                          { value: 0, label: TRY_OPTIONS[0] },
+                          { value: 1, label: TRY_OPTIONS[1] },
+                        ]}
+                        value={tryValue ?? broken}
+                        onChange={onTry}
+                      />
+                    </div>
                   </div>
-                </figcaption>
+                </Tabs>
               </figure>
             </div>
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+/** A small icon button with a name on hover and focus. */
+function RotateButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" className="hrot-btn" aria-label={label} onClick={onClick} disabled={disabled}>
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

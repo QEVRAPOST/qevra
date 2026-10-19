@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { ArrowIcon } from "@/components/ui/ArrowIcon";
+import { buttonVariants } from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
 import { useLaunch } from "./LaunchTransition";
 
 interface LaunchLinkProps {
-  /** extra classes after "btn primary" */
+  /** extra classes after the primary button's own */
   className?: string;
   size?: "default" | "small";
   children?: React.ReactNode;
@@ -14,7 +16,7 @@ interface LaunchLinkProps {
 /** The Launch App button: a real link to /app that the curtain transition enhances. */
 export function LaunchLink({ className, size = "default", children = "Launch App" }: LaunchLinkProps) {
   const api = useLaunch();
-  const cls = ["btn", "primary", size === "small" ? "small" : "", className ?? ""].filter(Boolean).join(" ");
+  const cls = cn(buttonVariants({ size }), className);
   return (
     <Link
       href="/app"
