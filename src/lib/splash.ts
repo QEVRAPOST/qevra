@@ -1,13 +1,17 @@
 /*
- * The splash screen (the ring sculpture assembling, as in the Launch App transition) plays once per tab session, before the
- * landing hero builds. This module is the only thing the hero and the splash share:
- *   - `splashExpected()` says whether a splash is about to play (the splash element is server-rendered as `data-state="run"`;
- *     an inline script right after it turns that to `off` before first paint when it should not play: reduced motion,
- *     already seen this session, a deep link, or a page that opened scrolled)
+ * The splash screen (the ring sculpture assembling, as in the Launch App transition) plays on every full load of the landing
+ * page, before the hero builds. It does not play again when you come back to the landing from the app by a link (the page
+ * is not reloaded then), and not for reduced motion or for a link to a section (`/#status`).
+ *   - `splashExpected()` says whether a splash is waiting to play (the element is server-rendered as `data-state="run"`)
  *   - `whenSplashDone(cb)` runs `cb` when it has finished, or at once if there is none
- * `sessionStorage` is only a convenience (a visitor who blocks it sees the splash once per page load); every access is guarded.
+ * The page needs no script to decide before first paint: the server-rendered splash covers it, and CSS removes the cover for
+ * reduced motion and for a link to a section.
+ *
+ * SPLASH_ONCE_PER_SESSION: set it to true to play it only on the first load of a tab session. Whatever its value, a tab whose
+ * `sessionStorage` has "splash-seen" set skips it (the test harness uses that; a visitor never sets it).
  */
 export const SPLASH_SEEN_KEY = "splash-seen";
+export const SPLASH_ONCE_PER_SESSION = false;
 
 let done = false;
 const waiting = new Set<() => void>();
@@ -26,6 +30,7 @@ export function splashSeen(): boolean {
 }
 
 export function markSplashSeen(): void {
+  if (!SPLASH_ONCE_PER_SESSION) return;
   try {
     window.sessionStorage.setItem(SPLASH_SEEN_KEY, "1");
   } catch {
@@ -66,9 +71,3 @@ export function finishSplash(): void {
   waiting.clear();
   run.forEach((cb) => cb());
 }
-
-/**
- * The inline script that runs right after the splash element, before first paint: when no splash should play it switches the
- * element off, so the page is never covered. It must come directly after the element it switches.
- */
-export const SPLASH_GATE_SCRIPT = `(function(){var s=document.currentScript&&document.currentScript.previousElementSibling;if(!s)return;try{if(sessionStorage.getItem("${SPLASH_SEEN_KEY}")==="1"||matchMedia("(prefers-reduced-motion: reduce)").matches||location.hash||window.scrollY>40){s.setAttribute("data-state","off")}}catch(e){s.setAttribute("data-state","off")}})();`;

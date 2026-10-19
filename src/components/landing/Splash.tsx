@@ -11,7 +11,7 @@ import { finishSplash, markSplashSeen, splashExpected, splashMounted, splashSeen
  * Splash screen: the same sculpture as the Launch App transition, drawn by the same renderer. The rings start scattered and
  * far apart, are dragged into place one after another from the top, the stack closes, the post-quantum and Swarm rings join,
  * and a beam of light passes down the aligned notches. Then the screen lifts away like a curtain and the hero builds beneath it.
- * About 2.2 seconds, once per tab session, never with reduced motion.
+ * About 2.2 seconds, on every full load of the page, never with reduced motion.
  *
  * It cannot hold the page: any key, click, touch or scroll skips it; a timer ends it at 4.5 seconds whatever happens;
  * a canvas that fails to start ends it at once. The page beneath is already there (the markup is server-rendered).
@@ -32,7 +32,7 @@ export function Splash({ projectName }: { projectName: string }) {
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
-    if (!splashExpected() || splashSeen() || prefersReducedMotion() || window.scrollY > 40 || window.location.hash) {
+    if (!splashExpected() || splashSeen() || prefersReducedMotion() || window.location.hash) {
       el.dataset.state = "off";
       finishSplash();
     }

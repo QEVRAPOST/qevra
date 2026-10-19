@@ -23,16 +23,19 @@ const PIN_X = [-64, -32, 0, 32, 64];
 const BAD = 3;
 const R = 11;
 const BASE = 8;
-/** each pin stands on its own block, a tier above the rail */
+/** each pin stands on its own block, a tier above the rail, and on a round plate on that block: three tiers under the pipe */
 const PED = 4;
 const PB = BASE + PED;
+const FLANGE = 2.6;
+/** where the pipe itself starts: on top of the plate */
+const PF = PB + FLANGE;
 const H = 38;
 const SLOT_Y = 21;
 const SLOT_H = 8;
 const LAMP_X = -98;
 const RECV_X = 98;
 /** the height of the line of light: through the middle of the slots */
-const BEAM_Y = PB + SLOT_Y + SLOT_H / 2;
+const BEAM_Y = PF + SLOT_Y + SLOT_H / 2;
 
 function draw(a: SceneArgs): void {
   const { ctx, cam, q, font, form, mis, compact, hot, zoom } = a;
@@ -70,19 +73,19 @@ function draw(a: SceneArgs): void {
     const shifted = i === BAD ? 9 * smooth(0, 0.7, mis) : 0;
     const reached = head > x + R ? 1 : 0;
     const lit = reached * (i >= BAD ? 1 - blocked : 1) * (i === BAD ? 1 - smooth(0, 0.5, mis) : 1);
-    const c: V3 = [x, PB, 0];
+    const c: V3 = [x, PF, 0];
     const body = Math.max(0.5, H * p);
     const moved = i === BAD && mis > 0.3;
     /* the pedestal block on the rail, and the shadow the pin throws on it */
-    const ped: BoxOpts = { c: [x, BASE + PED / 2, 0], size: [29, PED * Math.max(0.05, ease.out(p * 1.6)), 29], tone: [104, 96, 84], alpha: clamp(p * 4) };
+    const ped: BoxOpts = { c: [x, BASE + PED / 2, 0], size: [32, PED * Math.max(0.05, ease.out(p * 1.6)), 32], tone: [104, 96, 84], alpha: clamp(p * 4) };
     q.add(P(cam, x, BASE + PED / 2, 0)[2] - 2, () => {
       drawBox(ctx, cam, font, { ...ped, c: [x, BASE + (PED * Math.max(0.05, ease.out(p * 1.6))) / 2, 0] });
       drawShadow(ctx, cam, [x, PB + 0.2, 0], R * 1.45, R * 1.45, 0.45 * clamp(p * 3));
     });
-    /* the pin: a collar on the block, the pipe standing in it, and a head carrying the detail's initial.
-       The collar is drawn first (the pipe rises out of its top face); the head sits on top of the pipe, so it comes after it. */
-    const dz = P(cam, x, PB + H / 2, 0)[2];
-    q.add(dz - 0.4, () => drawCyl(ctx, cam, font, { c: [x, PB, 0], r: R + 2.1, h: 3.2, tone: WARM, alpha: clamp(p * 4) }));
+    /* the pin: a round plate on the block, the pipe standing ON the plate (not in it), and a head carrying the detail's initial.
+       The plate is drawn first and the pipe starts at its top face; the head sits on top of the pipe, so it comes after it. */
+    const dz = P(cam, x, PF + H / 2, 0)[2];
+    q.add(dz - 0.4, () => drawCyl(ctx, cam, font, { c: [x, PB, 0], r: R + 3.4, h: FLANGE, tone: WARM, alpha: clamp(p * 4) }));
     q.add(dz, () =>
       drawCyl(ctx, cam, font, {
         c,
@@ -97,7 +100,7 @@ function draw(a: SceneArgs): void {
       const pa = clamp((p - 0.5) / 0.4);
       q.add(dz + 0.5, () =>
         drawCyl(ctx, cam, font, {
-          c: [x, PB + H, 0],
+          c: [x, PF + H, 0],
           r: R + 1.8,
           h: 2.6,
           tone: moved ? BRIGHT : WARM,
@@ -144,7 +147,7 @@ function draw(a: SceneArgs): void {
     hot.push({ id, x: p[0], y: p[1], r: rr, wx: x, wy: y, wz: z, zoom: zk });
   };
   const IDS = ["t-recipient", "t-chain", "t-token", "t-amount", "t-deadline"];
-  PIN_X.forEach((x, i) => reg(IDS[i], x, PB + H * 0.55, 0, 13));
+  PIN_X.forEach((x, i) => reg(IDS[i], x, PF + H * 0.55, 0, 13));
   reg("t-lamp", LAMP_X, BEAM_Y, 0, 9, 3.2);
   reg("t-receiver", RECV_X, BEAM_Y, 0, 9, 3.2);
 
@@ -203,7 +206,7 @@ function draw(a: SceneArgs): void {
   PIN_X.forEach((x, i) => {
     const t = clamp(piece(form, 0.8 + i * 0.03, 0.14));
     if (t < 0.03) return;
-    const top = P(cam, x, PB + H + 3.2, 0);
+    const top = P(cam, x, PF + H + 3.2, 0);
     const bad = i === BAD && mis > 0.5;
     ctx.globalAlpha = t * lab;
     ctx.strokeStyle = bad ? RED : GRAY;

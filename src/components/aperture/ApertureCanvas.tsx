@@ -11,6 +11,8 @@ interface ApertureCanvasProps {
   rate?: number;
   fitExplode?: number;
   labels?: boolean;
+  /** Draw the floor under the stack. Defaults to true. */
+  floor?: boolean;
   /** Pointer parallax and ring hover on this canvas. Touch pointers never drive either. */
   pointer?: boolean;
   /** Accessible name. The engraved text on the rings is decorative; describe the figure here. */
@@ -36,6 +38,7 @@ export function ApertureCanvas({
   rate,
   fitExplode,
   labels,
+  floor,
   pointer = false,
   label,
   describedBy,
@@ -49,7 +52,7 @@ export function ApertureCanvas({
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const scene = new ApertureScene(canvas, { mode, rate, fitExplode, labels, onHoverChange, interactive, onRingsChange }, initial);
+    const scene = new ApertureScene(canvas, { mode, rate, fitExplode, labels, floor, onHoverChange, interactive, onRingsChange }, initial);
     if (pointer) scene.bindPointer(canvas);
     scene.render();
     onSceneChange?.(scene);
@@ -57,7 +60,7 @@ export function ApertureCanvas({
       onSceneChange?.(null);
       scene.dispose();
     };
-  }, [mode, initial, rate, fitExplode, labels, pointer, onSceneChange, onHoverChange, interactive, onRingsChange]);
+  }, [mode, initial, rate, fitExplode, labels, floor, pointer, onSceneChange, onHoverChange, interactive, onRingsChange]);
 
   return <canvas ref={ref} role="img" aria-label={label} aria-describedby={describedBy} />;
 }

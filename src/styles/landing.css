@@ -1121,6 +1121,13 @@
   background: var(--bg-2);
   border-top: 1px solid var(--line);
 }
+.cu-water {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 .cu-glow {
   position: absolute;
   inset: auto -10% -30% -10%;
@@ -1484,4 +1491,24 @@ html[data-launching] .stage canvas {
 }
 .splash[data-state="off"] {
   display: none;
+}
+/* no script is needed to leave the page uncovered where there should be no splash: reduced motion, and a link to a section */
+@media (prefers-reduced-motion: reduce) {
+  .splash {
+    display: none;
+  }
+}
+html:has(:target) .splash {
+  display: none;
+}
+/* the safety net: if the script never runs, the cover leaves by itself after six seconds */
+.splash[data-state="run"] {
+  animation: splash-failsafe 1ms linear 6s forwards;
+}
+@keyframes splash-failsafe {
+  to {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
 }

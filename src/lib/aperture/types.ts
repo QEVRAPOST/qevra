@@ -66,6 +66,8 @@ export interface ApertureOptions {
   fitExplode?: number;
   /** Show callouts and engraved labels. Defaults to true. */
   labels?: boolean;
+  /** Draw the floor (the pool of light and the engraved rings) under the stack. Defaults to true. The closing section turns it off and lays water there instead. */
+  floor?: boolean;
   /** Called with the hovered ring index (0..7), or -1 when none. Never called inside the draw function. */
   onHoverChange?: (ringIndex: number) => void;
 }
@@ -89,6 +91,10 @@ export interface SceneView {
     cx: number;
     /** where the stack axis sits before zoom and pan: used to centre the sculpture in the launch transition */
     cx0: number;
+    /** y of the base plate's top centre, and the camera's sine and cosine of its elevation (the closing section reads them to lay water at the base) */
+    cy: number;
+    sinT: number;
+    cosT: number;
     /** front-wall band of each ring in canvas pixels, ring 0 at the base */
     bands: Array<{ y0: number; y1: number; half: number }>;
   };

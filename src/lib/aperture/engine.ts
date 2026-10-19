@@ -32,7 +32,7 @@ export function resolveMonoFamily(el: Element): string {
 
 export class ApertureScene implements SceneView {
   readonly opts: ApertureOptions;
-  readonly layout = { hover: -1, s: 1, cx: 0, cx0: 0, bands: [] as Array<{ y0: number; y1: number; half: number }> };
+  readonly layout = { hover: -1, s: 1, cx: 0, cx0: 0, cy: 0, sinT: 0.48, cosT: 0.88, bands: [] as Array<{ y0: number; y1: number; half: number }> };
   readonly pointer = { x: -1e4, y: -1e4, inside: false };
   /** extra turn the user has given each ring, radians. Interactive scenes only. */
   readonly ringRot: number[] = new Array<number>(RING_COUNT).fill(0);

@@ -127,23 +127,26 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
   const allLit = litFrom[0];
 
   /* ---- background pool of light on the floor ---- */
-  ctx.save();
-  const floorY = g.cy + 4 * sinT * s;
-  const floor = ctx.createRadialGradient(g.cx, floorY + 12 * s, 6, g.cx, floorY + 12 * s, A_BASE_R * s * 1.5);
-  floor.addColorStop(0, `rgba(255,233,184,${0.2 * allLit + 0.05})`);
-  floor.addColorStop(0.5, `rgba(255,233,184,${0.05 * allLit + 0.012})`);
-  floor.addColorStop(1, "rgba(255,233,184,0)");
-  ctx.translate(g.cx, floorY + 12 * s);
-  ctx.scale(1, sinT);
-  ctx.translate(-g.cx, -(floorY + 12 * s));
-  ctx.fillStyle = floor;
-  ctx.beginPath();
-  ctx.arc(g.cx, floorY + 12 * s, A_BASE_R * s * 1.5, 0, TAU);
-  ctx.fill();
-  ctx.restore();
+  const drawFloor = sc.opts.floor !== false;
+  if (drawFloor) {
+    ctx.save();
+    const floorY = g.cy + 4 * sinT * s;
+    const floor = ctx.createRadialGradient(g.cx, floorY + 12 * s, 6, g.cx, floorY + 12 * s, A_BASE_R * s * 1.5);
+    floor.addColorStop(0, `rgba(255,233,184,${0.2 * allLit + 0.05})`);
+    floor.addColorStop(0.5, `rgba(255,233,184,${0.05 * allLit + 0.012})`);
+    floor.addColorStop(1, "rgba(255,233,184,0)");
+    ctx.translate(g.cx, floorY + 12 * s);
+    ctx.scale(1, sinT);
+    ctx.translate(-g.cx, -(floorY + 12 * s));
+    ctx.fillStyle = floor;
+    ctx.beginPath();
+    ctx.arc(g.cx, floorY + 12 * s, A_BASE_R * s * 1.5, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
 
   /* floor engraving: concentric ellipses */
-  if (!glyph) {
+  if (!glyph && drawFloor) {
     ctx.save();
     ctx.lineWidth = 1;
     for (let k = 1; k <= 3; k++) {
@@ -253,6 +256,9 @@ export function drawAperture(ctx: CanvasRenderingContext2D, w: number, h: number
   sc.layout.s = s;
   sc.layout.cx = g.cx;
   sc.layout.cx0 = cx0;
+  sc.layout.cy = g.cy;
+  sc.layout.sinT = sinT;
+  sc.layout.cosT = cosT;
   sc.layout.bands.length = 0;
   for (let i = 0; i < 8; i++) {
     const yTop = 4 + i * (A_H + gap) + A_H;

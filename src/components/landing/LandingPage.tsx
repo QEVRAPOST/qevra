@@ -1,6 +1,5 @@
 import { StatusBar } from "@/components/ui/StatusBar";
 import { getProjectName } from "@/lib/project-brand";
-import { SPLASH_GATE_SCRIPT } from "@/lib/splash";
 import { STATUS_BAR_ITEMS } from "@/lib/content/status";
 import { StatusBand, SwarmLimitsBand } from "./LandingBands";
 import { Curtain } from "./Curtain";
@@ -22,8 +21,6 @@ export function LandingPage() {
         <style>{".splash{display:none}"}</style>
       </noscript>
       <Splash projectName={projectName} />
-      {/* switches the splash off before first paint when it should not play (it must come right after the element) */}
-      <script dangerouslySetInnerHTML={{ __html: SPLASH_GATE_SCRIPT }} />
       <StatusBar items={STATUS_BAR_ITEMS} />
       <LandingNav />
       <main id="main" tabIndex={-1} className="curtain-main">
