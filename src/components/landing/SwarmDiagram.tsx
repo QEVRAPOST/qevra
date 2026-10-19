@@ -117,11 +117,40 @@ interface Layout {
   head: number;
   row: number;
   ch: number;
+  /** how thick the slab is: the depth of the block each card stands on */
+  d: number;
   pos: Record<Card, { x: number; y: number }>;
 }
 
-const WIDE: Layout = { w: 780, h: 336, cw: 204, head: 38, row: 32, ch: 38 + 32 * 5 + 4, pos: { swarm: { x: 4, y: 20 }, review: { x: 288, y: 20 }, wallet: { x: 572, y: 20 } } };
-const NARROW: Layout = { w: 350, h: 650, cw: 292, head: 34, row: 26, ch: 34 + 26 * 5 + 4, pos: { swarm: { x: 8, y: 8 }, review: { x: 8, y: 244 }, wallet: { x: 8, y: 480 } } };
+const WIDE: Layout = { w: 800, h: 344, cw: 204, head: 40, row: 34, ch: 40 + 34 * 5 + 4, d: 10, pos: { swarm: { x: 6, y: 30 }, review: { x: 294, y: 30 }, wallet: { x: 582, y: 30 } } };
+const NARROW: Layout = { w: 350, h: 668, cw: 286, head: 36, row: 26, ch: 36 + 26 * 5 + 4, d: 8, pos: { swarm: { x: 8, y: 16 }, review: { x: 8, y: 252 }, wallet: { x: 8, y: 488 } } };
+
+/** The icon in a card's header: 16 by 16, drawn with the card's own colour. */
+function Glyph({ id, x, y }: { id: Card; x: number; y: number }) {
+  return (
+    <g className="gico" transform={`translate(${x} ${y})`} fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {id === "swarm" ? (
+        <>
+          <circle cx="8" cy="8" r="2" />
+          <ellipse cx="8" cy="8" rx="7" ry="3.2" transform="rotate(-25 8 8)" strokeDasharray="2 2" />
+          <circle cx="14" cy="4.8" r="1.1" fill="currentColor" stroke="none" />
+          <circle cx="2.4" cy="10.8" r="1.1" fill="currentColor" stroke="none" />
+        </>
+      ) : id === "review" ? (
+        <>
+          <path d="M2 9l2-5.5h8L14 9v4H2z" />
+          <path d="M2 9h3.6l1.1 1.6h2.6L10.4 9H14" />
+        </>
+      ) : (
+        <>
+          <rect x="1.5" y="3.5" width="13" height="9.5" rx="1.5" />
+          <path d="M1.5 6.6h13" />
+          <circle cx="11.6" cy="9.9" r="1" fill="currentColor" stroke="none" />
+        </>
+      )}
+    </g>
+  );
+}
 
 interface FigureProps {
   layout: Layout;
@@ -136,7 +165,7 @@ interface FigureProps {
 }
 
 function Figure({ layout, vertical, idp, sel, focus, cls, handlers, phase }: FigureProps) {
-  const { w, h, cw, pos, head: HEAD, row: ROW, ch: CARD_H } = layout;
+  const { w, h, cw, pos, head: HEAD, row: ROW, ch: CARD_H, d: D } = layout;
   const rowY = (c: Card, i: number) => pos[c].y + HEAD + ROW * i + ROW / 2 + 4;
   const reportOn = sel === "swarm" || sel === "review" || (!sel && !!focus?.report);
   const crossOn = sel === "wallet" || sel === "gap" || (!sel && !!focus?.parts.includes("gap"));
@@ -144,29 +173,43 @@ function Figure({ layout, vertical, idp, sel, focus, cls, handlers, phase }: Fig
   const hlRow = (c: Card, i: number) => !sel && !!focus?.rows[c]?.includes(i);
 
   /* the path that exists: Swarm "writes" to Human review "receives". The path that does not: review to wallet. */
-  const report = vertical
-    ? `M${pos.swarm.x + 52} ${pos.swarm.y + CARD_H} V${pos.review.y - 6}`
-    : `M${pos.swarm.x + cw} ${rowY("swarm", 2)} H${pos.review.x - 6}`;
+  const bx = pos.swarm.x + 52;
+  const sy = pos.swarm.y + CARD_H;
+  const rvTop = pos.review.y;
+  const report = vertical ? `M${bx} ${sy + 2} V${rvTop - 12}` : `M${pos.swarm.x + cw + 2} ${rowY("swarm", 2)} H${pos.review.x - 12}`;
+  const arrowEnd = vertical ? ([bx, rvTop - 3] as const) : ([pos.review.x - 3, rowY("swarm", 2)] as const);
+  const arrow = vertical
+    ? `${arrowEnd[0] - 6},${arrowEnd[1] - 11} ${arrowEnd[0]},${arrowEnd[1]} ${arrowEnd[0] + 6},${arrowEnd[1] - 11}`
+    : `${arrowEnd[0] - 11},${arrowEnd[1] - 6} ${arrowEnd[0]},${arrowEnd[1]} ${arrowEnd[0] - 11},${arrowEnd[1] + 6}`;
   const nope = vertical
-    ? `M${pos.review.x + 52} ${pos.review.y + CARD_H} V${pos.wallet.y - 2}`
-    : `M${pos.review.x + cw} ${rowY("review", 2)} H${pos.wallet.x - 2}`;
-  const rx = vertical ? pos.swarm.x + 52 : (pos.swarm.x + cw + pos.review.x) / 2;
-  const ry = vertical ? (pos.swarm.y + CARD_H + pos.review.y) / 2 : rowY("swarm", 2);
-  const nx = vertical ? pos.review.x + 52 : (pos.review.x + cw + pos.wallet.x) / 2;
+    ? `M${bx} ${pos.review.y + CARD_H + 2} V${pos.wallet.y - 2}`
+    : `M${pos.review.x + cw + 2} ${rowY("review", 2)} H${pos.wallet.x - 2}`;
+  const rx = vertical ? bx : (pos.swarm.x + cw + pos.review.x) / 2;
+  const ry = vertical ? (sy + rvTop) / 2 : rowY("swarm", 2);
+  const nx = vertical ? bx : (pos.review.x + cw + pos.wallet.x) / 2;
   const ny = vertical ? (pos.review.y + CARD_H + pos.wallet.y) / 2 : rowY("review", 2);
+  /* a label sits in a small pill, so it reads against whatever line is behind it */
+  const pill = (cx: number, cy: number, text: string, left = false) => {
+    const tw = text.length * 6.3 + 14;
+    const x0 = left ? cx : cx - tw / 2;
+    return (
+      <g className="gpillg">
+        <rect className="gpl" x={x0} y={cy - 9} width={tw} height="18" rx="9" />
+        <text className="glabel" x={x0 + tw / 2} y={cy + 4} textAnchor="middle" stroke="none" fill="currentColor">
+          {text}
+        </text>
+      </g>
+    );
+  };
 
   /* the air gap spans from the Swarm to the wallet, under (or beside) Human review */
-  const gy = pos.swarm.y + CARD_H + 34;
-  const gapPath = vertical ? `M${w - 24} ${pos.swarm.y + 40} V${pos.wallet.y + 40}` : `M${pos.swarm.x + cw} ${gy} H${pos.wallet.x}`;
-  const gapTicks = vertical
-    ? `M${w - 30} ${pos.swarm.y + 40}h12M${w - 30} ${pos.wallet.y + 40}h12`
-    : `M${pos.swarm.x + cw} ${gy - 6}v12M${pos.wallet.x} ${gy - 6}v12`;
-  const gapDrops = vertical
-    ? ""
-    : `M${pos.swarm.x + cw} ${pos.swarm.y + CARD_H}V${gy - 6}M${pos.wallet.x} ${pos.wallet.y + CARD_H}V${gy - 6}`;
+  const gy = pos.swarm.y + CARD_H + 46;
+  const gx0 = pos.swarm.x + cw;
+  const gx1 = pos.wallet.x;
   const gapHit = vertical
-    ? { x: w - 46, y: pos.swarm.y + 20, width: 44, height: pos.wallet.y - pos.swarm.y + 40 }
-    : { x: pos.swarm.x + cw - 4, y: gy - 22, width: pos.wallet.x - pos.swarm.x - cw + 8, height: 64 };
+    ? { x: w - 50, y: pos.swarm.y + 10, width: 48, height: pos.wallet.y - pos.swarm.y + 60 }
+    : { x: gx0 - 4, y: gy - 24, width: gx1 - gx0 + 8, height: 70 };
+  const gapBand = vertical ? { x: w - 40, y: pos.swarm.y + 44, width: 22, height: pos.wallet.y - pos.swarm.y } : { x: gx0, y: gy - 15, width: gx1 - gx0, height: 30 };
 
   return (
     <svg
@@ -181,27 +224,55 @@ function Figure({ layout, vertical, idp, sel, focus, cls, handlers, phase }: Fig
     >
       <title id={`${idp}-t`}>{GAP_FIGURE_TITLE}</title>
       <defs>
-        <marker id={`${idp}-ah`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-          <path d="M1 1.5L9 5L1 8.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </marker>
+        <linearGradient id={`${idp}-card`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style={{ stopColor: "color-mix(in srgb, var(--fg) 8%, var(--bg-2))" }} />
+          <stop offset="1" style={{ stopColor: "var(--bg)" }} />
+        </linearGradient>
+        <linearGradient id={`${idp}-pipe`} x1="0" y1="0" x2={vertical ? "0" : "1"} y2={vertical ? "1" : "0"}>
+          <stop offset="0" style={{ stopColor: "var(--exp)" }} />
+          <stop offset="1" style={{ stopColor: "var(--fg-2)" }} />
+        </linearGradient>
+        <radialGradient id={`${idp}-floor`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="rgb(255,233,184)" stopOpacity="0.1" />
+          <stop offset="1" stopColor="rgb(255,233,184)" stopOpacity="0" />
+        </radialGradient>
+        <pattern id={`${idp}-hatch`} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <path d="M0 0V8" stroke="currentColor" strokeOpacity="0.3" strokeWidth="1.2" />
+        </pattern>
       </defs>
+
+      {/* the floor the cards stand on: a pool of light and two engraved rings, as under the objects at the top of the page */}
+      {vertical ? null : (
+        <g className="gfloor" aria-hidden="true" stroke="none">
+          <ellipse cx={w / 2} cy={pos.swarm.y + CARD_H + 18} rx={w * 0.5} ry="74" fill={`url(#${idp}-floor)`} />
+          <ellipse cx={w / 2} cy={pos.swarm.y + CARD_H + 18} rx={w * 0.47} ry="46" fill="none" stroke="var(--line)" strokeWidth="1" />
+          <ellipse cx={w / 2} cy={pos.swarm.y + CARD_H + 18} rx={w * 0.37} ry="32" fill="none" stroke="var(--line)" strokeWidth="1" strokeOpacity="0.6" />
+        </g>
+      )}
 
       {CARDS.map((c, ci) => {
         const { x, y } = pos[c.id];
+        const dash = c.dashed ? "4 3" : undefined;
+        const tw = c.tag.length * 6.1 + 13;
         return (
           <g key={c.id} className={`${cls(c.id)} gcard`} style={{ ["--i" as string]: ci }} {...handlers(c.id)}>
-            <rect className="gbox" x={x} y={y} width={cw} height={CARD_H} strokeDasharray={c.dashed ? "4 3" : undefined} />
+            {/* contact shadow, then the slab: a top face and a side face give the card thickness */}
+            <ellipse className="gshadow" cx={x + cw / 2 + D / 2} cy={y + CARD_H + 5} rx={cw / 2 + 8} ry="6.5" stroke="none" />
+            <polygon className="gface gtop" points={`${x},${y} ${x + D},${y - D} ${x + cw + D},${y - D} ${x + cw},${y}`} strokeDasharray={dash} />
+            <polygon className="gface gside" points={`${x + cw},${y} ${x + cw + D},${y - D} ${x + cw + D},${y + CARD_H - D} ${x + cw},${y + CARD_H}`} strokeDasharray={dash} />
+            <rect className="gbox" x={x} y={y} width={cw} height={CARD_H} fill={`url(#${idp}-card)`} strokeDasharray={dash} />
             <path className="gsep" d={`M${x} ${y + HEAD}H${x + cw}`} />
-            <circle className={c.dashed ? "gdot dashed" : "gdot"} cx={x + 17} cy={y + HEAD / 2} r="4.5" />
-            <text className="gtitle" x={x + 30} y={y + HEAD / 2 + 4.5} stroke="none" fill="currentColor">
+            <Glyph id={c.id} x={x + 13} y={y + (HEAD - 16) / 2} />
+            <text className="gtitle" x={x + 34} y={y + HEAD / 2 + 4.5} stroke="none" fill="currentColor">
               {c.title}
             </text>
-            <text className="gtag" x={x + cw - 12} y={y + HEAD / 2 + 4} textAnchor="end" stroke="none" fill="currentColor">
+            <rect className="gtagbox" x={x + cw - 12 - tw} y={y + (HEAD - 18) / 2} width={tw} height="18" rx="9" strokeDasharray={c.dashed ? "2 2" : undefined} />
+            <text className="gtag" x={x + cw - 12 - tw / 2} y={y + HEAD / 2 + 3.6} textAnchor="middle" stroke="none" fill="currentColor">
               {c.tag}
             </text>
             {c.rows.map(([k, v], ri) => (
               <g key={k + ri} className={hlRow(c.id, ri) ? "grow hl" : "grow"} style={{ ["--r" as string]: ri }}>
-                <rect className="grow-bg" x={x + 4} y={y + HEAD + ROW * ri + 1} width={cw - 8} height={ROW - 2} rx="1.5" stroke="none" />
+                <rect className={ri % 2 ? "grow-bg z" : "grow-bg"} x={x + 4} y={y + HEAD + ROW * ri + 1} width={cw - 8} height={ROW - 2} rx="1.5" stroke="none" />
                 {ri > 0 ? <path className="gline" d={`M${x + 10} ${y + HEAD + ROW * ri}H${x + cw - 10}`} /> : null}
                 <text className="gk" x={x + 14} y={rowY(c.id, ri)} stroke="none" fill="currentColor">
                   {k}
@@ -217,37 +288,41 @@ function Figure({ layout, vertical, idp, sel, focus, cls, handlers, phase }: Fig
 
       {/* reports pass from the Swarm to Human review: this path exists, so it is the only one that flows */}
       <g className={reportOn ? "gedge link on" : "gedge link"} aria-hidden="true" style={{ ["--e" as string]: 0 }}>
-        <path className="draw" d={report} pathLength="1" markerEnd={`url(#${idp}-ah)`} />
+        <path className="pipe-back" d={report} />
+        <path className="draw pipe" d={report} pathLength="1" stroke={`url(#${idp}-pipe)`} />
         <path className="flow" d={report} />
-        <rect className={vertical ? "packet v" : "packet"} x={vertical ? rx - 4 : pos.swarm.x + cw + 2} y={vertical ? pos.swarm.y + CARD_H + 2 : ry - 4} width="8" height="8" rx="1.5" />
-        <text className="glabel" x={vertical ? rx + 14 : rx} y={vertical ? ry + 4 : ry - 10} textAnchor={vertical ? "start" : "middle"} stroke="none" fill="currentColor">
-          reports
-        </text>
+        <polygon className="pipe-head" points={arrow} />
+        {[0, 1, 2].map((k) => (
+          <g key={k} className={vertical ? "packet v" : "packet"} style={{ ["--pd" as string]: `${1800 + k * 1200}ms` }}>
+            <circle cx={vertical ? bx : pos.swarm.x + cw + 6} cy={vertical ? sy + 6 : ry} r="6.5" className="packet-halo" />
+            <circle cx={vertical ? bx : pos.swarm.x + cw + 6} cy={vertical ? sy + 6 : ry} r="3" className="packet-dot" />
+          </g>
+        ))}
+        {pill(vertical ? rx + 12 : rx, vertical ? ry : ry - 18, "reports", vertical)}
       </g>
 
       {/* no path from Human review to the wallet: dotted and crossed out, drawn once, never a flow */}
       <g className={crossOn ? "gedge cross on" : "gedge cross"} aria-hidden="true" style={{ ["--e" as string]: 1 }}>
         <path className="dotted" d={nope} strokeDasharray="2 3" />
-        <path className="x" d={`M${nx - 6} ${ny - 6}l12 12M${nx + 6} ${ny - 6}l-12 12`} pathLength="1" />
-        <text className="glabel" x={vertical ? nx + 14 : nx} y={vertical ? ny + 4 : ny + 22} textAnchor={vertical ? "start" : "middle"} stroke="none" fill="currentColor">
-          no path
-        </text>
+        <circle className="xbadge" cx={nx} cy={ny} r="10" />
+        <path className="x" d={`M${nx - 4.5} ${ny - 4.5}l9 9M${nx + 4.5} ${ny - 4.5}l-9 9`} pathLength="1" />
+        {pill(vertical ? nx + 16 : nx, vertical ? ny : ny + 26, "no path", vertical)}
       </g>
 
-      {/* the air gap: the whole span from the Swarm to the wallet */}
+      {/* the air gap: the whole span from the Swarm to the wallet, drawn as a hatched strip of empty floor */}
       <g className={cls("gap")} {...handlers("gap")}>
         <rect className="hit" {...gapHit} stroke="none" />
         <g className={gapOn ? "gapline on" : "gapline"} style={{ ["--e" as string]: 2 }}>
-          {gapDrops ? <path className="gdrop" d={gapDrops} strokeDasharray="2 3" opacity=".5" /> : null}
-          <path className="draw" d={gapPath} pathLength="1" opacity=".75" />
-          <path d={gapTicks} opacity=".75" />
+          {vertical ? null : <path className="gdrop" d={`M${gx0} ${sy}V${gapBand.y}M${gx1} ${pos.wallet.y + CARD_H}V${gapBand.y}`} strokeDasharray="2 3" opacity=".5" />}
+          <rect className="gband" {...gapBand} fill={`url(#${idp}-hatch)`} />
+          <path className="gtick" d={vertical ? `M${gapBand.x} ${gapBand.y}h${gapBand.width}M${gapBand.x} ${gapBand.y + gapBand.height}h${gapBand.width}` : `M${gx0} ${gapBand.y - 4}v${gapBand.height + 8}M${gx1} ${gapBand.y - 4}v${gapBand.height + 8}`} />
         </g>
         {vertical ? (
-          <text className="glabel gl2" transform={`rotate(-90 ${w - 8} ${(pos.swarm.y + pos.wallet.y) / 2 + 60})`} x={w - 8} y={(pos.swarm.y + pos.wallet.y) / 2 + 60} textAnchor="middle" stroke="none" fill="currentColor">
+          <text className="glabel gl2" transform={`rotate(-90 ${w - 8} ${gapBand.y + gapBand.height / 2})`} x={w - 8} y={gapBand.y + gapBand.height / 2} textAnchor="middle" stroke="none" fill="currentColor">
             air gap · no execution or signing path
           </text>
         ) : (
-          <text className="glabel gl2" x={(pos.swarm.x + cw + pos.wallet.x) / 2} y={gy + 24} textAnchor="middle" stroke="none" fill="currentColor">
+          <text className="glabel gl2" x={(gx0 + gx1) / 2} y={gy + 36} textAnchor="middle" stroke="none" fill="currentColor">
             air gap · no execution or signing path
           </text>
         )}

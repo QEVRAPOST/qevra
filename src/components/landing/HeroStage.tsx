@@ -10,9 +10,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { clamp } from "@/lib/aperture/math";
 import { prefersReducedMotion } from "@/lib/aperture/motion";
 import { scrollBehavior, scrollToFrame } from "@/lib/aperture/scroll";
-import { StageScene } from "@/lib/aperture/stage/engine";
+import { whenSplashDone } from "@/lib/splash";
+import { StageScene, stageState } from "@/lib/aperture/stage/engine";
 import { CORE_SENTENCE } from "@/lib/content/copy-lock";
 import {
+  brandize,
   FRAME_SWARM,
   HERO,
   HERO_FACTS,
@@ -23,6 +25,8 @@ import {
   HERO_ROTATE_LABEL,
   HERO_SCENES,
   HERO_SCROLL_HINT,
+  HERO_STAGE_KEYS,
+  HERO_ZOOM_HINT,
   HERO_TABS_LABEL,
   TRY_GROUP_LABEL,
   TRY_LABEL,
@@ -89,12 +93,14 @@ function HeroText({ activeFact }: { activeFact: number }) {
  * Scroll position is the source of truth and is never React state: it drives the stage directly, and React state
  * holds only which object is on show and the Try it value, which change a few times in a visit.
  */
-export function HeroStage() {
+export function HeroStage({ projectName }: { projectName: string }) {
   const [scene, setScene] = useState<SceneIndex>(0);
   const [tryValue, setTryValue] = useState<0 | 1 | null>(null);
   const [broken, setBroken] = useState<0 | 1>(0);
   /** the part being pointed at (a hover, or a tap on touch), and whether the visitor has turned the object */
   const [partId, setPartId] = useState<string | null>(null);
+  /** the part the camera has flown in on */
+  const [zoomId, setZoomId] = useState<string | null>(null);
   const [turned, setTurned] = useState(false);
   const [hinted, setHinted] = useState(false);
 
@@ -117,11 +123,13 @@ export function HeroStage() {
     if (!cv || !fig || !track || !pin) return;
     let stage: StageScene;
     try {
-      stage = new StageScene(cv, { f0: 0, f1: 0, f2: 0, u: 0.5, mis: 0, ry: 0, rp: 0 });
+      stage = new StageScene(cv, stageState());
     } catch {
       return; /* no Canvas 2D: the copy and the tabs still work */
     }
     stageRef.current = stage;
+    stage.projectName = projectName;
+    stage.onZoom = setZoomId;
     stage.bindPointer(fig);
     stage.bindInteraction(cv);
     stage.onHover = (id) => {
@@ -141,6 +149,7 @@ export function HeroStage() {
     let lock: SceneIndex | null = null;
     let lockTimer = 0;
     let queued = 0;
+    let cancelWait: () => void = () => {};
     const timers: number[] = [];
 
     /** Which element is the pinned one: the whole hero on tall desktops, otherwise just the figure. */
@@ -257,33 +266,36 @@ export function HeroStage() {
       setScene(s);
       u = clamp((progress() - s / N) * N);
       tabsRef.current?.style.setProperty("--hu", u.toFixed(3));
-      stage.jump({ f0: s === 0 ? 1 : 0, f1: s === 1 ? 1 : 0, f2: s === 2 ? 1 : 0, u, mis: 0, ry: 0, rp: 0 });
+      stage.jump(stageState({ f0: s === 0 ? 1 : 0, f1: s === 1 ? 1 : 0, f2: s === 2 ? 1 : 0, u }));
       stage.setScene(s);
       syncMis();
     } else {
-      tourOn = true;
-      show(0);
-      timers.push(
-        /* a small sway once the first object is built, to show it can be turned (not if the visitor already has) */
-        window.setTimeout(() => tourOn && !stage.userRotated && stage.rotateBy(0.32, 0, false), TOUR.sway),
-        window.setTimeout(() => tourOn && !stage.userRotated && stage.resetView(), TOUR.sway + 850),
-        window.setTimeout(() => tourOn && show(1), TOUR.lock),
-        window.setTimeout(() => {
-          if (!tourOn) return;
-          tourMis = 1;
-          syncMis();
-        }, TOUR.lockBreak),
-        window.setTimeout(() => {
-          if (!tourOn) return;
-          tourMis = 0;
-          show(2);
-        }, TOUR.swarm),
-        window.setTimeout(() => {
-          if (!tourOn) return;
-          show(0);
-          stopTour();
-        }, TOUR.home),
-      );
+      /* the first object builds when the splash screen (if one is playing) lifts away */
+      cancelWait = whenSplashDone(() => {
+        tourOn = true;
+        show(0);
+        timers.push(
+          /* a small sway once the first object is built, to show it can be turned (not if the visitor already has) */
+          window.setTimeout(() => tourOn && !stage.userRotated && stage.rotateBy(0.32, 0, false), TOUR.sway),
+          window.setTimeout(() => tourOn && !stage.userRotated && stage.resetView(), TOUR.sway + 850),
+          window.setTimeout(() => tourOn && show(1), TOUR.lock),
+          window.setTimeout(() => {
+            if (!tourOn) return;
+            tourMis = 1;
+            syncMis();
+          }, TOUR.lockBreak),
+          window.setTimeout(() => {
+            if (!tourOn) return;
+            tourMis = 0;
+            show(2);
+          }, TOUR.swarm),
+          window.setTimeout(() => {
+            if (!tourOn) return;
+            show(0);
+            stopTour();
+          }, TOUR.home),
+        );
+      });
     }
 
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -305,9 +317,10 @@ export function HeroStage() {
       gotoRef.current = () => {};
       syncRef.current = () => {};
       stageRef.current = null;
+      cancelWait();
       stage.dispose();
     };
-  }, []);
+  }, [projectName]);
 
   const onTry = useCallback((value: 0 | 1) => {
     tryRef.current = value;
@@ -316,10 +329,27 @@ export function HeroStage() {
   }, []);
 
   const s = HERO_SCENES[scene];
-  const part = partId ? HERO_PARTS[partId] : null;
+  const bn = (t: string) => brandize(t, projectName);
+  /* the part the camera is on stays described after the pointer leaves it; otherwise the part under the pointer */
+  const shownId = zoomId ?? partId;
+  const part = shownId ? HERO_PARTS[shownId] : null;
   const cap = scene === 1 ? HERO_LOCK_CAPTIONS[broken] : s;
   const showTry = scene === 1;
   const turnBy = (d: number) => stageRef.current?.rotateBy(d);
+  /* keyboard: the arrows turn it, Enter flies to the next part, Escape resets (the buttons do the same for a pointer) */
+  const onStageKey = (e: React.KeyboardEvent) => {
+    const st = stageRef.current;
+    if (!st || e.target !== e.currentTarget) return;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      st.rotateBy(e.key === "ArrowLeft" ? -0.2 : 0.2);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      st.cycleZoom(e.shiftKey ? -1 : 1);
+    } else if (e.key === "Escape") {
+      st.resetView();
+    }
+  };
 
   return (
     <section className="hstage" id="hero" aria-label="QEVRA at a glance" data-scene={scene}>
@@ -329,13 +359,13 @@ export function HeroStage() {
             <div className="sgrid hgrid">
               <HeroText activeFact={scene} />
               <figure className="hfig" ref={figRef}>
-                <div className="hcanvas">
-                  <canvas ref={canvasRef} role="img" aria-label={s.label} />
+                <div className="hcanvas" tabIndex={0} role="group" aria-label={HERO_STAGE_KEYS} onKeyDown={onStageKey}>
+                  <canvas ref={canvasRef} role="img" aria-label={bn(s.label)} />
                   <p className="hbadge" aria-hidden="true">
                     <span>
                       {scene + 1} / {N}
                     </span>
-                    {s.name}
+                    {bn(s.name)}
                   </p>
                   <TooltipProvider>
                     <div className="hrot" role="group" aria-label={HERO_ROTATE_LABEL}>
@@ -373,11 +403,12 @@ export function HeroStage() {
                         <p className="cap">
                           {part ? (
                             <>
-                              <b>{part.name}.</b> {part.text}
+                              <b>{bn(part.name)}.</b> {bn(part.text)}
+                              {zoomId ? <span className="cap-hint"> {HERO_ZOOM_HINT}.</span> : null}
                             </>
                           ) : (
                             <>
-                              <b>{cap.lead}</b> {cap.text} <span className="cap-hint">{HERO_POINT_HINT}.</span>
+                              <b>{bn(cap.lead)}</b> {bn(cap.text)} <span className="cap-hint">{HERO_POINT_HINT}.</span>
                             </>
                           )}
                         </p>

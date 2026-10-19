@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { Pool } from "pg";
+import { hashRateLimitKey } from "@/features/security/auth";
 import { createQueuedRun } from "@/features/security/model";
 import { PostgresResearchStore } from "@/features/security/store";
 
@@ -27,6 +28,7 @@ test("isolated PostgreSQL schema, durable history, leases, concurrency, and rest
   const workerOne = `integration-${randomUUID()}`;
   const workerTwo = `integration-${randomUUID()}`;
   const workerRestarted = `integration-${randomUUID()}`;
+  const groqFreeSlot = hashRateLimitKey("qevra:groq-free-call-window");
 
   try {
     await store.ensureSchema();
@@ -42,6 +44,8 @@ test("isolated PostgreSQL schema, durable history, leases, concurrency, and rest
     );
     const rateCheck = await store.takeRateLimit("c".repeat(64), 5, 60_000);
     assert.equal(rateCheck.allowed, true);
+    assert.equal((await store.takeRateLimit(groqFreeSlot, 1, 61_000)).allowed, true);
+    assert.equal((await store.takeRateLimit(groqFreeSlot, 1, 61_000)).allowed, false, "a second worker cannot reserve the same Free Plan minute");
     const staleCounts = await pool.query<{ rate_limits: string; workers: string }>(
       `SELECT
          (SELECT count(*)::text FROM qevra_rate_limits WHERE bucket_key = $1) AS rate_limits,
@@ -51,11 +55,20 @@ test("isolated PostgreSQL schema, durable history, leases, concurrency, and rest
     assert.equal(staleCounts.rows[0]?.rate_limits, "0");
     assert.equal(staleCounts.rows[0]?.workers, "0");
     const first = createQueuedRun(firstId, "security-evidence", "PostgreSQL integration run one", [], new Date(Date.now() - 2_000));
+    first.agents[0]!.usage = {
+      promptTokens: 120,
+      completionTokens: 160,
+      reasoningTokens: 40,
+      totalTokens: 280,
+      requestId: "mock-postgres-provider-request",
+      rateLimit: { tokensLimit: 8_000, tokensRemaining: 7_720, tokensReset: "12s" },
+    };
     const second = createQueuedRun(secondId, "security-evidence", "PostgreSQL integration run two", [], new Date());
     await store.createRun(first);
     await store.createRun(second);
 
     assert.equal((await store.getRun(firstId))?.status, "queued");
+    assert.deepEqual((await store.getRun(firstId))?.agents[0]?.usage, first.agents[0]?.usage);
     const [workerOneClaim, workerTwoClaim] = await Promise.all([
       store.claimNextRun(workerOne, 1),
       store.claimNextRun(workerTwo, 1),
@@ -119,6 +132,7 @@ test("isolated PostgreSQL schema, durable history, leases, concurrency, and rest
   } finally {
     await pool.query("DELETE FROM qevra_research_runs WHERE id = ANY($1::uuid[])", [[firstId, secondId, thirdId]]).catch(() => undefined);
     await pool.query("DELETE FROM qevra_security_workers WHERE worker_id = ANY($1::text[])", [[workerOne, workerTwo, workerRestarted]]).catch(() => undefined);
+    await pool.query("DELETE FROM qevra_rate_limits WHERE bucket_key = $1", [groqFreeSlot]).catch(() => undefined);
     await store.close().catch(() => undefined);
   }
 });

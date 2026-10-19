@@ -2,6 +2,7 @@ import { apiError } from "@/features/security/api";
 import { hashRateLimitKey, hasSessionConfiguration, readCookie, verifySessionCookie } from "@/features/security/auth";
 import { isExperimentSandboxConfigured } from "@/features/security/approved-experiment";
 import { getModelProvider } from "@/features/security/provider";
+import { describeProviderState } from "@/features/security/provider-capabilities";
 import { getResearchStore, StoreNotConfiguredError } from "@/features/security/store";
 import { approvedSources } from "@/features/security/topics";
 import { getProjectName } from "@/lib/project-brand";
@@ -18,8 +19,7 @@ export async function GET(request: Request) {
 
   const provider = getModelProvider();
   const capabilities: SecurityResearchCapabilities = {
-    provider: provider.status === "available" ? "available" : "not_configured",
-    ...(provider.status === "available" ? { providerName: provider.model } : { unavailableReason: provider.reason }),
+    ...describeProviderState(provider),
     authentication: hasSessionConfiguration() ? "available" : "not_configured",
     persistence: process.env.DATABASE_URL ? "available" : "not_configured",
     worker: "unavailable",

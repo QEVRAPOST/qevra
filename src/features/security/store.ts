@@ -1,10 +1,21 @@
 import "server-only";
 
 import { Pool, type PoolClient } from "pg";
+import { isGroqGptOssProfile } from "./groq-profile";
 import type { ResearchRunRecord } from "./model";
 
 const LEASE_SECONDS = 900;
-const MAX_RUN_ATTEMPTS = 3;
+const DEFAULT_MAX_RUN_ATTEMPTS = 3;
+
+function maxRunAttempts(env: NodeJS.ProcessEnv): number {
+  if (isGroqGptOssProfile(env.QEVRA_AI_MODEL, env.QEVRA_AI_BASE_URL)) return 1;
+  const configured = env.QEVRA_MAX_RUN_ATTEMPTS?.trim();
+  if (configured) {
+    const parsed = Number(configured);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 3 ? parsed : 1;
+  }
+  return DEFAULT_MAX_RUN_ATTEMPTS;
+}
 
 export class StoreNotConfiguredError extends Error {
   constructor() {
@@ -173,7 +184,7 @@ export class PostgresResearchStore {
 
       const run = row.data;
       run.attemptCount ??= 0;
-      if (run.attemptCount >= MAX_RUN_ATTEMPTS) {
+      if (run.attemptCount >= maxRunAttempts(process.env)) {
         const failedAt = new Date().toISOString();
         run.status = "failed";
         run.currentStage = "failed";

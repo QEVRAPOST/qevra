@@ -28,6 +28,14 @@ export interface ModelUsage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+  reasoningTokens?: number;
+  requestId?: string;
+  rateLimit?: {
+    tokensLimit?: number;
+    tokensRemaining?: number;
+    tokensReset?: string;
+    retryAfter?: string;
+  };
 }
 
 export interface StoredAgentExecution {

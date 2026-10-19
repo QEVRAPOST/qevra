@@ -69,6 +69,7 @@ export interface PipelineDependencies {
   fetchSources: (sources: ReturnType<typeof resolveResearchTopic>["sources"]) => Promise<StoredSource[]>;
   runExperiment: (testId: string) => Promise<StoredTestArtifact>;
   persist: (run: ResearchRunRecord) => Promise<void>;
+  maxSourceTextChars?: number;
 }
 
 export async function processResearchRun(run: ResearchRunRecord, dependencies: PipelineDependencies): Promise<void> {
@@ -97,16 +98,22 @@ export async function processResearchRun(run: ResearchRunRecord, dependencies: P
       return;
     }
 
-    const sourceInput = run.sources.map(({ id, title, url, retrievedAt, status, sha256, text, errorCode }) => ({
-      id,
-      title,
-      url,
-      retrievedAt,
-      status,
-      sha256,
-      text: status === "available" ? text : undefined,
-      errorCode,
-    }));
+    const sourceInput = run.sources.map(({ id, title, url, retrievedAt, status, sha256, text, errorCode }) => {
+      const modelText = status === "available" && typeof text === "string"
+        ? dependencies.maxSourceTextChars === undefined ? text : text.slice(0, dependencies.maxSourceTextChars)
+        : undefined;
+      return {
+        id,
+        title,
+        url,
+        retrievedAt,
+        status,
+        sha256,
+        text: modelText,
+        ...(typeof text === "string" && modelText !== text ? { textIsExcerpt: true } : {}),
+        errorCode,
+      };
+    });
 
     updateAgent(run, "research", { status: "running", startedAt: new Date().toISOString() });
     addRunEvent(run, "research", "Research Agent is extracting source-backed claims.");
@@ -172,7 +179,20 @@ export async function processResearchRun(run: ResearchRunRecord, dependencies: P
     addRunEvent(run, "completed", "All three research agents completed; evidence quotes were checked against fetched source text.");
     await dependencies.persist(run);
   } catch (error) {
-    const role = run.agents.find((agent) => agent.status === "running")?.role;
+    const activeAgent = run.agents.find((agent) => agent.status === "running");
+    const role = activeAgent?.role;
+    if (activeAgent && error instanceof ModelProviderError) {
+      const usage = error.usage
+        ? {
+            ...error.usage,
+            ...(error.rateLimit ? { rateLimit: error.rateLimit } : {}),
+            ...(error.requestId ? { requestId: error.requestId } : {}),
+          }
+        : error.rateLimit || error.requestId
+          ? { ...(error.rateLimit ? { rateLimit: error.rateLimit } : {}), ...(error.requestId ? { requestId: error.requestId } : {}) }
+          : undefined;
+      if (usage) updateAgent(run, activeAgent.role, { usage });
+    }
     const code = error instanceof ModelProviderError ? error.code : "research_pipeline_failed";
     failRun(run, role, code);
     await dependencies.persist(run);

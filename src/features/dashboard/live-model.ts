@@ -26,11 +26,13 @@ function agentStatusSummary(run: ResearchRunSummary): string {
 function toSwarmRun(run: ResearchRunSummary): SwarmRun {
   const status = run.status === "completed"
     ? { label: "Research completed", tone: "neutral" as const, material: "solid" as const }
-    : run.status === "failed"
-      ? { label: "Failed", tone: "bad" as const, material: "solid" as const }
-      : run.status === "running"
-        ? { label: "Running", tone: "exp" as const, material: "outline" as const }
-        : { label: "Queued", tone: "unk" as const, material: "dotted" as const };
+    : run.status === "failed" && run.errorCode === "provider_rate_limited"
+      ? { label: "Rate-limited", tone: "bad" as const, material: "solid" as const }
+      : run.status === "failed"
+        ? { label: "Research failed", tone: "bad" as const, material: "solid" as const }
+        : run.status === "running"
+          ? { label: "Research running", tone: "exp" as const, material: "outline" as const }
+          : { label: "Research queued", tone: "unk" as const, material: "dotted" as const };
   const unavailableSource = run.availableSourceCount < run.sourceCount;
   return {
     origin: "live",

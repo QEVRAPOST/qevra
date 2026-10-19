@@ -1,6 +1,10 @@
 import { StatusBar } from "@/components/ui/StatusBar";
+import { getProjectName } from "@/lib/project-brand";
+import { SPLASH_GATE_SCRIPT } from "@/lib/splash";
 import { STATUS_BAR_ITEMS } from "@/lib/content/status";
-import { LandingFooter, StatusBand, SwarmLimitsBand } from "./LandingBands";
+import { StatusBand, SwarmLimitsBand } from "./LandingBands";
+import { Curtain } from "./Curtain";
+import { Splash } from "./Splash";
 import { HeroStage } from "./HeroStage";
 import { LandingNav } from "./LandingNav";
 import { LandingStory } from "./LandingStory";
@@ -10,17 +14,25 @@ import { LandingStory } from "./LandingStory";
  * `.landing` gives the whole page one shared side gutter (see landing.css) without adding a box of its own.
  */
 export function LandingPage() {
+  /* NEXT_PUBLIC_PROJECT_NAME, read here on the server: client components cannot read it from process.env by a dynamic lookup */
+  const projectName = getProjectName();
   return (
     <div className="landing">
+      <noscript>
+        <style>{".splash{display:none}"}</style>
+      </noscript>
+      <Splash projectName={projectName} />
+      {/* switches the splash off before first paint when it should not play (it must come right after the element) */}
+      <script dangerouslySetInnerHTML={{ __html: SPLASH_GATE_SCRIPT }} />
       <StatusBar items={STATUS_BAR_ITEMS} />
       <LandingNav />
-      <main id="main" tabIndex={-1}>
-        <HeroStage />
+      <main id="main" tabIndex={-1} className="curtain-main">
+        <HeroStage projectName={projectName} />
         <LandingStory />
         <SwarmLimitsBand />
         <StatusBand />
       </main>
-      <LandingFooter />
+      <Curtain projectName={projectName} />
     </div>
   );
 }

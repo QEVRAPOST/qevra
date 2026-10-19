@@ -1,8 +1,6 @@
 import { PqNote } from "@/components/ui/PqNote";
-import { FOOTER_PREVIEW, FOOTER_ROBINHOOD } from "@/lib/content/copy-lock";
 import { STATUS_BAND_INTRO } from "@/lib/content/landing";
 import { COVERAGE_ROWS } from "@/lib/content/status";
-import { LaunchLink } from "./LaunchLink";
 import { StatusLedger } from "./StatusLedger";
 import { SwarmExplainer } from "./SwarmExplainer";
 
@@ -28,21 +26,7 @@ export function StatusBand() {
         </div>
         <StatusLedger rows={COVERAGE_ROWS} caption="Status of each part of QEVRA" />
         <PqNote variant="landing" />
-        <div className="ctas" style={{ marginTop: 36 }}>
-          <LaunchLink>Launch App</LaunchLink>
-        </div>
       </div>
     </section>
-  );
-}
-
-export function LandingFooter() {
-  return (
-    <footer className="lfoot">
-      <div className="wrap wide">
-        <p>{FOOTER_PREVIEW}</p>
-        <p>{FOOTER_ROBINHOOD}</p>
-      </div>
-    </footer>
   );
 }
