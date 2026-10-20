@@ -30,8 +30,8 @@ export const approvedSources: Record<string, ApprovedSourceDefinition> = {
   "robinhood-chain-docs": {
     id: "robinhood-chain-docs",
     title: "Robinhood Chain developer documentation",
-    url: "https://docs.chain.robinhood.com/",
-    allowedHost: "docs.chain.robinhood.com",
+    url: "https://docs.robinhood.com/chain/connecting/",
+    allowedHost: "docs.robinhood.com",
   },
 };
 

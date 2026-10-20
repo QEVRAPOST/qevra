@@ -7,6 +7,7 @@ import { Splash } from "./Splash";
 import { HeroStage } from "./HeroStage";
 import { LandingNav } from "./LandingNav";
 import { LandingStory } from "./LandingStory";
+import { Pillars } from "./Pillars";
 
 /**
  * The public landing page. Server shell; the hero, story, nav and Launch App links are client components.
@@ -25,6 +26,7 @@ export function LandingPage() {
       <LandingNav projectName={projectName} />
       <main id="main" tabIndex={-1} className="curtain-main">
         <HeroStage projectName={projectName} />
+        <Pillars projectName={projectName} />
         <LandingStory projectName={projectName} />
         <SwarmLimitsBand />
         <StatusBand projectName={projectName} />

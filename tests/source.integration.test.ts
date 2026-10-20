@@ -9,9 +9,16 @@ import {
   verificationAgentOutputSchema,
 } from "@/features/security/schemas";
 import { fetchApprovedSource } from "@/features/security/sources";
-import { approvedSources } from "@/features/security/topics";
+import { approvedSources, researchTopics } from "@/features/security/topics";
 
 const enabled = process.env.QEVRA_SOURCE_INTEGRATION === "1";
+
+test("Robinhood read-only topic is pinned only to the canonical connecting document", () => {
+  const source = approvedSources["robinhood-chain-docs"]!;
+  assert.deepEqual(researchTopics["robinhood-readonly-wallet"]?.sourceIds, ["robinhood-chain-docs"]);
+  assert.equal(source.url, "https://docs.robinhood.com/chain/connecting/");
+  assert.equal(source.allowedHost, "docs.robinhood.com");
+});
 
 test("fetches the approved NIST FIPS 204 source and records provenance", { skip: !enabled }, async () => {
   const source = await fetchApprovedSource(approvedSources["nist-fips-204"]!);

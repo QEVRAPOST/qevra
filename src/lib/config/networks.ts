@@ -15,7 +15,7 @@ export const NETWORKS: readonly NetworkOption[] = [
     label: "Robinhood Mainnet",
     short: "Mainnet",
     chainId: 4_663,
-    rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
+    rpcUrl: "https://robinhood.rpc.pinax.network",
     available: true,
   },
 ];

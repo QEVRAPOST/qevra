@@ -71,7 +71,7 @@ function Inspector({ stage, model, id }: { stage: PipelineStage; model: Pipeline
  *
  * `compact` drops the counts, the legend and the standing note (the overview shows the canvas alone).
  */
-export function SwarmPipeline({ model, compact = false, title, level = 2, actions }: { model: PipelineModel | null; compact?: boolean; title?: string; /** the heading level of the canvas title, so the page never skips one */ level?: 2 | 3; /** controls shown at the end of the header (a visitor-started illustration, a link to the run) */ actions?: React.ReactNode }) {
+export function SwarmPipeline({ model, compact = false, title, level = 2, actions, trace = false, tag }: { model: PipelineModel | null; compact?: boolean; title?: string; /** see OrbitCanvas */ trace?: boolean; /** replaces the label at the head of the canvas */ tag?: string; /** the heading level of the canvas title, so the page never skips one */ level?: 2 | 3; /** controls shown at the end of the header (a visitor-started illustration, a link to the run) */ actions?: React.ReactNode }) {
   const uid = useId();
   const [picked, setPicked] = useState<ResearchAgentRole | null>(null);
   const guide = model === null;
@@ -93,7 +93,7 @@ export function SwarmPipeline({ model, compact = false, title, level = 2, action
       <header className="pipe-head">
         <Heading id={`${uid}-h`}>{title ?? (guide ? "How a run works" : "Agent pipeline")}</Heading>
         <span className="pipe-tag">
-          {model?.illustration ? "Illustration · no agent ran" : model?.example ? "Simulated · no agent ran" : guide ? "Reference, no run selected" : "From the run record"}
+          {tag ?? (model?.illustration ? "Illustration · no agent ran" : model?.example ? "Simulated · no agent ran" : guide ? "Reference, no run selected" : "From the run record")}
         </span>
         {actions ? <span className="pipe-actions">{actions}</span> : null}
       </header>
@@ -103,7 +103,7 @@ export function SwarmPipeline({ model, compact = false, title, level = 2, action
         </p>
       ) : null}
 
-      <OrbitCanvas model={model} selected={hasInspector ? sel : null} onSelect={hasInspector ? setPicked : undefined} controls={detailId} />
+      <OrbitCanvas model={model} selected={hasInspector ? sel : null} onSelect={hasInspector ? setPicked : undefined} controls={detailId} trace={trace} />
 
       {!guide && !compact ? <Inspector key={selected.role} stage={selected} model={model} id={detailId} /> : null}
 

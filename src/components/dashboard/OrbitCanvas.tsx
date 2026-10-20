@@ -105,6 +105,8 @@ export interface OrbitCanvasProps {
   onSelect?: (role: ResearchAgentRole) => void;
   /** the id of the inspector the stations open, for assistive technology */
   controls?: string;
+  /** draws an extra amber line over each stage link, for a scroll-driven explanation to light up in turn. Never shown for a real run. */
+  trace?: boolean;
 }
 
 /**
@@ -114,7 +116,7 @@ export interface OrbitCanvasProps {
  * an agent that really is running in a live run, or in an illustration the visitor started; a simulated run is a still picture.
  * Used by the overview, the Security Swarm and the activity detail: the only difference between them is the model they pass.
  */
-export function OrbitCanvas({ model, selected = null, onSelect, controls }: OrbitCanvasProps) {
+export function OrbitCanvas({ model, selected = null, onSelect, controls, trace = false }: OrbitCanvasProps) {
   const uid = useId().replace(/:/g, "");
   const reduce = useMediaQuery("(prefers-reduced-motion: reduce)");
   const guide = model === null;
@@ -147,11 +149,14 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls }: Orbi
           <ellipse cx="600" cy="345" rx="350" ry="165" />
         </g>
         {SEGMENTS.map((d, i) => (
-          <g key={d} className={`om-seg s-${segState(i)}${i === 3 ? " out" : ""}`}>
+          <g key={d} className={`om-seg s-${segState(i)}${i === 3 ? " out" : ""}`} data-seg={i}>
             <path className="om-line" d={d} />
             {i < 3 && running(i) ? <path className="om-flow" d={d} /> : null}
           </g>
         ))}
+        {trace
+          ? SEGMENTS.slice(0, 3).map((d, i) => <path key={`t${i}`} className="om-trace" data-seg={i} d={d} />)
+          : null}
         {!reduce ? stages.map((s, i) => (running(i) ? <Activity key={s.role} role={s.role} i={i} pathId={`${uid}-s${i}`} /> : null)) : null}
       </svg>
 

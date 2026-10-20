@@ -1,0 +1,841 @@
+/*
+ * The three pillars on the landing: an instrument, not three cards. A rail of three headlines with their states always on show, one open
+ * panel below it, and a diagram per pillar in its own language (a separation, a lock, a pipeline). Nothing moves until the visitor asks it to.
+ */
+.pillars {
+  padding: 84px 0 76px;
+}
+.pl-eyebrow {
+  font: 500 11.5px/1.3 var(--f-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--exp);
+}
+.pl-tabs {
+  display: grid;
+  gap: 0;
+  margin-top: 44px;
+}
+
+/* ---------- the rail ---------- */
+.pl-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line-2);
+}
+.pl-tab {
+  white-space: normal;
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 44px;
+  padding: 22px 24px 24px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--t);
+  -webkit-tap-highlight-color: transparent;
+}
+.pl-tab + .pl-tab {
+  padding-left: 24px;
+  border-left: 1px solid var(--line);
+}
+.pl-tab::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--exp);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 460ms var(--ease);
+}
+.pl-tab[data-state="active"]::before {
+  transform: scaleX(1);
+}
+.pl-tab:hover,
+.pl-tab[data-state="active"] {
+  color: var(--fg);
+}
+.pl-n {
+  font: 400 46px/1 var(--f-display);
+  color: var(--line-ctl);
+  transition: color var(--t);
+}
+.pl-tab[data-state="active"] .pl-n {
+  color: var(--exp);
+}
+.pl-k {
+  font: 500 11.5px/1.3 var(--f-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pl-h {
+  font: 400 clamp(22px, 2.1vw, 28px) / 1.12 var(--f-display);
+  letter-spacing: -0.005em;
+  color: var(--fg-2);
+  text-wrap: balance;
+  transition: color var(--t);
+}
+.pl-tab[data-state="active"] .pl-h,
+.pl-tab:hover .pl-h {
+  color: var(--fg);
+}
+.pl-status {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: 400 12px/1.35 var(--f-mono);
+  color: var(--muted);
+}
+.pl-tab[data-state="active"] .pl-status {
+  color: var(--fg-2);
+}
+
+/* ---------- the open panel ---------- */
+.pl-content {
+  animation: insp-in 380ms var(--ease);
+}
+.pl-content:focus-visible {
+  outline-offset: 6px;
+}
+.pl-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 48px;
+  align-items: start;
+  border-top: 1px solid var(--line);
+  padding-top: 34px;
+}
+.pl-textcol {
+  min-width: 0;
+}
+.pl-text {
+  display: grid;
+  gap: 22px;
+  align-content: start;
+}
+.pl-body {
+  font-size: 16.5px;
+  line-height: 1.55;
+  color: var(--fg-2);
+  max-width: 46ch;
+  text-wrap: pretty;
+}
+.pl-caps {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+.pl-caps li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.pl-caps em {
+  font: 400 12px/1.3 var(--f-mono);
+  font-style: normal;
+  color: var(--muted);
+  text-align: right;
+}
+.pl-how {
+  border-bottom: 1px solid var(--line);
+}
+.pl-how summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--fg-2);
+  font: 400 14px var(--f-ui);
+}
+.pl-how summary::-webkit-details-marker {
+  display: none;
+}
+.pl-how summary::after {
+  content: "+";
+  font: 300 22px/1 var(--f-mono);
+  color: var(--muted);
+  transition: transform 260ms var(--ease);
+}
+.pl-how[open] summary::after {
+  transform: rotate(45deg);
+}
+.pl-how summary:hover {
+  color: var(--fg);
+}
+.pl-how ul {
+  display: grid;
+  gap: 10px;
+  padding: 2px 0 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+.pl-how li {
+  padding-left: 16px;
+  position: relative;
+}
+.pl-how li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 6px;
+  height: 1px;
+  background: var(--muted);
+}
+.pl-cta {
+  justify-self: start;
+}
+
+/* ---------- the diagrams ---------- */
+.pl-visual {
+  min-width: 0;
+}
+.pl-art {
+  container: pl / inline-size;
+  display: grid;
+  gap: 14px;
+  padding: 18px 18px 16px;
+}
+.pl-frame {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(ellipse 70% 90% at 50% 100%, color-mix(in srgb, var(--fg) 5%, transparent), transparent 70%),
+    var(--bg-2);
+}
+.pl-stack {
+  display: grid;
+}
+.pl-slot {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: center;
+}
+.pl-frame .sw-stage {
+  border: 0;
+  background: none;
+  padding: 0;
+  overflow: visible;
+}
+.pl-slot[data-id="account"] { --b: var(--b1, 1); }
+.pl-slot[data-id="swap"] { --b: var(--b2, 1); }
+.pl-slot[data-id="swarm"] { --b: var(--b3, 1); }
+.pl-swarm.tracing { --b: 1; }
+.pl-swarm {
+  padding: 14px;
+}
+.pl-art-ctl {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.pl-art-note {
+  font: 400 12.5px/1.5 var(--f-mono);
+  color: var(--fg-2);
+  min-height: 3em;
+  max-width: 62ch;
+  animation: insp-in 280ms var(--ease);
+}
+.pl-reset {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--fg-2);
+  font: 400 12px var(--f-mono);
+  cursor: pointer;
+}
+.pl-reset:hover {
+  color: var(--fg);
+  border-color: var(--fg-2);
+}
+
+/* 01: a separation */
+.pl-account svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.pl-account svg * {
+  transition: stroke 320ms var(--ease), fill 320ms var(--ease);
+}
+.pa-wallet,
+.pa-vessel,
+.pa-lattice {
+  transition: opacity 320ms var(--ease);
+}
+.pa-t {
+  fill: var(--fg-2);
+  font: 400 12px var(--f-mono);
+}
+.pa-t.sm {
+  fill: var(--muted);
+  font-size: 10.5px;
+}
+.pa-plate {
+  fill: var(--bg);
+  stroke: var(--fg-2);
+  stroke-width: 1.6;
+}
+.pa-line {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.pa-box {
+  fill: var(--bg);
+  stroke: var(--fg-2);
+  stroke-width: 1.6;
+}
+.pa-slot {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  stroke-dasharray: 3 4;
+}
+.pa-gate {
+  fill: none;
+  stroke: var(--fg-2);
+  stroke-width: 1.6;
+}
+.pa-lattice circle {
+  fill: var(--muted);
+}
+.pa-div {
+  fill: none;
+  stroke: var(--line-ctl);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+.pa-link {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-dasharray: 1 7;
+  stroke-linecap: round;
+}
+.pa-x path {
+  stroke: var(--fail);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.pl-account[data-view="wallet"] .pa-vessel,
+.pl-account[data-view="wallet"] .pa-lattice {
+  opacity: 0.38;
+}
+.pl-account[data-view="account"] .pa-wallet {
+  opacity: 0.6;
+}
+.pl-account[data-view="wallet"] .pa-plate {
+  stroke: var(--fg);
+}
+.pl-account[data-view="account"] .pa-box,
+.pl-account[data-view="account"] .pa-gate {
+  stroke: var(--exp);
+}
+.pl-account[data-view="account"] .pa-lattice circle {
+  fill: var(--exp);
+}
+
+/* 02: a lock */
+.lk {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding-top: 6px;
+}
+.lk li {
+  display: grid;
+}
+.lk-beam {
+  position: absolute;
+  left: 8px;
+  right: 0;
+  top: 41px;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--line-ctl) 0 3px, transparent 3px 8px);
+}
+.lk-beam i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--lit) * 100%);
+  background: var(--exp);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--exp) 70%, transparent);
+  transition: width 520ms var(--ease);
+}
+.lk-lamp {
+  position: absolute;
+  left: 0;
+  top: 36px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--exp);
+  background: var(--bg);
+  z-index: 2;
+}
+.lk-pin {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 0 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.lk-slot {
+  position: relative;
+  display: block;
+  width: 24px;
+  height: 70px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg);
+  transition: border-color var(--t);
+}
+.lk-pin:hover .lk-slot {
+  border-color: var(--fg-2);
+}
+.lk-slot b {
+  position: absolute;
+  inset: 0;
+  transition: transform 420ms var(--ease);
+}
+.lk-slot b::before,
+.lk-slot b::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  background: var(--fg-2);
+  border-radius: 1px;
+  transition: background-color var(--t);
+}
+.lk-slot b::before {
+  top: 4px;
+  height: calc(50% - 8px);
+}
+.lk-slot b::after {
+  bottom: 4px;
+  height: calc(50% - 8px);
+}
+.lk-pin.off .lk-slot b {
+  transform: translateY(-16px);
+}
+.lk-pin.off .lk-slot b::before,
+.lk-pin.off .lk-slot b::after {
+  background: var(--fail);
+}
+.lk-pin.off .lk-slot {
+  border-color: var(--fail);
+}
+.lk-name {
+  font: 500 12px/1.25 var(--f-ui);
+  color: var(--fg);
+  text-wrap: balance;
+}
+.lk-state {
+  font: 400 11px/1.2 var(--f-mono);
+  color: var(--muted);
+}
+.lk-pin.off .lk-state {
+  color: var(--fail);
+}
+
+@container pl (max-width: 520px) {
+  .lk {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 0;
+    padding-left: 8px;
+  }
+  .lk-beam {
+    left: 38px;
+    right: auto;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    height: auto;
+    background: repeating-linear-gradient(180deg, var(--line-ctl) 0 3px, transparent 3px 8px);
+  }
+  .lk-beam i {
+    inset: 0 0 auto 0;
+    width: auto;
+    height: calc(var(--lit) * 100%);
+  }
+  .lk-lamp {
+    left: 33px;
+    top: -4px;
+  }
+  .lk-pin {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    align-items: center;
+    justify-items: start;
+    gap: 14px;
+    min-height: 52px;
+    padding: 4px 0;
+    text-align: left;
+  }
+  .lk-slot {
+    width: 56px;
+    height: 24px;
+  }
+  .lk-slot b::before,
+  .lk-slot b::after {
+    top: 4px;
+    bottom: 4px;
+    width: calc(50% - 8px);
+    height: auto;
+  }
+  .lk-slot b::before {
+    left: 4px;
+    right: auto;
+  }
+  .lk-slot b::after {
+    right: 4px;
+    left: auto;
+  }
+  .lk-pin.off .lk-slot b {
+    transform: translateX(16px);
+  }
+}
+
+/* ---------- small screens ---------- */
+@media (max-width: 1024px) {
+  .pillars {
+    padding: 64px 0 56px;
+  }
+  .pl-panel {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+  .pl-visual {
+    order: -1;
+  }
+}
+@media (max-width: 760px) {
+  .pl-tabs {
+    margin-top: 32px;
+  }
+  .pl-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pl-tab,
+  .pl-tab + .pl-tab {
+    grid-template-columns: 52px minmax(0, 1fr);
+    column-gap: 14px;
+    padding: 16px 0;
+    border-left: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .pl-n {
+    grid-row: 1 / span 3;
+    font-size: 40px;
+  }
+  .pl-tab::before {
+    top: 0;
+    bottom: 0;
+    right: auto;
+    width: 2px;
+    height: auto;
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+  .pl-tab[data-state="active"]::before {
+    transform: scaleY(1);
+  }
+  .pl-content {
+    padding-top: 24px;
+  }
+  .pl-art {
+    padding: 14px 14px 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-content,
+  .pl-art-note {
+    animation: none;
+  }
+  .pl-tab::before,
+  .lk-beam i,
+  .lk-slot b,
+  .pl-account svg * {
+    transition: none;
+  }
+}
+
+/* on a narrow card the drawing is scaled down: its words are drawn larger so they stay readable */
+@container pl (max-width: 520px) {
+  .pa-t {
+    font-size: 16px;
+  }
+  .pa-t.sm {
+    font-size: 14px;
+  }
+}
+
+@media (pointer: coarse), (max-width: 1024px) {
+  .pillars [data-slot="button"],
+  .pillars .pl-cta,
+  .pillars [data-slot="toggle-group-item"],
+  .pl-reset {
+    min-height: 44px;
+  }
+}
+
+
+/* ================= the pinned, scroll-built version ================= */
+
+/* a piece of an illustration is built between its --s and --e on the section's build value --b (0 to 1; 1 = complete, the default) */
+.bd, .bf, .bt, .bc, .bh, .bk {
+  --k: clamp(0, calc((var(--b, 1) - var(--s, 0)) / (var(--e, 0.01) - var(--s, 0))), 1);
+}
+.bd {
+  stroke-dasharray: 1;
+  stroke-dashoffset: calc(1 - var(--k));
+  opacity: calc(var(--k) * 50);
+}
+.bf {
+  opacity: var(--k);
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(calc(0.6 + 0.4 * var(--k)));
+}
+.bt {
+  opacity: var(--k);
+}
+.bc {
+  clip-path: inset(0 calc((1 - var(--k)) * 100%) 0 0);
+}
+.bh {
+  opacity: var(--k);
+  transform: translateY(calc((1 - var(--k)) * 10px));
+}
+
+/* the lock: the rail draws, the pins are set, the light sweeps and is stopped by the first changed detail */
+.lk-beam.bk {
+  transform: scaleX(var(--k));
+  transform-origin: left center;
+}
+.lk-beam i.bk {
+  width: calc(min(var(--k), var(--lit)) * 100%);
+}
+.lk li .lk-slot {
+  transform: scale(calc(0.6 + 0.4 * var(--k, 1)));
+}
+.lk li .lk-name,
+.lk li .lk-state {
+  opacity: clamp(0, calc((var(--k, 1) - 0.4) * 1.7), 1);
+}
+.lk-lamp.bh {
+  transform: none;
+}
+@container pl (max-width: 520px) {
+  .lk-beam.bk {
+    transform: scaleY(var(--k));
+    transform-origin: center top;
+  }
+  .lk-beam i.bk {
+    width: auto;
+    height: calc(min(var(--k), var(--lit)) * 100%);
+  }
+}
+
+/* the Security Swarm: public sources, three agents, the links between them, then the human boundary, which is drawn apart and left unlit */
+.pl-swarm .pipe-head{--s:0;--e:0.08;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);transform:translateY(calc((1 - var(--k)) * 8px));}
+.pl-swarm .om-rings{--s:0;--e:0.12;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);}
+.pl-swarm .om-src > *{--s:0.02;--e:0.14;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);transform:translateY(calc((1 - var(--k)) * 8px));}
+.pl-swarm .om-n1 .pn{--s:0.14;--e:0.26;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);transform:scale(calc(0.82 + 0.18 * var(--k)));}
+.pl-swarm .om-n2 .pn{--s:0.26;--e:0.38;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);transform:scale(calc(0.82 + 0.18 * var(--k)));}
+.pl-swarm .om-n3 .pn{--s:0.38;--e:0.5;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);transform:scale(calc(0.82 + 0.18 * var(--k)));}
+.pl-swarm .om-seg[data-seg="0"]{--s:0.5;--e:0.58;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);clip-path:inset(0 calc((1 - var(--k)) * 100%) 0 0);}
+.pl-swarm .om-seg[data-seg="1"]{--s:0.56;--e:0.64;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);clip-path:inset(0 calc((1 - var(--k)) * 100%) 0 0);}
+.pl-swarm .om-seg[data-seg="2"]{--s:0.62;--e:0.7;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);clip-path:inset(0 calc((1 - var(--k)) * 100%) 0 0);}
+.pl-swarm .om-seg[data-seg="3"]{--s:0.68;--e:0.76;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);clip-path:inset(0 calc((1 - var(--k)) * 100%) 0 0);}
+.pl-swarm .om-dock > *{--s:0.72;--e:0.8;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);transform:translateY(calc((1 - var(--k)) * 8px));}
+.pl-swarm .om-trace[data-seg="0"]{--s:0.8;--e:0.85;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);clip-path:inset(0 calc((1 - var(--k)) * 100%) 0 0);}
+.pl-swarm .om-trace[data-seg="1"]{--s:0.84;--e:0.89;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);clip-path:inset(0 calc((1 - var(--k)) * 100%) 0 0);}
+.pl-swarm .om-trace[data-seg="2"]{--s:0.88;--e:0.93;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);clip-path:inset(0 calc((1 - var(--k)) * 100%) 0 0);}
+.pl-swarm .pipe-actions{--s:0.92;--e:1;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);}
+.pl-swarm .pl-art-note{--s:0.92;--e:1;--k:clamp(0, calc((var(--b, 1) - var(--s)) / (var(--e) - var(--s))), 1);opacity:var(--k);}
+.om-trace {
+  fill: none;
+  stroke: var(--exp);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+/* a real run's own colours, or the illustration the visitor started, are never dimmed by the build */
+.pl-swarm.tracing .pipe-head,
+.pl-swarm.tracing .om-rings,
+.pl-swarm.tracing .om-src > *,
+.pl-swarm.tracing .pn,
+.pl-swarm.tracing .om-seg,
+.pl-swarm.tracing .om-dock > *,
+.pl-swarm.tracing .pipe-actions,
+.pl-swarm.tracing .pl-art-note {
+  opacity: 1;
+  transform: none;
+  clip-path: none;
+}
+
+/* ================= pinned layout (a large screen, motion allowed) ================= */
+.pillars[data-mode="tabs"] .pl-slot:not([data-active]) {
+  display: none;
+}
+.pillars[data-mode="pinned"] {
+  --pl-vh: calc(100svh - var(--stick));
+  padding: 0;
+}
+.pillars[data-mode="pinned"] .pl-track {
+  height: calc(var(--pl-vh) + 300svh);
+}
+.pillars[data-mode="pinned"] .pl-pin {
+  position: sticky;
+  top: var(--stick);
+  height: var(--pl-vh);
+  display: flex;
+}
+.pillars[data-mode="pinned"] .pl-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-top: 18px;
+  padding-bottom: 22px;
+}
+.pillars[data-mode="pinned"] .pl-head {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 44ch);
+  align-items: end;
+  gap: 4px 40px;
+}
+.pillars[data-mode="pinned"] .pl-head .pl-eyebrow {
+  grid-column: 1 / -1;
+}
+.pillars[data-mode="pinned"] .pl-head h2 {
+  max-width: none;
+  font-size: clamp(30px, 3.1vw, 42px);
+}
+.pillars[data-mode="pinned"] .pl-head .sub {
+  font-size: 14.5px;
+}
+.pillars[data-mode="pinned"] .pl-tabs {
+  flex: 1;
+  min-height: 0;
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+}
+.pillars[data-mode="pinned"] .pl-tab {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  gap: 5px;
+}
+.pillars[data-mode="pinned"] .pl-n {
+  font-size: 32px;
+}
+.pillars[data-mode="pinned"] .pl-h {
+  font-size: clamp(19px, 1.7vw, 24px);
+}
+.pillars[data-mode="pinned"] .pl-tab::before {
+  transform: scaleX(0);
+}
+.pillars[data-mode="pinned"] .pl-tab[data-state="active"]::before {
+  transform: scaleX(var(--pg, 0));
+  transition: none;
+}
+.pillars[data-mode="pinned"] .pl-panel {
+  flex: 1;
+  min-height: 0;
+  padding-top: 20px;
+  align-items: stretch;
+  gap: 40px;
+}
+.pillars[data-mode="pinned"] .pl-textcol {
+  align-self: start;
+}
+.pillars[data-mode="pinned"] .pl-text {
+  gap: 14px;
+}
+.pillars[data-mode="pinned"] .pl-body {
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: none;
+}
+.pillars[data-mode="pinned"] .pl-caps li {
+  padding: 8px 0;
+}
+.pillars[data-mode="pinned"] .pl-how summary {
+  min-height: 38px;
+}
+.pillars[data-mode="pinned"] .pl-visual {
+  min-height: 0;
+}
+.pillars[data-mode="pinned"] .pl-frame {
+  height: 100%;
+  display: grid;
+  align-items: center;
+}
+.pillars[data-mode="pinned"] .pl-stack {
+  height: 100%;
+  min-height: 0;
+}
+.pillars[data-mode="pinned"] .pl-account svg {
+  max-height: calc(var(--pl-vh) - 440px);
+}
+.pillars[data-mode="pinned"] .pl-slot:not([data-active]) {
+  pointer-events: none;
+}
+.pillars[data-mode="pinned"] .pl-content {
+  animation-duration: 260ms;
+}
+
+/* the three texts are all mounted (so the rail's tabs always have a panel); only the chosen one is shown */
+.pl-content[data-state="inactive"] {
+  display: none;
+}
+
+/* the pinned frame is only as tall as the screen: the Swarm drawing and its note are compacted to fit it */
+.pillars[data-mode="pinned"] .pl-art {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.pillars[data-mode="pinned"] .pl-swarm {
+  gap: 6px;
+}
+.pillars[data-mode="pinned"] .pl-swarm .pipe {
+  gap: 8px;
+}
+.pillars[data-mode="pinned"] .pl-art-note {
+  min-height: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.pillars[data-mode="pinned"] .pl-panel {
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  gap: 36px;
+}

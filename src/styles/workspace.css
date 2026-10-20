@@ -785,7 +785,7 @@
 }
 
 /* narrow: the arc straightens into a vertical line of stations */
-@container pipe (max-width: 759px) {
+@container pipe (max-width: 639px) {
   .om {
     --ring: 50px;
     aspect-ratio: auto;
