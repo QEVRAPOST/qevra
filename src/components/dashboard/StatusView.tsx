@@ -12,7 +12,11 @@ export function StatusView() {
     <section className="route" aria-labelledby="h-stat">
       <div className="rhead">
         <h1 id="h-stat">Status and limits</h1>
-        <p>Nothing in this preview is implemented. This is what each part is meant to become, and how much is known now.</p>
+        <p>
+          {model.mode === "live"
+            ? "Reading a connected wallet and the research history is live and read-only. The account, swaps and signing are not built. This is how much is known about each part now."
+            : "Nothing in this preview is implemented. This is what each part is meant to become, and how much is known now."}
+        </p>
       </div>
       <Panel>
         <CoverageTable rows={model.coverage} caption="Status of each property in this preview" />

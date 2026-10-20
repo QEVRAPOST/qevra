@@ -42,6 +42,12 @@ export function Rail() {
             <span>Live mode · read-only · no {PROJECT_NAME} account</span>
         )}
       </div>
+      <Link className="rail-home" href="/">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+          <path d="M10 3 5 8l5 5" />
+        </svg>
+        Landing page
+      </Link>
     </nav>
   );
 }

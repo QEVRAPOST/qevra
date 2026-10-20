@@ -4,7 +4,7 @@ import { brandizeDisplayStrings } from "@/lib/project-brand";
 import { DEMO_ACTIVITY, DEMO_RUNS_ALL, DEMO_RUNS_DEFAULT } from "@/lib/demo-fixtures";
 import { buildSwapView } from "./swap";
 import { buildWalletView } from "./wallet";
-import type { ActivityView, ActsMode, AppModel, NetworkId, RunsMode, SecurityView, SetupStage, SwapButtonKey } from "@/types";
+import type { ActivityView, ActsMode, AppModel, NetworkId, RunsMode, SecurityView, SetupStage, StatusBarItem, SwapButtonKey } from "@/types";
 
 export interface DemoInputs {
   stage: SetupStage;
@@ -23,6 +23,12 @@ function buildSecurity(mode: RunsMode): SecurityView {
   return { origin: "demo", status: "ready", runs: [...(mode === "more" ? DEMO_RUNS_ALL : DEMO_RUNS_DEFAULT)], sourceTag };
 }
 
+/** The shared bar says "testnet design preview"; once Mainnet is selected in the preview it must not still say that. Nothing is read on either. */
+function buildStatusBar(network: NetworkId): StatusBarItem[] {
+  if (network === "testnet") return STATUS_BAR_ITEMS;
+  return STATUS_BAR_ITEMS.map((item) => (item.id === "stage" ? { ...item, text: "Experimental · design preview · Mainnet selected, nothing is read" } : item));
+}
+
 function buildActivity(mode: ActsMode): ActivityView {
   const sourceTag = "EXAMPLE ROWS";
   if (mode === "empty") return { origin: "demo", status: "empty", rows: [], sourceTag };
@@ -34,7 +40,7 @@ function buildActivity(mode: ActsMode): ActivityView {
 export function buildDemoModel(i: DemoInputs): AppModel {
   const model: AppModel = {
     mode: "demo",
-    statusBar: STATUS_BAR_ITEMS,
+    statusBar: buildStatusBar(i.network),
     coverage: COVERAGE_ROWS,
     network: { selected: i.network, options: [...NETWORKS], rpc: { status: "not_requested" }, walletMismatch: false },
     wallet: buildWalletView(i.stage),

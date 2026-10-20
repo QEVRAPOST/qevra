@@ -41,7 +41,7 @@ export function DemoBar() {
         <DemoChip>DEMO DATA</DemoChip>
         <p>
           <b>A design preview, not a working app.</b>{" "}
-          <span className="long">No wallet is connected, no chain is read and nothing here can move funds.</span>
+          <span>No wallet is connected, no chain is read and nothing here can move funds.</span>
         </p>
         <Button variant="ghost" size="small" aria-expanded={open} aria-controls="pcPanel" onClick={() => setOpen((o) => !o)}>
           Preview controls

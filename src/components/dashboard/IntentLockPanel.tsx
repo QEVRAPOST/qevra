@@ -166,6 +166,9 @@ export function IntentLockPanel({ comparison }: { comparison: IntentComparison }
 
   return (
     <Panel title="Intent Lock" aside={<ComparisonChip c={shown} demo={demo} />} className="intent">
+      <p className="corep2">
+        Intent Lock compares the swap details you reviewed with the details that would be signed, one ring for each of eight details. If any detail differs, the light stops at that ring.
+      </p>
       <figure
         className="glyphbox interactive"
         tabIndex={0}

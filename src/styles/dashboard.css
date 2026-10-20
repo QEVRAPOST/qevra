@@ -22,6 +22,9 @@
   align-items: center;
   gap: 10px;
 }
+.wl-short {
+  display: none;
+}
 .appshell {
   display: grid;
   grid-template-columns: 244px minmax(0, 1fr);
@@ -718,6 +721,24 @@ html[data-arrive] .appmain {
 .swarm-body {
   display: grid;
   gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "list"
+    "pipe"
+    "detail";
+}
+.swarm-body > .runs {
+  grid-area: list;
+}
+.swarm-body > .sb-pipe {
+  grid-area: pipe;
+  min-width: 0;
+  /* a run chosen on a phone scrolls the pipeline in below the sticky bars */
+  scroll-margin-top: calc(var(--stick) + 12px);
+}
+.swarm-body > .sb-detail {
+  grid-area: detail;
+  min-width: 0;
 }
 .runs {
   display: grid;
@@ -753,6 +774,52 @@ html[data-arrive] .appmain {
 .run .rg {
   font-size: 14px;
   line-height: 1.35;
+}
+.run .rb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+/* an example run is drawn dashed, the same way every other demo box is */
+.run.ex {
+  border-style: dashed;
+}
+.run.ex[aria-pressed="true"] {
+  border-style: solid;
+}
+
+/* three small circles for a run's three agents: where it is, at a glance. The words are in the chip beside it. */
+.mini {
+  display: inline-flex;
+  align-items: center;
+}
+.mini-i {
+  display: inline-flex;
+  align-items: center;
+}
+.mini-l {
+  display: block;
+  width: 10px;
+  border-top: 1px solid var(--line-2);
+}
+.mini-n {
+  display: inline-flex;
+  color: var(--muted);
+}
+.mini-n.s-running {
+  color: var(--exp);
+}
+.mini-n.s-completed {
+  color: var(--fg);
+}
+.mini-n.s-failed {
+  color: var(--fail);
+}
+.mini-n.s-blocked {
+  color: var(--muted);
+  opacity: 0.6;
 }
 .drawer {
   border: 1px solid var(--line-2);
@@ -821,6 +888,710 @@ html[data-arrive] .appmain {
   font: 400 12px/1.45 var(--f-mono);
   color: var(--muted);
 }
+/* ---------- Security Swarm pipeline: Research → Analysis → Verification, then a separate Human review dock ----------
+ * Waiting is dotted, running is outlined amber, completed is outlined silver (never lime, never solid), failed is red,
+ * blocked is hatched and dim. A signal travels along a connector only for an agent that is genuinely running in a live
+ * run; an example run is a still picture and never moves. */
+.pipe {
+  --lk: 30px;
+  container: pipe / inline-size;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  background: var(--bg);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.pipe.is-example {
+  border-style: dashed;
+}
+.pipe-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.pipe-head h3 {
+  font: 400 24px/1.1 var(--f-display);
+  letter-spacing: -0.005em;
+}
+.pipe-tag {
+  font: 400 11.5px/1.3 var(--f-mono);
+  color: var(--muted);
+}
+
+.pipe-track {
+  display: grid;
+  grid-template-columns: auto var(--lk) minmax(0, 1fr) var(--lk) auto;
+  align-items: stretch;
+}
+.pipe-src {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  min-width: 104px;
+}
+.pipe-src b {
+  font: 500 15px/1.2 var(--f-ui);
+}
+.ps-k,
+.ps-s {
+  font: 400 11px/1.3 var(--f-mono);
+  color: var(--muted);
+}
+.pipe-nodes {
+  display: flex;
+  min-width: 0;
+}
+.pipe-li {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 calc((100% - 2 * var(--lk)) / 3);
+}
+.pipe-li + .pipe-li {
+  flex-basis: calc((100% - 2 * var(--lk)) / 3 + var(--lk));
+}
+
+/* connectors: a hairline in the agent's own state, and an arrowhead where it enters the next box */
+.plink {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  flex: 0 0 var(--lk);
+  align-self: center;
+  height: 9px;
+}
+.plink::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 4px;
+  border-top: 1px solid var(--fg-2);
+}
+.plink.s-pending::before,
+.plink.s-blocked::before,
+.plink.out::before {
+  border-top: 1px dotted var(--muted);
+}
+.plink.s-blocked::before {
+  opacity: 0.5;
+}
+.plink.s-running::before {
+  border-top-color: var(--exp);
+}
+.plink.s-failed::before {
+  border-top-color: var(--fail);
+}
+.plink.flow::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 45%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--exp), transparent);
+  transform: translateX(-100%);
+  animation: pipe-sig-x 1.9s linear infinite;
+}
+@keyframes pipe-sig-x {
+  to {
+    transform: translateX(260%);
+  }
+}
+@keyframes pipe-sig-y {
+  to {
+    transform: translateY(260%);
+  }
+}
+@keyframes pipe-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* an agent */
+.pn {
+  --pc: var(--fg-2);
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  text-align: left;
+  border: 1px solid var(--fg-2);
+  border-radius: var(--r);
+  background: var(--bg);
+  padding: 13px 14px 14px;
+  cursor: pointer;
+  transition:
+    border-color var(--t),
+    background-color var(--t);
+}
+.pn::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid var(--pc);
+  border-right: 1px solid var(--pc);
+  transform: translate(-100%, -50%) rotate(45deg);
+  pointer-events: none;
+}
+.pn:hover:not(:disabled) {
+  border-color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, var(--bg));
+}
+.pn:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.pn[aria-pressed="true"] {
+  box-shadow: inset 3px 0 0 var(--fg);
+}
+.pn.s-pending {
+  --pc: var(--muted);
+  border-style: dotted;
+  border-color: var(--muted);
+}
+.pn.s-running {
+  --pc: var(--exp);
+  border-color: var(--exp);
+}
+.pn.s-completed {
+  --pc: var(--fg-2);
+  border-color: var(--fg-2);
+}
+.pn.s-failed {
+  --pc: var(--fail);
+  border-color: var(--fail);
+  background: color-mix(in srgb, var(--fail) 7%, var(--bg));
+}
+.pn.s-blocked {
+  --pc: var(--muted);
+  border-style: dotted;
+  border-color: var(--line-2);
+  color: var(--muted);
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--line-2) 60%, transparent) 6px 7px);
+}
+.pn-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 8px;
+  font: 400 11.5px/1.3 var(--f-mono);
+}
+.pn-step {
+  color: var(--muted);
+}
+.pn-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pc);
+}
+.pn-title {
+  font: 400 24px/1.05 var(--f-display);
+  letter-spacing: -0.005em;
+  color: var(--fg);
+}
+.pn.s-blocked .pn-title,
+.pn.s-blocked .pn-does,
+.pn.s-blocked .pn-err {
+  color: var(--muted);
+}
+.pn-does {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+.pn-err {
+  font: 400 12px/1.4 var(--f-mono);
+  color: var(--fail);
+  overflow-wrap: anywhere;
+}
+/* only a genuinely running agent of a live run breathes; the example's running state is a still picture */
+.pipe:not(.is-example) .pn.s-running .pn-state .mat {
+  animation: pipe-breathe 2.4s ease-in-out infinite;
+}
+
+/* the human review dock: a separate place, joined by a broken line. It lights only when a person recorded a review. */
+.pipe-dock {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 168px;
+  max-width: 214px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+.pipe-dock::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid var(--muted);
+  border-right: 1px solid var(--muted);
+  transform: translate(-100%, -50%) rotate(45deg);
+}
+.pipe-dock > div {
+  display: grid;
+  gap: 2px;
+}
+.pipe-dock b {
+  font: 500 13.5px/1.25 var(--f-ui);
+  color: var(--fg);
+}
+.pd-lamp {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1.5px dashed var(--muted);
+  border-radius: 50%;
+}
+.pipe-dock.lit {
+  border-style: solid;
+  border-color: var(--fg);
+}
+.pipe-dock.lit .pd-lamp {
+  border-style: solid;
+  border-color: var(--fg);
+  background: var(--fg);
+}
+
+/* the selected agent's detail */
+.pipe-detail {
+  display: grid;
+  gap: 9px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  font-size: 13.5px;
+}
+.pd-ex {
+  font: 400 12px/1.45 var(--f-mono);
+  color: var(--muted);
+}
+.pd-warn {
+  border-left: 2px solid var(--fail);
+  padding: 2px 0 2px 10px;
+  color: var(--fg);
+}
+.pd-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 16px;
+}
+.pd-facts dt {
+  font: 400 11px/1.3 var(--f-mono);
+  color: var(--muted);
+}
+.pd-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pd-note {
+  color: var(--fg-2);
+}
+.pd-note b {
+  color: var(--fg);
+  font-weight: 500;
+}
+.pd-events {
+  display: grid;
+  gap: 4px;
+  font: 400 12px/1.45 var(--f-mono);
+  color: var(--fg-2);
+}
+.pd-events time {
+  color: var(--muted);
+}
+.pipe-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 8px 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.pipe-stats dt {
+  font: 400 11px/1.3 var(--f-mono);
+  color: var(--muted);
+}
+.pipe-stats dd {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.pipe-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font: 400 11.5px/1.4 var(--f-mono);
+  color: var(--muted);
+}
+.pipe-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pk-running {
+  color: var(--exp);
+}
+.pk-completed {
+  color: var(--fg-2);
+}
+.pk-failed {
+  color: var(--fail);
+}
+.pipe-note {
+  font: 400 12px/1.45 var(--f-mono);
+  color: var(--muted);
+}
+
+/* narrow: the pipeline stands upright, top to bottom, with the same connectors turned a quarter */
+@container pipe (max-width: 759px) {
+  .pipe-track {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pipe-src {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    min-width: 0;
+  }
+  .pipe-nodes {
+    flex-direction: column;
+  }
+  .pipe-li,
+  .pipe-li + .pipe-li {
+    flex: none;
+    flex-direction: column;
+  }
+  .pn {
+    flex: none;
+  }
+  .plink {
+    --lk: 26px;
+    flex: none;
+    align-self: start;
+    width: 9px;
+    height: var(--lk);
+    margin-left: 22px;
+  }
+  .plink::before {
+    left: 4px;
+    right: auto;
+    top: 0;
+    bottom: 0;
+    border-top: 0;
+    border-left: 1px solid var(--fg-2);
+  }
+  .plink.s-pending::before,
+  .plink.s-blocked::before,
+  .plink.out::before {
+    border-top: 0;
+    border-left: 1px dotted var(--muted);
+  }
+  .plink.s-running::before {
+    border-left-color: var(--exp);
+  }
+  .plink.s-failed::before {
+    border-left-color: var(--fail);
+  }
+  .plink.flow::after {
+    top: 0;
+    left: 3px;
+    width: 3px;
+    height: 45%;
+    background: linear-gradient(180deg, transparent, var(--exp), transparent);
+    transform: translateY(-100%);
+    animation-name: pipe-sig-y;
+  }
+  .pn::before,
+  .pipe-dock::before {
+    left: 22px;
+    top: -1px;
+    transform: translate(-50%, -100%) rotate(135deg);
+  }
+  .pipe-dock {
+    max-width: none;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* no travelling signal: a still amber line says "running" without moving */
+  .plink.flow::after {
+    animation: none;
+    transform: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+  .pipe:not(.is-example) .pn.s-running .pn-state .mat {
+    animation: none;
+  }
+}
+@container pipe (max-width: 759px) {
+  @media (prefers-reduced-motion: reduce) {
+    .plink.flow::after {
+      width: 3px;
+      height: 100%;
+    }
+  }
+}
+
+/* ---------- run detail drawer ---------- */
+.drawer.is-example {
+  border-style: dashed;
+}
+.derr {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--fail);
+  border-left-width: 3px;
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--fail) 7%, var(--bg));
+  padding: 12px 14px;
+  font-size: 13.5px;
+}
+.derr b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.derr b .mat {
+  color: var(--fail);
+}
+.derr ul {
+  display: grid;
+  gap: 2px;
+  font: 400 12.5px/1.45 var(--f-mono);
+  color: var(--fg-2);
+}
+.derr p:last-child {
+  color: var(--fg-2);
+}
+.dfacts {
+  display: grid;
+  gap: 0;
+}
+.dfacts > div {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid var(--line);
+  padding: 9px 0;
+  font-size: 13.5px;
+}
+.dfacts dt {
+  font: 500 11.5px/1.3 var(--f-mono);
+  color: var(--muted);
+}
+.dfacts dd {
+  margin: 0;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+.dsec {
+  display: grid;
+  gap: 9px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.dsec h4 {
+  font: 600 13.5px/1.3 var(--f-ui);
+}
+.dnote {
+  font: 400 12px/1.45 var(--f-mono);
+  color: var(--muted);
+}
+.dnote b {
+  color: var(--fg-2);
+  font-weight: 500;
+}
+.finds,
+.srcs,
+.tests,
+.plain,
+.events {
+  display: grid;
+  gap: 10px;
+}
+.finds > li {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 12px;
+}
+.fchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.claim {
+  font-size: 14.5px;
+  line-height: 1.4;
+}
+.why {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.quotes {
+  display: grid;
+  gap: 8px;
+}
+.quotes > li {
+  display: grid;
+  gap: 3px;
+  border-left: 2px solid var(--line-2);
+  padding-left: 10px;
+}
+.quotes q {
+  quotes: "\201C" "\201D";
+  font: 400 17px/1.35 var(--f-display);
+  color: var(--fg);
+}
+.qsrc {
+  font: 400 11.5px/1.4 var(--f-mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.qsrc a,
+.st a {
+  color: var(--fg-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.srcs > li,
+.tests > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 4px 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  font-size: 13.5px;
+}
+.srcs > li:first-child,
+.tests > li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.st {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sm {
+  font: 400 11.5px/1.45 var(--f-mono);
+  color: var(--muted);
+}
+.plain {
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--fg-2);
+}
+.plain b {
+  color: var(--fg);
+  font-weight: 500;
+}
+.events {
+  gap: 6px;
+  font-size: 12.5px;
+}
+.events > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+}
+.events time {
+  font: 400 11.5px var(--f-mono);
+  color: var(--muted);
+}
+.events code {
+  font: 400 11.5px var(--f-mono);
+  color: var(--fg-2);
+}
+.events span {
+  color: var(--fg-2);
+}
+
+/* the live "start a run" row */
+.startrun {
+  display: grid;
+  gap: 8px;
+}
+.startrun .acts-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.startrun label {
+  font: 500 13px/1 var(--f-ui);
+  color: var(--fg-2);
+}
+.startrun select {
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--bg);
+  border: 1px solid var(--line-ctl);
+  border-radius: var(--r);
+  color: var(--fg);
+}
+.startrun .lt {
+  font: 400 12px/1.5 var(--f-mono);
+  color: var(--muted);
+  max-width: 74ch;
+}
+
+/* a plain key and value list: the label is quiet, the value is the content, and a long value wraps instead of running off */
+.kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 0 28px;
+  font-size: 13.5px;
+}
+.kv > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px 12px;
+  border-top: 1px solid var(--line);
+  padding: 7px 0;
+}
+.kv dt {
+  flex: none;
+  color: var(--muted);
+}
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .legend {
   display: flex;
   gap: 10px;
@@ -925,11 +1696,95 @@ html[data-arrive] .appmain {
 @container (min-width: 700px) {
   .swarm-body {
     grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    grid-template-areas:
+      "pipe pipe"
+      "list detail";
     align-items: start;
   }
   .act-body {
     grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
     align-items: start;
+  }
+}
+
+/* the way back to the landing page, at the foot of the rail */
+.rail a.rail-home {
+  margin-top: auto;
+  min-height: 44px;
+  gap: 8px;
+  padding: 0 12px;
+  font: 400 12.5px var(--f-mono);
+  color: var(--muted);
+  border-left-color: transparent;
+}
+.rail a.rail-home:hover {
+  color: var(--fg);
+}
+
+/* live mode's counterpart of the demo bar: a solid, quiet line (nothing here is an example) */
+.livebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  background: var(--bg-2);
+}
+.livebar p {
+  flex: 1 1 320px;
+  color: var(--fg-2);
+  font-size: 13.5px;
+}
+.livebar p b {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* full-page messages: not connected, checking, unavailable, sign in */
+.notice-page .notice-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 400 12.5px/1.5 var(--f-mono);
+  color: var(--fg-2);
+}
+.notice-page.notice-problem .rhead h1 {
+  border-left: 2px solid var(--fail);
+  padding-left: 14px;
+}
+.notice-page form {
+  display: grid;
+  gap: 14px;
+  max-width: 460px;
+}
+.notice-page form input {
+  min-height: 44px;
+}
+.notice-page form [role="alert"] {
+  border-left: 2px solid var(--fail);
+  padding: 2px 0 2px 10px;
+  font-size: 13.5px;
+}
+.notice-page .notice-back {
+  margin-top: 4px;
+}
+
+/* a finger, not a cursor: the controls of the app shell and its panels reach 44px */
+@media (pointer: coarse), (max-width: 560px) {
+  .apptop [data-slot="button"],
+  .apptop [data-slot="select-trigger"],
+  .demobar [data-slot="button"],
+  .livebar [data-slot="button"],
+  .pcpanel [data-slot="button"],
+  .pcpanel [data-slot="toggle-group-item"],
+  .pcpanel select,
+  .ilctl [data-slot="button"],
+  .ilctl [data-slot="toggle-group-item"],
+  .acts-row [data-slot="button"],
+  .rowbtn {
+    min-height: 44px;
   }
 }
 
@@ -986,6 +1841,26 @@ html[data-arrive] .appmain {
 }
 
 @media (max-width: 560px) {
+  .apptop .wrap {
+    gap: 10px;
+  }
+  .apptop .wordmark {
+    gap: 8px;
+    font-size: 24px;
+  }
+  .apptop .wordmark svg {
+    width: 22px;
+    height: 22px;
+  }
+  .apptools {
+    gap: 8px;
+  }
+  .wl-full {
+    display: none;
+  }
+  .wl-short {
+    display: inline;
+  }
   .panel {
     padding: 16px;
   }
@@ -1009,9 +1884,6 @@ html[data-arrive] .appmain {
     order: 3;
     flex: 1 1 100%;
     font-size: 13px;
-  }
-  .demo-row p .long {
-    display: none;
   }
   .glyphbox {
     height: 220px;

@@ -1,5 +1,12 @@
 import type { StatusBadge } from "./status";
-import type { ResearchRunDetail, ResearchRunSummary, SecurityResearchCapabilities } from "./integrations";
+import type { ResearchAgentRole, ResearchAgentStatus, ResearchRunDetail, ResearchRunSummary, SecurityResearchCapabilities } from "./integrations";
+
+/** The state of one of the three pipeline agents in an EXAMPLE run. Live runs carry the real thing in `liveSummary` / `liveDetail`. */
+export interface ExampleAgent {
+  role: ResearchAgentRole;
+  status: ResearchAgentStatus;
+  errorCode?: string;
+}
 
 /** A Security Swarm run as the UI needs it. Engineering owns the real run events. */
 export interface SwarmRun {
@@ -22,6 +29,8 @@ export interface SwarmRun {
   humanReview: { recorded: false } | { recorded: true; by: string; at: string };
   /** fixture runs carry EXAMPLE; real runs leave this undefined */
   exampleTag?: string;
+  /** what the pipeline shows for a fixture run: Research, Analysis and Verification, in that order. Nothing ran. */
+  exampleAgents?: ExampleAgent[];
   liveSummary?: ResearchRunSummary;
   liveDetail?: ResearchRunDetail;
   detailUnavailable?: string;

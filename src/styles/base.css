@@ -246,6 +246,19 @@ body::before {
   }
 }
 
+/* the app's status bar wraps, so no item is hidden off the edge of a phone */
+@media (max-width: 760px) {
+  .statusbar.wrapped .wrap {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    white-space: normal;
+    gap: 4px 16px;
+  }
+  .statusbar.wrapped .it {
+    align-items: baseline;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

@@ -20,7 +20,7 @@ export function NetworkSelect() {
     <Select value={selected} onValueChange={(v) => actions.setNetwork(v as NetworkId)}>
       <SelectTrigger
         aria-label={model.mode === "live" ? "Application network" : "Example network"}
-        className="h-8 w-64 border-exp font-mono text-xs text-exp hover:border-exp hover:bg-exp/10 data-[state=open]:border-exp max-sm:w-[5.6rem] max-sm:gap-1.5 max-sm:px-2"
+        className="h-8 w-64 border-exp font-mono text-xs text-exp hover:border-exp hover:bg-exp/10 data-[state=open]:border-exp max-sm:w-auto max-sm:min-w-[6.5rem] max-sm:gap-1.5 max-sm:px-2.5"
       >
         {/* the circle goes first on a narrow bar, so the name fits */}
         <span className="inline-flex max-[420px]:hidden">

@@ -1,5 +1,4 @@
-import { buttonVariants } from "@/components/ui/Button";
-import Link from "next/link";
+import { AppNotice } from "@/components/ui/AppNotice";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { STATUS_BAR_ITEMS } from "@/lib/content/status";
@@ -11,21 +10,12 @@ import { STATUS_BAR_ITEMS } from "@/lib/content/status";
 export function AppDataUnavailable() {
   return (
     <>
-      <StatusBar items={STATUS_BAR_ITEMS} />
-      <main className="wrap wide notice-page" id="main" tabIndex={-1}>
-        <div className="rhead">
-          <h1>The app is not connected</h1>
-          <p>No dashboard provider is selected for this build. Choose demo mode or configure the live service.</p>
-        </div>
+      <StatusBar items={STATUS_BAR_ITEMS} wrap />
+      <AppNotice title="The app is not connected" lead="No dashboard provider is selected for this build. Choose demo mode or configure the live service.">
         <EmptyState title="Nothing is shown here.">
           No wallet is connected, no chain is read and nothing here can move funds. This is not a statement about whether the system is safe.
         </EmptyState>
-        <p>
-          <Link className={buttonVariants({ variant: "ghost" })} href="/">
-            Back to the landing page
-          </Link>
-        </p>
-      </main>
+      </AppNotice>
     </>
   );
 }
