@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SimTag } from "@/components/ui/SimTag";
@@ -12,7 +12,8 @@ import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 import { MiniPipeline } from "./SwarmPipeline";
 import { STATUS_TEXT } from "@/lib/swarm-view";
-import { LiveResearchAccessBoundary, useLiveResearchAccess } from "@/features/dashboard/LiveAppProvider";
+import { useLiveResearchAccess } from "@/features/dashboard/LiveAppProvider";
+import type { ResearchGateState } from "@/features/dashboard/live-ui-state";
 
 type View = "runs" | "transactions";
 type RunFilter = "all" | "progress" | "completed" | "stopped";
@@ -250,23 +251,77 @@ function Transactions() {
   );
 }
 
+/** Activity points to the shared operator sign-in instead of embedding a second credential form. */
+export function ActivityResearchAccess({
+  live,
+  gate,
+  message,
+  children,
+}: {
+  live: boolean;
+  gate: ResearchGateState | null;
+  message?: string;
+  children?: ReactNode;
+}) {
+  if (!live || gate === null || gate === "authenticated") return children;
+
+  const status = gate === "checking"
+    ? "Checking the shared operator session."
+    : gate === "not_configured"
+      ? "Operator authentication is not configured on the server."
+      : gate === "service_error"
+        ? "The operator session could not be checked. Try again from Security Swarm."
+        : gate === "rate_limited"
+          ? "The operator session check is temporarily rate-limited. Try again from Security Swarm later."
+          : "Research history uses the same operator session as Security Swarm. Sign in there to view saved runs and reports.";
+
+  return (
+    <aside className="ac-access" aria-labelledby="ac-access-h">
+      <p className="pg-kick">Protected research history</p>
+      <h2 id="ac-access-h">Operator access required</h2>
+      <p>{status}</p>
+      {gate === "unauthenticated" && message ? <p role="status">{message}</p> : null}
+      <Link className="ov-l" href="/app/security">Operator Access in Security Swarm<span aria-hidden="true">→</span></Link>
+    </aside>
+  );
+}
+
 /** Activity: what has happened. Research runs and blockchain transactions are kept apart on purpose. Simulated records are always marked. */
 export function ActivityView() {
+  const { model } = useAppModel();
+  const access = useLiveResearchAccess();
+  const live = model.mode === "live";
   const [view, setView] = useState<View>("runs");
   return (
     <section className="route ac" aria-labelledby="h-act">
-      <PageHead id="h-act" kicker="Activity · history" title="Activity" lede="A log of what has already happened: research the Security Swarm has done, and transactions made from a wallet. It is a record of the past, newest first. It is not a plan or a roadmap." />
+      <PageHead id="h-act" kicker="Activity · history" title="Activity" lede="Research History and Transactions are separate records. Research History contains saved Security Swarm runs; Transactions contains blockchain activity only." />
+      <div className="ac-context" aria-label="Activity data sources">
+        <section>
+          <h2>Research History</h2>
+          <p>Persisted Security Swarm runs, ordered newest first. In live mode, viewing protected run history requires operator sign-in.</p>
+        </section>
+        <section>
+          <h2>Transactions</h2>
+          <p>{live
+            ? "Unavailable until a real transaction-history integration is connected. This dashboard does not create or submit transactions."
+            : "Example transaction rows are simulations, not wallet activity. A real transaction-history integration is not connected."}</p>
+        </section>
+      </div>
       <ToggleGroup
         label="Choose what to see"
         value={view}
         onChange={setView}
         options={[
           { value: "runs", label: "Research history" },
-          { value: "transactions", label: "Transactions" },
+          { value: "transactions", label: live ? "Transactions · unavailable" : "Transactions · examples" },
         ]}
       />
       <div className="ac-view" key={view}>
-        {view === "runs" ? <LiveResearchAccessBoundary><Runs /></LiveResearchAccessBoundary> : <Transactions />}
+        {view === "runs" ? (
+          <ActivityResearchAccess live={live} gate={access?.gate ?? null} message={access?.message}>
+            <Runs />
+          </ActivityResearchAccess>
+        ) : <Transactions />}
       </div>
     </section>
   );

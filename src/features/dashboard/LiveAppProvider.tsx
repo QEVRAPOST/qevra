@@ -13,9 +13,6 @@ import type {
   NetworkRpcState,
 } from "@/types";
 import { Button } from "@/components/ui/Button";
-import { Field } from "@/components/ui/Field";
-import { Panel } from "@/components/ui/Panel";
-import { AppNotice } from "@/components/ui/AppNotice";
 import { ModelContext } from "@/components/dashboard/AppModelContext";
 import { WalletPickerDialog } from "@/components/dashboard/WalletPickerDialog";
 import {
@@ -80,6 +77,17 @@ function errorMessage(error: unknown): string {
   return "The live service request failed. Existing live values were not replaced with demo data.";
 }
 
+export function operatorAccessErrorMessage(error: unknown): string {
+  if (!(error instanceof SecurityApiClientError)) return "Sign-in could not be completed. Try again.";
+  if (error.status === 401 || error.code === "invalid_access_token") {
+    return "That operator access token was not accepted. Check the configured token and try again.";
+  }
+  if (error.status === 403) return "Operator access is not permitted for this request. Contact the service operator if you need access.";
+  if (error.status === 429 || error.code === "rate_limit_exceeded") return "Too many sign-in attempts. Wait before trying again.";
+  if (error.status === 503 || error.status >= 500) return "The operator service is temporarily unavailable. Try again shortly.";
+  return "Sign-in could not be completed. Check the operator access settings and try again.";
+}
+
 function isUnauthorized(error: unknown): boolean {
   return error instanceof SecurityApiClientError && error.status === 401;
 }
@@ -95,7 +103,7 @@ function sessionStatusGate(status: { configured: boolean; authenticated: boolean
   return status.authenticated ? "authenticated" : "unauthenticated";
 }
 
-function LiveAccessGate({
+export function LiveAccessGate({
   gate,
   message,
   onLogin,
@@ -107,6 +115,7 @@ function LiveAccessGate({
   onRetry: () => void;
 }) {
   const [token, setToken] = useState("");
+  const [tokenVisible, setTokenVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string>();
   const [loginRateLimited, setLoginRateLimited] = useState(false);
@@ -137,7 +146,7 @@ function LiveAccessGate({
       await onLogin(token);
       setToken("");
     } catch (error) {
-      setLoginError(errorMessage(error));
+      setLoginError(operatorAccessErrorMessage(error));
       if (error instanceof SecurityApiClientError && error.status === 429) {
         setLoginRateLimited(true);
         setLoginRetryAt(Date.now() + (error.retryAfterMs ?? 60_000));
@@ -148,62 +157,59 @@ function LiveAccessGate({
     }
   }
 
-  const title = loginRateLimited
-    ? "Sign-in rate-limited"
-    : gate === "checking" ? "Checking live service"
-      : gate === "not_configured" ? "Live access is not configured"
-        : gate === "service_error" ? "Live service error"
-          : gate === "rate_limited" ? "Live access rate-limited"
-            : "Sign in to live services";
-  const detail = gate === "checking"
-    ? "Checking server-side session status. No wallet request is made."
-    : gate === "not_configured"
-      ? "The server has not configured operator authentication. Example data is not substituted in live mode."
-      : gate === "service_error"
-        ? message ?? "The live service could not be reached. Example data is not substituted in live mode."
-        : gate === "rate_limited"
-          ? message ?? "The live service is rate-limiting access checks. Wait before retrying."
-          : "Use the operator access token to start a short-lived, HTTP-only session. The token is kept only in this form while signing in.";
-
   return (
-    <AppNotice
-      as="section"
-      title={title}
-      lead={detail}
-      busy={gate === "checking"}
-      tone={gate === "service_error" || gate === "rate_limited" || loginError ? "problem" : "info"}
-    >
-        {gate === "unauthenticated" ? (
-          <Panel title="Live service access">
-            <form onSubmit={submit}>
-              <Field label="Operator access token" token="private" hint="Sent only to this site's same-origin session endpoint." htmlFor="qevra-live-token">
+    <section className="operator-access-gate" aria-busy={gate === "checking" || undefined}>
+      {gate === "unauthenticated" ? (
+        <>
+          {message ? <p className="operator-access-message" role="status">{message}</p> : null}
+          <form className="operator-access-form" onSubmit={submit}>
+            <div className="fld operator-token-field">
+              <label className="fl" htmlFor="qevra-live-token">Operator access token</label>
+              <span className="fr operator-token-control">
                 <input
                   id="qevra-live-token"
-                  type="password"
+                  type={tokenVisible ? "text" : "password"}
                   autoComplete="current-password"
                   autoCapitalize="none"
                   spellCheck={false}
+                  aria-describedby="qevra-live-token-hint"
+                  aria-invalid={loginError ? true : undefined}
                   value={token}
                   onChange={(event) => setToken(event.target.value)}
                 />
-              </Field>
-              <Button type="submit" disabled={!token || submitting || (loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock)}>
-                {submitting ? "Signing in…" : loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock
-                  ? `Try again in ${Math.ceil((loginRetryAt - clock) / 1_000)}s`
-                  : "Sign in"}
-              </Button>
-              {loginError ? <p role="alert">{loginError}</p> : null}
-            </form>
-          </Panel>
-        ) : gate === "service_error" || gate === "rate_limited" ? (
-          <Panel title="Retry live access check">
-            <p>{message ?? detail}</p>
-            <Button type="button" onClick={onRetry}>Retry</Button>
-          </Panel>
-        ) : (
-          <Panel title="No live data is shown.">{message ?? detail}</Panel>
-        )}
-    </AppNotice>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="small"
+                  aria-label={tokenVisible ? "Hide operator access token" : "Show operator access token"}
+                  aria-pressed={tokenVisible}
+                  aria-controls="qevra-live-token"
+                  onClick={() => setTokenVisible((visible) => !visible)}
+                >
+                  {tokenVisible ? "Hide" : "Show"}
+                </Button>
+              </span>
+              <small id="qevra-live-token-hint">Enter the configured operator access token. A research Run ID is not an authentication token. It is sent only to the same-origin sign-in endpoint.</small>
+            </div>
+            <Button type="submit" disabled={!token || submitting || (loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock)}>
+              {submitting ? "Signing in…" : loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock
+                ? `Try again in ${Math.ceil((loginRetryAt - clock) / 1_000)}s`
+                : "Sign in"}
+            </Button>
+            {loginError ? <p role="alert" className="operator-access-error">{loginError}</p> : null}
+          </form>
+        </>
+      ) : gate === "service_error" || gate === "rate_limited" ? (
+        <div className="operator-access-status" role="status">
+          <p>{message ?? (gate === "rate_limited" ? "The operator session check is being rate-limited. Wait before trying again." : "The operator session could not be checked. Try again shortly.")}</p>
+          <Button type="button" variant="ghost" onClick={onRetry}>Retry session check</Button>
+        </div>
+      ) : gate === "checking" ? (
+        <p className="operator-access-status" role="status">Checking the server-side operator session.</p>
+      ) : (
+        <p className="operator-access-status" role="status">Operator authentication is not configured on the server. Research history and run creation remain protected.</p>
+      )}
+    </section>
   );
 }
 
@@ -253,7 +259,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setGate(next);
   }, []);
 
-  const expireSession = useCallback((message = "Your live session expired. Sign in again to continue reading the live API.") => {
+  const expireSession = useCallback((message = "Your operator session expired. Sign in again to continue using research history and run details.") => {
     accessEpoch.current += 1;
     pollRequestId.current += 1;
     pollInFlight.current = false;
@@ -304,7 +310,12 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       if (requestId !== sessionCheckId.current) return;
       updateGate(sessionErrorGate(error));
-      setGateMessage(errorMessage(error));
+      const message = error instanceof SecurityApiClientError && error.status === 401
+        ? "The operator session could not be verified. Sign in again to continue using research history."
+        : error instanceof SecurityApiClientError && (error.status === 429 || error.code === "rate_limit_exceeded")
+          ? "The operator session check is rate-limited. Wait before trying again."
+          : operatorAccessErrorMessage(error);
+      setGateMessage(message);
     }
   }, [updateGate]);
 

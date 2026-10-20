@@ -9,7 +9,7 @@ import type { RobinhoodPublicAddressSnapshot } from "@/features/wallet/public-rp
 import { NETWORKS, getExplorerAddressUrl } from "@/lib/config/networks";
 import type { NetworkId } from "@/types/network";
 
-type InspectionState =
+export type PublicAddressInspectionState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "available"; snapshot: RobinhoodPublicAddressSnapshot }
@@ -17,10 +17,50 @@ type InspectionState =
 
 const FALLBACK_ERROR = "The public Robinhood RPC could not be reached.";
 
+export function publicAddressActionLabel(state: PublicAddressInspectionState): string {
+  if (state.status === "loading") return "Reading public address…";
+  return state.status === "available" ? "Refresh public balance" : "Inspect Address";
+}
+
+export function PublicAddressInspectionMessage({ state }: { state: Exclude<PublicAddressInspectionState, { status: "available" }> }) {
+  if (state.status === "error") return <p className="ne-error" role="alert">{state.message}</p>;
+  if (state.status === "loading") return <p className="ne-address-loading" role="status">Reading the latest native balance from the selected Robinhood RPC…</p>;
+  return <p className="ne-address-empty">Enter a public EVM address to view its balance and network details.</p>;
+}
+
+export function PublicAddressResult({ snapshot }: { snapshot: RobinhoodPublicAddressSnapshot }) {
+  const network = NETWORKS.find((item) => item.id === snapshot.networkId);
+  const explorerUrl = getExplorerAddressUrl(snapshot.networkId, snapshot.address);
+
+  return (
+    <div className="ne-address-result" aria-live="polite">
+      <p className="ne-address-badge">Watch-only address</p>
+      <div className="ne-balance-readout">
+        <span>Native balance</span>
+        <strong>{formatEther(BigInt(snapshot.balanceWei))} ETH</strong>
+        <small>{network?.label} · chain ID {snapshot.chainId}</small>
+      </div>
+      <dl className="kv">
+        <div><dt>Inspected address</dt><dd><code>{snapshot.address}</code></dd></div>
+        <div><dt>Selected read network</dt><dd>{network?.label}</dd></div>
+        <div><dt>RPC chain ID</dt><dd>{snapshot.chainId}</dd></div>
+        <div><dt>Observed block</dt><dd>{snapshot.observedBlock}</dd></div>
+        <div><dt>Read status</dt><dd>Available · balance requested at latest</dd></div>
+        <div><dt>Observed at</dt><dd><time dateTime={snapshot.observedAt}>{snapshot.observedAt}</time></dd></div>
+      </dl>
+      <div className="ne-actions">
+        <CopyAddressButton address={snapshot.address} label="Copy Address" />
+        {explorerUrl ? <a className="wl-copy" href={explorerUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open inspected address on ${network?.label ?? "selected network"} explorer`}>Open in Explorer</a> : null}
+      </div>
+      <p className="ne-readonly">This address is watch-only. It is not a connected wallet or a verified VEYRA deployment.</p>
+    </div>
+  );
+}
+
 export function PublicAddressInspector() {
   const [networkId, setNetworkId] = useState<NetworkId>("testnet");
   const [address, setAddress] = useState("");
-  const [inspection, setInspection] = useState<InspectionState>({ status: "idle" });
+  const [inspection, setInspection] = useState<PublicAddressInspectionState>({ status: "idle" });
   const requestId = useRef(0);
 
   function clearInspection() {
@@ -58,9 +98,6 @@ export function PublicAddressInspector() {
       });
     }
   }
-
-  const snapshot = inspection.status === "available" ? inspection.snapshot : undefined;
-  const explorerUrl = snapshot ? getExplorerAddressUrl(snapshot.networkId, snapshot.address) : undefined;
 
   return (
     <section className="ne-inspector" aria-labelledby="h-public-address-inspector">
@@ -103,41 +140,15 @@ export function PublicAddressInspector() {
           onChange={(event) => changeAddress(event.currentTarget.value)}
           aria-describedby="public-address-help"
         />
-        <p id="public-address-help" className="ne-separation">Reads use the selected network’s public RPC. Inspected addresses stay separate from connected accounts.</p>
+        <p id="public-address-help" className="ne-separation">Choose the chain, enter an EVM address, then inspect to read native ETH balance and the observed block. Reads use that network’s public RPC and do not request wallet access.</p>
         <Button type="submit" variant="ghost" size="small" disabled={inspection.status === "loading"}>
-          {inspection.status === "loading"
-            ? "Reading public address…"
-            : snapshot ? "Refresh public balance" : "Inspect address"}
+          {publicAddressActionLabel(inspection)}
         </Button>
       </form>
 
-      {inspection.status === "error" ? <p className="ne-error" role="alert">{inspection.message}</p> : null}
-      {inspection.status === "loading" ? <p className="ne-address-loading" role="status">Reading the latest native balance from the selected Robinhood RPC…</p> : null}
-      {inspection.status === "idle" ? <p className="ne-address-empty">Enter a public EVM address to view its balance and network details.</p> : null}
-
-      {snapshot ? (
-        <div className="ne-address-result" aria-live="polite">
-          <p className="ne-address-badge">Watch-only address</p>
-          <div className="ne-balance-readout">
-            <span>Native balance</span>
-            <strong>{formatEther(BigInt(snapshot.balanceWei))} ETH</strong>
-            <small>{NETWORKS.find((network) => network.id === snapshot.networkId)?.label} · chain ID {snapshot.chainId}</small>
-          </div>
-          <dl className="kv">
-            <div><dt>Inspected address</dt><dd><code>{snapshot.address}</code></dd></div>
-            <div><dt>Selected read network</dt><dd>{NETWORKS.find((network) => network.id === snapshot.networkId)?.label}</dd></div>
-            <div><dt>RPC chain ID</dt><dd>{snapshot.chainId}</dd></div>
-            <div><dt>Observed block</dt><dd>{snapshot.observedBlock}</dd></div>
-            <div><dt>Read status</dt><dd>Available · balance requested at latest</dd></div>
-            <div><dt>Observed at</dt><dd><time dateTime={snapshot.observedAt}>{snapshot.observedAt}</time></dd></div>
-          </dl>
-          <div className="ne-actions">
-            <CopyAddressButton address={snapshot.address} label="Copy Address" />
-            {explorerUrl ? <a className="wl-copy" href={explorerUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
-          </div>
-          <p className="ne-readonly">This address is watch-only. It is not a connected wallet or a verified VEYRA deployment.</p>
-        </div>
-      ) : null}
+      {inspection.status === "available"
+        ? <PublicAddressResult snapshot={inspection.snapshot} />
+        : <PublicAddressInspectionMessage state={inspection} />}
     </section>
   );
 }

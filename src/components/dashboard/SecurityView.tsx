@@ -1,15 +1,12 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
-import { Chip } from "@/components/ui/Chip";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { prefersReducedMotion } from "@/lib/aperture/motion";
 import { brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import {
-  CORE_SENTENCE,
   PASSED_LEGEND_BODY,
   PASSED_LEGEND_COMPLETED,
   PASSED_LEGEND_COMPLETED_BODY,
@@ -17,14 +14,16 @@ import {
   SWARM_PARAGRAPH,
 } from "@/lib/content/copy-lock";
 import { useIllustration } from "@/lib/use-illustration";
-import { illustrationModel, JOURNEY, journeyPhase, pipelineFor, runBadge } from "@/lib/swarm-view";
+import { illustrationModel, JOURNEY, journeyPhase, pipelineFor } from "@/lib/swarm-view";
 import type { ResearchTopicId } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 import { startBlocker, SwarmLaunch } from "./SwarmLaunch";
-import { MiniPipeline, SwarmPipeline } from "./SwarmPipeline";
+import { SwarmPipeline } from "./SwarmPipeline";
 import { SwarmRunDetail } from "./SwarmRunDetail";
-import { LiveResearchAccessBoundary, useLiveResearchAccess } from "@/features/dashboard/LiveAppProvider";
+import { RunHistoryItem } from "./RunHistoryItem";
+import { LiveAccessGate, useLiveResearchAccess } from "@/features/dashboard/LiveAppProvider";
+import type { ResearchGateState } from "@/features/dashboard/live-ui-state";
 
 /** The four phases of one run, as a trail. The current phase is marked; earlier ones are done. */
 function Trail({ phase }: { phase: number }) {
@@ -97,11 +96,12 @@ function SecurityResearchView() {
 
   return (
     <section className="route sw" aria-labelledby="h-sec">
-      <PageHead id="h-sec" kicker="Security Swarm · research only" title="Security Swarm" lede={CORE_SENTENCE} />
+      <PageHead id="h-sec" kicker="Security Swarm · operator workspace" title="Security Swarm" lede="Choose a topic, start a run when the service is available, and review saved findings and evidence." />
       <div className="sw-ws">
-        <aside className="sw-side" aria-label="Start and history">
+        <aside className="sw-side" aria-label="Research setup and saved runs">
           <SwarmLaunch
             live={live}
+            capabilities={live ? sec.capabilities : undefined}
             topicId={topicId}
             onTopic={setTopicId}
             onStart={() => actions.createSecurityRun(topicId)}
@@ -115,40 +115,20 @@ function SecurityResearchView() {
           />
           {sec.unavailableMessage ? <p role="status" className="sw-hint">{sec.unavailableMessage}</p> : null}
           {sec.actionMessage ? <p role="status" className="sw-hint">{sec.actionMessage}</p> : null}
-          {live && sec.capabilities ? (
-            <dl className="kv" aria-label="Live service status">
-              <div><dt>Provider</dt><dd>{sec.capabilities.provider}{sec.capabilities.providerName ? ` · ${sec.capabilities.providerName}` : ""}</dd></div>
-              <div><dt>Worker</dt><dd>{sec.capabilities.worker}</dd></div>
-              <div><dt>Persistence</dt><dd>{sec.capabilities.persistence}</dd></div>
-              <div><dt>Approved sources</dt><dd>{sec.capabilities.sourceCount}</dd></div>
-            </dl>
-          ) : null}
-          <details className="sw-about">
-            <summary>What the Swarm does, and what it cannot do</summary>
-            <p>{brandizeProjectName(SWARM_PARAGRAPH, PROJECT_NAME)}</p>
-          </details>
           <div className="sb-hist">
-            <h2 className="ov-h">Runs</h2>
+            <h2 className="ov-h">Recent saved runs</h2>
             <ul className="runs" aria-label={live ? "Live research runs" : "Simulated research runs"} aria-busy={sec.status === "loading" || undefined}>
               {sec.status === "ready" &&
                 sec.runs.map((r) => {
-                  const badge = runBadge(r);
                   return (
-                    <li key={r.id}>
-                      <button type="button" className={`run${r.exampleTag ? " ex" : ""}`} aria-pressed={!illustrating && r.id === selected?.id} aria-controls={detailId} onClick={() => choose(r.id)}>
-                        <span className="rt">
-                          <span title={r.id}>{r.origin === "live" ? `${r.id.slice(0, 8)}…${r.id.slice(-4)}` : r.id}</span>
-                          {r.exampleTag ? <SimTag /> : null}
-                        </span>
-                        <span className="rg">{r.goal}</span>
-                        <span className="rb">
-                          <Chip tone={badge.tone} material={badge.material}>
-                            {badge.label}
-                          </Chip>
-                          <MiniPipeline model={pipelineFor(r)} />
-                        </span>
-                      </button>
-                    </li>
+                    <RunHistoryItem
+                      key={r.id}
+                      run={r}
+                      selected={r.id === selected?.id}
+                      illustrating={illustrating}
+                      detailId={detailId}
+                      onSelect={choose}
+                    />
                   );
                 })}
               {sec.status === "loading" && (
@@ -171,6 +151,10 @@ function SecurityResearchView() {
               ) : null}
             </ul>
           </div>
+          <details className="sw-about">
+            <summary>What the Swarm does, and what it cannot do</summary>
+            <p>{brandizeProjectName(SWARM_PARAGRAPH, PROJECT_NAME)}</p>
+          </details>
         </aside>
 
         <div className="sw-main" ref={pipeRef}>
@@ -205,6 +189,56 @@ function SecurityResearchView() {
   );
 }
 
+export function SecurityPublicEntry({ children }: { children: ReactNode }) {
+  return (
+    <section className="route sw sw-entry" aria-labelledby="h-sec-public">
+      <PageHead
+        id="h-sec-public"
+        kicker="Security Swarm · research workspace"
+        title="Security Swarm"
+        lede="Review public-source research, saved evidence, and stated limitations. Live history and new runs require operator access."
+      />
+      <section className="sw-access" aria-labelledby="sw-access-h">
+        <div className="sw-access-heading">
+          <p className="sw-access-kicker">Protected research functions</p>
+          <h2 id="sw-access-h">Operator Access</h2>
+          <p>Saved reports and run creation require the configured server-side operator session. Public wallet and network features stay available without it.</p>
+        </div>
+        {children}
+      </section>
+    </section>
+  );
+}
+
+export function SecurityResearchAccess({
+  gate,
+  message,
+  onLogin,
+  onRetry,
+  children,
+}: {
+  gate: ResearchGateState;
+  message?: string;
+  onLogin: (token: string) => Promise<void>;
+  onRetry: () => void;
+  children?: ReactNode;
+}) {
+  if (gate === "authenticated") return children;
+
+  return (
+    <SecurityPublicEntry>
+      <LiveAccessGate gate={gate} message={message} onLogin={onLogin} onRetry={onRetry} />
+    </SecurityPublicEntry>
+  );
+}
+
 export function SecurityView() {
-  return <LiveResearchAccessBoundary><SecurityResearchView /></LiveResearchAccessBoundary>;
+  const access = useLiveResearchAccess();
+  if (!access) return <SecurityResearchView />;
+
+  return (
+    <SecurityResearchAccess gate={access.gate} message={access.message} onLogin={access.login} onRetry={access.retry}>
+      <SecurityResearchView />
+    </SecurityResearchAccess>
+  );
 }

@@ -174,7 +174,7 @@ export function IntentLockPanel({ comparison, driven }: { comparison: IntentComp
   return (
     <Panel title="Intent Lock" aside={<ComparisonChip c={shown} demo={demo} />} className="intent">
       <p className="corep2">
-        Intent Lock compares the swap details you reviewed with the details that would be signed, one ring for each of eight details. If any detail differs, the light stops at that ring.
+        Intent Lock compares preview values marked as reviewed with a hypothetical transaction description, one ring for each of eight details. A mismatch marks changed local values; it is not an on-chain result, and no signature request is made.
       </p>
       <figure
         className="glyphbox interactive"
@@ -234,15 +234,15 @@ export function IntentLockPanel({ comparison, driven }: { comparison: IntentComp
       </div>
       )}
 
-      <p className="dnote">Each row is one parameter of the transaction. “Reviewed” is what you approved; “To be signed” is what would be sent. Any difference is marked.</p>
-      <ScrollRegion className="itwrap" label="Swap details as reviewed and as they would be signed">
+      <p className="dnote">Each row is an illustrative parameter. “Reviewed” means the value captured by this screen, not wallet approval. “Hypothetical execution” describes a future integration only; nothing is signed or sent.</p>
+      <ScrollRegion className="itwrap" label="Illustrative swap details as reviewed and as hypothetical execution">
         <table className="itable">
-          <caption className="sr">Swap details as reviewed and as they would be signed</caption>
+          <caption className="sr">Illustrative swap details as reviewed and as hypothetical execution</caption>
           <thead>
             <tr>
               <th scope="col">Detail</th>
               <th scope="col">Reviewed</th>
-              <th scope="col">To be signed</th>
+              <th scope="col">Hypothetical execution</th>
               <th scope="col">Match</th>
             </tr>
           </thead>

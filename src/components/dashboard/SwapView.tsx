@@ -111,8 +111,13 @@ export function SwapView() {
         id="h-swap"
         kicker="Simple swap · preview, switched off"
         title="Simple swap"
-        lede={live ? "Swaps remain disabled. No reviewed route, quote, or transaction interface is active." : "Set up a swap and review it. Nothing can be sent: there is no route, no price and no signing."}
+        lede={live ? "Swap execution is unavailable: there is no supported, reviewed route or live quote. Signing and transaction controls are not enabled." : "Preview the intended flow. No live token list, price, route, quote, signing, or transaction is available."}
       />
+
+      <p className="sp-flow-note">
+        <b>Intended flow</b>
+        <span>Select tokens, enter an amount, review the route and slippage, inspect Intent Lock, then execute only when a supported real integration provides a reviewed route and quote.</span>
+      </p>
 
       <ol className="sw-trail sp-trail" aria-label="The steps of a swap">
         {steps.map((st, i) => (
@@ -160,7 +165,7 @@ export function SwapView() {
                 touch();
               }}
             />
-            <small id="amt-h">Simulated token. It has no price and no balance here.</small>
+            <small id="amt-h">TKN-A and TKN-B are placeholder preview tokens. They have no live price or balance.</small>
           </div>
 
           <button type="button" className="sp-flip" aria-label={`Swap sides: pay ${receive} instead`} disabled={live} onClick={() => { setPay(receive); touch(); }}>
@@ -233,6 +238,7 @@ export function SwapView() {
         </div>
 
         <div className="sp-review">
+          <p className="sp-preview-note"><b>Preview only.</b> Intent Lock parameters here are illustrative. A mismatch means local values differ from the values captured for review; it is not a wallet rejection or an on-chain transaction result.</p>
           <IntentLockPanel comparison={comparison} driven={live ? undefined : preview.driven} />
         </div>
       </div>

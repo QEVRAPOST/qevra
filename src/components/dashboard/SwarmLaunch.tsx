@@ -9,6 +9,9 @@ import type { ResearchTopicId, SecurityResearchCapabilities } from "@/types";
 /** Why a new run cannot start right now, in a sentence. Null when it can. */
 export function startBlocker(capabilities: SecurityResearchCapabilities | undefined): string | null {
   if (!capabilities) return "Checking what the research service can do. Saved runs can still be opened.";
+  if (capabilities.unavailableReason === "ai_billing_not_approved") {
+    return "New runs are unavailable because model billing has not been approved. Saved reports remain available.";
+  }
   if (capabilities.provider !== "available") return "New runs cannot start: no model provider is available. Saved runs can still be opened.";
   if (capabilities.worker !== "available") return "New runs cannot start: the worker is unavailable. Saved runs can still be opened.";
   if (capabilities.persistence !== "available") return "New runs cannot start: the database is unavailable. Saved runs can still be opened.";
@@ -17,6 +20,7 @@ export function startBlocker(capabilities: SecurityResearchCapabilities | undefi
 
 interface LaunchProps {
   live: boolean;
+  capabilities?: SecurityResearchCapabilities;
   topicId: ResearchTopicId;
   onTopic: (id: ResearchTopicId) => void;
   /** live: queue a real run */
@@ -35,8 +39,13 @@ interface LaunchProps {
  * Step one and two of a run: choose a topic, then start it. In live mode the button queues a real run, and only when the
  * service says it can. In example mode there is no run to start; the visitor can instead watch an illustration of one.
  */
-export function SwarmLaunch({ live, topicId, onTopic, onStart, canStart, isCreating, blocker, step, onIllustrate, onNext, onStop }: LaunchProps) {
+export function SwarmLaunch({ live, capabilities, topicId, onTopic, onStart, canStart, isCreating, blocker, step, onIllustrate, onNext, onStop }: LaunchProps) {
   const uid = useId();
+  const providerStatus = !capabilities
+    ? "Checking"
+    : capabilities.unavailableReason === "ai_billing_not_approved"
+      ? "Billing approval required"
+      : capabilities.providerName ?? (capabilities.provider === "available" ? "Available" : "Unavailable");
   return (
     <section className="sw-launch" aria-labelledby={`${uid}-h`}>
       <h2 id={`${uid}-h`} className="ov-h">1 · Choose a topic</h2>
@@ -49,12 +58,20 @@ export function SwarmLaunch({ live, topicId, onTopic, onStart, canStart, isCreat
           </label>
         ))}
       </div>
+      {live ? (
+        <dl className="kv sw-launch-availability" aria-label="Research service availability">
+          <div><dt>Provider</dt><dd>{providerStatus}</dd></div>
+          <div><dt>Worker</dt><dd>{capabilities?.worker ?? "Checking"}</dd></div>
+          <div><dt>Persistence</dt><dd>{capabilities?.persistence ?? "Checking"}</dd></div>
+          <div><dt>Approved sources</dt><dd>{capabilities?.sourceCount ?? "Checking"}</dd></div>
+        </dl>
+      ) : null}
       <div className="sw-go">
         <h2 className="ov-h">2 · Start</h2>
         {live ? (
           <>
             <Button variant="primary" type="button" disabled={!canStart || isCreating} onClick={onStart}>
-              {isCreating ? "Queueing…" : "Start research run"}
+              {isCreating ? "Queueing…" : "Create research run"}
             </Button>
             <p className="sw-hint" id={`${uid}-hint`}>
               {blocker ?? "A run asks the configured model provider to read this topic’s approved public sources, in three stages. It cannot reach keys, sign, or move funds, and what it returns is model output, not an audit."}

@@ -5,6 +5,7 @@ import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
+import { pipelineFor, STATUS_TEXT } from "@/lib/swarm-view";
 import type { DeterministicTestSummary, ResearchFinding, SwarmRun } from "@/types";
 
 const ASSESSMENT: Record<ResearchFinding["modelAssessment"], { label: string; tone: "neutral" | "exp" | "unk"; material: "outline" | "dotted" }> = {
@@ -44,6 +45,88 @@ function Hash({ value }: { value: string }) {
 /** A source link is followed only if it is a plain web address. */
 const safeHref = (url: string): string | undefined => (/^https?:\/\//i.test(url) ? url : undefined);
 
+/** Identify the known Robinhood explorer ambiguity from the saved claim itself, never from a fixed run identifier. */
+export function hasRobinhoodExplorerMismatch(finding: Pick<ResearchFinding, "claim" | "modelAssessment" | "evidence">): boolean {
+  const text = [finding.claim, ...finding.evidence.map((item) => item.quote)].join(" ");
+  return finding.modelAssessment === "unclear"
+    && /\btestnet\b|\b46630\b/i.test(text)
+    && /robinhoodchain\.blockscout\.com/i.test(text);
+}
+
+export function formatRecordedEventTime(value: string): string {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(parsed).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+}
+
+export function recordedEventLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    queued: "Run queued",
+    worker_claimed: "Worker claimed",
+    source_retrieval: "Source retrieval",
+    research: "Research",
+    analysis: "Analysis",
+    verification: "Verification",
+    completed: "Run completed",
+    failed: "Run failed",
+  };
+  return labels[stage] ?? stage.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export function ReportLimitSections({
+  limitations,
+  assumptions,
+  recommendations,
+}: {
+  limitations: string[];
+  assumptions: string[];
+  recommendations: string[];
+}) {
+  const groups = [
+    { title: "Limitations", entries: limitations },
+    { title: "Assumptions", entries: assumptions },
+    { title: "Recommendations", entries: recommendations },
+  ].filter((group) => group.entries.length > 0);
+
+  return (
+    <section className="dsec" aria-label="Limitations, assumptions and recommendations">
+      <div className="limit-groups">
+        {groups.map((group) => (
+          <section className="limit-group" key={group.title} aria-label={group.title}>
+            <h4>{group.title}</h4>
+            <ul>
+              {group.entries.map((entry, index) => <li key={`${group.title}-${index}`}>{entry}</li>)}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function RecordedEventTimeline({ events }: { events: Array<{ at: string; stage: string; message: string }> }) {
+  return (
+    <section className="dsec" aria-label="Recorded agent execution timeline">
+      <p className="dnote">Recorded run events · historical sequence. No agents are running.</p>
+      <ol className="events-timeline">
+        {events.map((event, index) => (
+          <li key={`${event.at}-${index}`}>
+            <span className="event-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+            <div className="event-content">
+              <div className="event-meta">
+                <time dateTime={event.at}>{formatRecordedEventTime(event.at)}</time>
+                <span className="event-label">{recordedEventLabel(event.stage)}</span>
+                <code>{event.stage}</code>
+              </div>
+              <p>{event.message}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 type TabId = "summary" | "findings" | "sources" | "tests" | "limits" | "events";
 
 /**
@@ -58,6 +141,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
   const live = run.origin === "live";
   const example = !!run.exampleTag;
   const sourceById = new Map((detail?.sources ?? []).map((s) => [s.id, s]));
+  const pipeline = pipelineFor(run);
   const agents = (detail ?? run.liveSummary)?.agents ?? [];
   const problem = agents.filter((a) => a.status === "failed" || a.status === "blocked");
   const errorCode = (detail ?? run.liveSummary)?.errorCode;
@@ -83,13 +167,33 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
 
   return (
     <aside className={`drawer${example ? " is-example" : ""}`} aria-labelledby={headingId}>
-      <h3 id={headingId}>{run.goal}</h3>
-      <div className="dm">
-        <span>{run.id}</span>
-        <span>{run.role}</span>
-        {live && run.liveSummary?.createdAt ? <span>Started {run.liveSummary.createdAt}</span> : null}
-        {example ? <SimTag /> : null}
-      </div>
+      <header className="report-heading">
+        <h3 id={headingId}>{run.goal}</h3>
+        <div className="dm">
+          <Chip tone={run.status.tone} material={run.status.material}>{run.status.label}</Chip>
+          <span>{run.id}</span>
+          <span>{run.role}</span>
+          {live && run.liveSummary?.createdAt ? <span>Started {run.liveSummary.createdAt}</span> : null}
+          {example ? <SimTag /> : null}
+        </div>
+      </header>
+
+      {pipeline ? (
+        <section className="report-stage-overview" aria-label={pipeline.example ? "Illustration stage order" : "Recorded stage status"}>
+          <div className="report-stage-heading">
+            <h4>{pipeline.example ? "Stage order" : "Recorded stage status"}</h4>
+            {pipeline.example ? <span>Simulated · no agent ran</span> : null}
+          </div>
+          <ol>
+            {pipeline.stages.map((stage) => (
+              <li key={stage.role} className={`s-${stage.status}`}>
+                <span>{stage.title}</span>
+                <span>{STATUS_TEXT[stage.status]}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
 
       {hasError ? (
         <div className="derr">
@@ -131,7 +235,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
         </div>
       ) : null}
 
-      <div className="ev-panel" id={`${headingId}-p`} role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `${headingId}-t-${tab}` : undefined} key={tab}>
+        <div className={`ev-panel${tab === "events" ? " events-reveal" : ""}`} id={`${headingId}-p`} role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `${headingId}-t-${tab}` : undefined} key={tab}>
         {tab === "summary" ? (
           <>
             <dl className="dfacts">
@@ -189,7 +293,12 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
                     </div>
                     <p className="claim">{f.claim}</p>
                     {f.rationale ? <p className="why">{f.rationale}</p> : null}
-                    {f.evidence.length > 0 ? (
+                      {hasRobinhoodExplorerMismatch(f) ? (
+                        <p className="claim-caveat" role="note">
+                          <b>Network association to verify.</b> This Testnet claim cites <code>robinhoodchain.blockscout.com</code>, the Robinhood Mainnet explorer. The saved claim and source quote are preserved; verify the network association before relying on it.
+                        </p>
+                      ) : null}
+                      {f.evidence.length > 0 ? (
                       <ul className="quotes" aria-label="Quotes">
                         {f.evidence.map((q, i) => {
                           const src = sourceById.get(q.sourceId);
@@ -263,33 +372,15 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
         ) : null}
 
         {tab === "limits" && withDetail ? (
-          <section className="dsec" aria-label="Limits and assumptions">
-            <ul className="plain">
-              {detail.limitations.map((l, i) => (
-                <li key={`l${i}`}><b>Limit.</b> {l}</li>
-              ))}
-              {detail.assumptions.map((l, i) => (
-                <li key={`a${i}`}><b>Assumption.</b> {l}</li>
-              ))}
-              {detail.recommendations.map((r, i) => (
-                <li key={`r${i}`}><b>Recommendation.</b> {r}</li>
-              ))}
-            </ul>
-          </section>
+          <ReportLimitSections
+            limitations={detail.limitations}
+            assumptions={detail.assumptions}
+            recommendations={detail.recommendations}
+          />
         ) : null}
 
         {tab === "events" && withDetail ? (
-          <section className="dsec" aria-label="Recorded events">
-            <ol className="events">
-              {detail.events.map((e, i) => (
-                <li key={`${e.at}-${i}`}>
-                  <time>{e.at}</time>
-                  <code>{e.stage}</code>
-                  <span>{e.message}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
+          <RecordedEventTimeline events={detail.events} />
         ) : null}
       </div>
 
