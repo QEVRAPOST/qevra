@@ -105,11 +105,10 @@ export async function discoverInjectedReadOnlyWallets(waitMs = 300): Promise<Inj
     const info = (candidate as Eip1193Like).info;
     const metadata = info && typeof info === "object" ? info as { name?: unknown; rdns?: unknown; icon?: unknown } : undefined;
     const legacyProvider = candidate as Eip1193Like & { isMetaMask?: unknown; isPhantom?: unknown };
-    const legacyName = candidate === phantomProvider || legacyProvider.isPhantom === true
-      ? "Phantom"
-      : legacyProvider.isMetaMask === true ? "MetaMask" : undefined;
+    const isPhantom = candidate === phantomProvider || legacyProvider.isPhantom === true;
+    const legacyName = isPhantom ? "Phantom" : legacyProvider.isMetaMask === true ? "MetaMask" : undefined;
     const name = safeText(metadata?.name, 60) ?? legacyName ?? `Injected EVM wallet ${legacyIndex + 1}`;
-    const rdns = safeText(metadata?.rdns, 128);
+    const rdns = safeText(metadata?.rdns, 128) ?? (isPhantom ? "app.phantom" : undefined);
     const icon = safeWalletIcon(metadata?.icon);
     const id = `injected:${legacyIndex++}`;
     discovered.set(id, { id, name, ...(rdns ? { rdns } : {}), ...(icon ? { icon } : {}), provider: { ...provider, providerName: name } });

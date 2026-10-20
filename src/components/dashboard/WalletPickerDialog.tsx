@@ -55,22 +55,25 @@ export function WalletPickerDialog({ open, choices, isDiscovering, error, onSele
         {error ? <p className="wallet-picker-error" role="alert">{error}</p> : null}
         {choices.length > 0 ? (
           <div className="wallet-picker-choices" aria-label="Installed browser wallets">
-            {choices.map((choice) => (
-              <Button key={choice.id} variant="ghost" className="wallet-picker-choice" aria-label={`Continue with ${choice.name}`} onClick={() => onSelect(choice.id)}>
-                <span className="wallet-picker-provider">
-                  <span className="wallet-picker-icon-slot" aria-hidden="true">
-                    {choice.icon
-                      ? <Image className="wallet-picker-icon" src={choice.icon} alt="" aria-hidden="true" width={28} height={28} unoptimized />
-                      : <span className="wallet-picker-icon-fallback">{choice.name.slice(0, 1).toUpperCase()}</span>}
+            {choices.map((choice) => {
+              const icon = choice.icon ?? (choice.rdns === "app.phantom" ? "/wallets/phantom.svg" : undefined);
+              return (
+                <Button key={choice.id} variant="ghost" className="wallet-picker-choice" aria-label={`Continue with ${choice.name}`} onClick={() => onSelect(choice.id)}>
+                  <span className="wallet-picker-provider">
+                    <span className="wallet-picker-icon-slot" aria-hidden="true">
+                      {icon
+                        ? <Image className="wallet-picker-icon" src={icon} alt="" aria-hidden="true" width={28} height={28} unoptimized />
+                        : <span className="wallet-picker-icon-fallback">{choice.name.slice(0, 1).toUpperCase()}</span>}
+                    </span>
+                    <span className="wallet-picker-label">
+                      <span className="wallet-picker-name">{choice.name}</span>
+                      {choice.rdns ? <span className="wallet-picker-rdns">{choice.rdns}</span> : null}
+                    </span>
                   </span>
-                  <span className="wallet-picker-label">
-                    <span className="wallet-picker-name">{choice.name}</span>
-                    {choice.rdns ? <span className="wallet-picker-rdns">{choice.rdns}</span> : null}
-                  </span>
-                </span>
-                <span className="wallet-picker-arrow" aria-hidden="true">→</span>
-              </Button>
-            ))}
+                  <span className="wallet-picker-arrow" aria-hidden="true">→</span>
+                </Button>
+              );
+            })}
           </div>
         ) : !isDiscovering && !error ? (
           <p className="wallet-picker-empty">No compatible browser wallets were discovered. Install MetaMask, Phantom, or another EVM wallet and try again.</p>
