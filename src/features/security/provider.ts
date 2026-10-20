@@ -250,7 +250,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     });
     const maxRequestBytes = this.options.maxRequestBytes ?? (this.isGroqGptOss ? 6_000 : MAX_MODEL_REQUEST_BYTES);
     if (Buffer.byteLength(payload, "utf8") > maxRequestBytes) {
-      throw new ModelProviderError("provider_input_too_large", "The research input exceeded the configured request budget.");
+      throw new ModelProviderError("provider_input_too_large", `The ${request.agent} request exceeded the configured ${maxRequestBytes}-byte request budget.`);
     }
     // This is a transport-size bound only. Token usage is taken from Groq's response usage and rate headers.
     if (this.isGroqGptOss && this.lastRequestStartedAt !== undefined) {

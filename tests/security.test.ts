@@ -5,12 +5,13 @@ import { createSession, hasSessionConfiguration, verifyAccessToken, verifySessio
 import { requireResearchAccess } from "@/features/security/api";
 import { runApprovedExperiment } from "@/features/security/approved-experiment";
 import { createQueuedRun, type StoredSource } from "@/features/security/model";
-import { processResearchRun } from "@/features/security/orchestrator";
+import { buildVerificationAgentRequest, processResearchRun } from "@/features/security/orchestrator";
 import { getModelProvider, ModelProviderError, OpenAICompatibleProvider, type ModelProvider, type StructuredModelRequest } from "@/features/security/provider";
 import { resolveMaxConcurrentRuns } from "@/features/security/groq-profile";
 import { PostgresResearchStore } from "@/features/security/store";
 import * as providerCapabilitiesModule from "@/features/security/provider-capabilities";
 import { fetchApprovedSource } from "@/features/security/sources";
+import { resolveResearchTopic } from "@/features/security/topics";
 import { GET as getSecurityCapabilities } from "@/app/api/security/capabilities/route";
 import {
   analysisAgentOutputSchema,
@@ -82,7 +83,7 @@ test("unauthenticated Security API messages use the configured project name", as
     delete process.env.NEXT_PUBLIC_PROJECT_NAME;
     const defaultResponse = await getSecurityCapabilities(new Request("http://localhost/api/security/capabilities"));
     const defaultBody = await defaultResponse.json() as { error: { message: string } };
-    assert.equal(defaultBody.error.message, "A valid QEVRA session is required.");
+    assert.equal(defaultBody.error.message, "A valid VEYRA session is required.");
 
     process.env.NEXT_PUBLIC_PROJECT_NAME = "Atlas Labs";
     const response = await getSecurityCapabilities(new Request("http://localhost/api/security/capabilities"));
@@ -636,15 +637,25 @@ test("Analysis and Verification prompts enumerate their strict JSON contracts an
   assert.match(verification, /supported.*contradicted.*unclear/i);
   assert.match(verification, /supports.*contradicts.*inconclusive/i);
   assert.match(verification, /exact.*research.*claim/i);
-  assert.match(verification, /exact.*substring/i);
-  assert.match(verification, /empty (evidence|check) arrays/i);
-  assert.match(verification, /400[- ]completion[- ]token/i);
+  assert.match(verification, /unchanged substring/i);
+  assert.match(verification, /whole claim/i);
+  assert.match(verification, /partial.*unclear/i);
+  assert.match(verification, /context only, never proof or an audit/i);
+  assert.match(verification, /empty arrays when no claims or artifacts/i);
 
   assert.deepEqual((inputs.analysis as { research: unknown }).research, run.research);
-  assert.deepEqual((inputs.verification as { research: unknown }).research, run.research);
   assert.equal(run.research?.claims.length, 1, "Research claims without an exact approved-source quote must not flow downstream");
-  assert.deepEqual((inputs.verification as { analysis: unknown }).analysis, analysisOutput);
-  assert.deepEqual((inputs.verification as { approvedArtifactIds: string[] }).approvedArtifactIds, []);
+  const verificationInput = inputs.verification as {
+    researchClaims: unknown[];
+    analysisAssessments: { risks: unknown[]; unknowns: string[] };
+    approvedSources: Array<{ id: string; sha256: string; text: string }>;
+    completedArtifacts: unknown[];
+  };
+  assert.deepEqual(verificationInput.researchClaims, run.research?.claims);
+  assert.deepEqual(verificationInput.analysisAssessments, { risks: analysisOutput.risks, unknowns: analysisOutput.unknowns });
+  assert.deepEqual(verificationInput.approvedSources, [{ id: source.id, sha256: source.sha256, text: source.text }]);
+  assert.deepEqual(verificationInput.completedArtifacts, []);
+  assert.equal("approvedArtifactIds" in verificationInput, false);
 });
 
 test("Analysis risks require at least one source reference", () => {
@@ -653,6 +664,37 @@ test("Analysis risks require at least one source reference", () => {
     risks: [{ id: "source-risk", title: "Unsupported risk", severity: "high", analysis: "No source is cited.", sourceIds: [] }],
   };
   assert.equal(analysisAgentOutputSchema.safeParse(output).success, false);
+});
+
+test("Verification receives only cited approved sources and compact Analysis assessments", () => {
+  const risk = {
+    id: "implementation-review",
+    title: "Implementation needs separate review",
+    severity: "medium" as const,
+    analysis: "The standards excerpt does not verify this application's implementation.",
+    sourceIds: [source.id],
+  };
+  const research = { ...researchOutput, claims: [researchOutput.claims[0]!] };
+  const analysis = { ...analysisOutput, risks: [risk] };
+  const request = buildVerificationAgentRequest(
+    resolveResearchTopic("mldsa-key-registration", "FIPS evidence question"),
+    research,
+    analysis,
+    new Map([[source.id, source]]),
+    [{ id: source.id }],
+    [],
+  );
+  const input = request.input as {
+    analysisAssessments: { risks: unknown[]; unknowns: string[] };
+    approvedSources: Array<{ id: string; sha256: string; text: string }>;
+    researchClaims: unknown[];
+  };
+
+  assert.deepEqual(input.analysisAssessments, { risks: [risk], unknowns: analysis.unknowns });
+  assert.deepEqual(input.approvedSources, [{ id: source.id, sha256: source.sha256, text: source.text }]);
+  assert.deepEqual(input.researchClaims, research.claims);
+  assert.equal("summary" in input, false);
+  assert.equal("recommendations" in input.analysisAssessments, false);
 });
 
 test("Analysis and Verification schemas reject missing fields, wrong types, and invalid enums while allowing empty checks", () => {
@@ -814,9 +856,19 @@ test("mocked three-agent pipeline stays within the unchanged Groq output, reques
       requestBytes.push(Buffer.byteLength(bodyText, "utf8"));
       const body = JSON.parse(bodyText) as { max_completion_tokens?: number; messages: Array<{ content?: string }> };
       requestMaxOutputTokens.push(body.max_completion_tokens ?? 0);
-      const user = JSON.parse(body.messages[1]?.content ?? "{}") as { agent: keyof typeof outputs; payload: { sources?: Array<{ text?: string; textIsExcerpt?: boolean }>; research?: { claims?: unknown[] } } };
+      const user = JSON.parse(body.messages[1]?.content ?? "{}") as {
+        agent: keyof typeof outputs;
+        payload: {
+          sources?: Array<{ text?: string; textIsExcerpt?: boolean }>;
+          approvedSources?: Array<{ text?: string; textIsExcerpt?: boolean }>;
+          research?: { claims?: unknown[] };
+          researchClaims?: unknown[];
+        };
+      };
       const modelOutput = outputs[user.agent];
-      requestInputs.push({ agent: user.agent, sourceTextLength: user.payload.sources?.[0]?.text?.length ?? 0, textIsExcerpt: user.payload.sources?.[0]?.textIsExcerpt === true, researchClaimCount: user.payload.research?.claims?.length ?? 0 });
+      const requestSource = user.payload.approvedSources?.[0] ?? user.payload.sources?.[0];
+      const researchClaims = user.payload.researchClaims ?? user.payload.research?.claims;
+      requestInputs.push({ agent: user.agent, sourceTextLength: requestSource?.text?.length ?? 0, textIsExcerpt: requestSource?.textIsExcerpt === true, researchClaimCount: researchClaims?.length ?? 0 });
       now += 1_000;
       return Response.json({
         choices: [{ finish_reason: "stop", message: { content: JSON.stringify(modelOutput) } }],
@@ -843,6 +895,169 @@ test("mocked three-agent pipeline stays within the unchanged Groq output, reques
   assert.deepEqual(sleeps, [61_000, 61_000]);
   assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
   assert.equal(run.sources[0]?.sha256, longSource.sha256);
+});
+
+test("historical-sized Verification input preserves quotes and keeps partial claims unclear within 6,000 bytes", async () => {
+  const quote = source.text ?? "";
+  assert.ok(quote);
+  const fullText = `${source.text} ${"Additional approved publication context remains in the source excerpt. ".repeat(40)}`;
+  const longSource: StoredSource = {
+    ...source,
+    text: fullText,
+    excerpt: fullText.slice(0, 1_200),
+    sha256: createHash("sha256").update(fullText).digest("hex"),
+  };
+  const outputs = {
+    research: {
+      summary: "Research claims were limited to quotations matching available approved source excerpts.",
+      claims: [
+        { id: "standard-definition", claim: "FIPS 204 specifies ML-DSA as a digital-signature standard.", evidence: [{ sourceId: source.id, quote }] },
+        { id: "deployment-security", claim: "The standard establishes that this application is safe to deploy.", evidence: [{ sourceId: source.id, quote }] },
+      ],
+      scopeLimitations: ["Only the approved source excerpt was reviewed."],
+    },
+    analysis: {
+      summary: "The supplied document supports a narrow standards claim, but does not assess this application's implementation, custody readiness, or deployment safety.",
+      assumptions: [],
+      risks: [],
+      unknowns: [
+        "No application implementation was assessed.",
+        "The source does not establish custody readiness.",
+        "No independent security audit was performed.",
+      ],
+      recommendations: [
+        "Review the application implementation independently against the standard.",
+        "Keep custody deployment blocked until the unresolved verifier is reviewed.",
+      ],
+    },
+    verification: {
+      summary: "The standards claim matches its exact quotation; the deployment-safety claim remains unclear.",
+      claimChecks: [
+        { claimId: "standard-definition", assessment: "supported" as const, evidence: [{ sourceId: source.id, quote }], rationale: "The exact source excerpt directly supports the bounded standards claim." },
+        { claimId: "deployment-security", assessment: "unclear" as const, evidence: [], rationale: "The source excerpt does not establish application deployment safety." },
+      ],
+      testArtifactChecks: [],
+      limitations: ["A standards citation is not an implementation security audit."],
+    },
+  };
+  let verificationBytes = 0;
+  let verificationInput: Record<string, unknown> | undefined;
+  let verificationPrompt = "";
+  let fetchCalls = 0;
+  const verificationProvider = new OpenAICompatibleProvider({
+    apiKey: "offline-fixture-key",
+    model: "openai/gpt-oss-20b",
+    baseUrl: "https://api.groq.com/openai/v1",
+    maxOutputTokens: 400,
+    maxRequestBytes: 6_000,
+    minimumRequestIntervalMs: 61_000,
+    expectedTokensPerMinute: 8_000,
+    requireRateLimitHeaders: true,
+    timeoutMs: 1_000,
+    nowImpl: () => 1_000,
+    sleepImpl: async () => undefined,
+    fetchImpl: async (_url, init) => {
+      fetchCalls += 1;
+      const bodyText = String(init?.body);
+      verificationBytes = Buffer.byteLength(bodyText, "utf8");
+      const body = JSON.parse(bodyText) as { max_completion_tokens?: number; messages: Array<{ role?: string; content?: string }> };
+      const user = JSON.parse(body.messages[1]?.content ?? "{}") as { payload?: Record<string, unknown> };
+      verificationInput = user.payload;
+      verificationPrompt = body.messages[0]?.content ?? "";
+      return Response.json({
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify(outputs.verification) } }],
+        usage: { prompt_tokens: 120, completion_tokens: 90, total_tokens: 210, completion_tokens_details: { reasoning_tokens: 20 } },
+      }, { headers: { "x-ratelimit-limit-tokens": "8000", "x-ratelimit-remaining-tokens": "7790", "x-ratelimit-reset-tokens": "60s" } });
+    },
+  });
+  const provider: ModelProvider = {
+    name: "offline-verification-budget-fixture",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      return request.agent === "verification"
+        ? verificationProvider.completeJson(request)
+        : { output: outputs[request.agent] as T };
+    },
+  };
+  const run = createQueuedRun("88888886-8888-4888-8888-888888888888", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [longSource],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+    maxSourceTextChars: 1_200,
+  });
+
+  assert.equal(run.status, "completed");
+  assert.equal(fetchCalls, 1);
+  assert.ok(verificationBytes > 0 && verificationBytes <= 6_000, `Verification request was ${verificationBytes} UTF-8 bytes.`);
+  assert.ok(verificationInput);
+  const input = verificationInput as {
+    researchClaims?: Array<{ id: string; evidence: Array<{ sourceId: string; quote: string }> }>;
+    approvedSources?: Array<{ id: string; sha256: string; text: string; textIsExcerpt?: boolean }>;
+    analysisAssessments?: { risks?: unknown[]; unknowns?: string[] };
+  };
+  assert.equal(input.researchClaims?.[0]?.evidence[0]?.quote, quote);
+  assert.ok(input.approvedSources?.[0]?.text?.includes(quote));
+  assert.equal(input.approvedSources?.[0]?.sha256, longSource.sha256);
+  assert.equal(input.approvedSources?.[0]?.textIsExcerpt, true);
+  assert.deepEqual(input.analysisAssessments?.unknowns, outputs.analysis.unknowns);
+  assert.deepEqual(input.analysisAssessments?.risks, []);
+  assert.doesNotMatch(JSON.stringify(verificationInput), /"summary"|recommendations|scopeLimitations/);
+  assert.match(verificationPrompt, /every material part/i);
+  assert.match(verificationPrompt, /partial.*unclear/i);
+  assert.deepEqual(run.verification?.claimChecks.map((check) => check.assessment), ["supported", "unclear"]);
+  assert.deepEqual(run.verification?.claimChecks[0]?.evidence, [{ sourceId: source.id, quote }]);
+  assert.deepEqual(run.verification?.claimChecks[1]?.evidence, []);
+});
+
+test("oversized Verification evidence fails explicitly before provider network access", async () => {
+  let fetchCalls = 0;
+  const oversizedAnalysis = {
+    ...analysisOutput,
+    risks: Array.from({ length: 10 }, (_, index) => ({
+      id: `large-risk-${index}`,
+      title: `Evidence review ${index}`,
+      severity: "medium" as const,
+      analysis: "The approved excerpt does not establish this application-specific property. ".repeat(10).slice(0, 850),
+      sourceIds: [source.id],
+    })),
+    unknowns: Array.from({ length: 10 }, (_, index) => `Unresolved source-specific question ${index}: ${"additional context is required. ".repeat(8)}`.slice(0, 480)),
+  };
+  const verificationProvider = new OpenAICompatibleProvider({
+    apiKey: "offline-fixture-key",
+    model: "openai/gpt-oss-20b",
+    baseUrl: "https://api.groq.com/openai/v1",
+    maxOutputTokens: 400,
+    maxRequestBytes: 6_000,
+    minimumRequestIntervalMs: 61_000,
+    expectedTokensPerMinute: 8_000,
+    requireRateLimitHeaders: true,
+    timeoutMs: 1_000,
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return Response.json({});
+    },
+  });
+  const provider: ModelProvider = {
+    name: "offline-oversized-verification",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      if (request.agent === "verification") return verificationProvider.completeJson(request);
+      return { output: (request.agent === "analysis" ? oversizedAnalysis : researchOutput) as T };
+    },
+  };
+  const run = createQueuedRun("88888887-8888-4888-8888-888888888888", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  assert.equal(run.status, "failed");
+  assert.equal(run.errorCode, "provider_input_too_large");
+  assert.equal(run.agents.find((agent) => agent.role === "verification")?.status, "failed");
+  assert.match(run.errorMessage ?? "", /verification request exceeded the configured byte budget before it was sent/i);
+  assert.equal(fetchCalls, 0);
 });
 
 test("Analysis schema diagnostics survive pipeline persistence without raw provider output", async () => {
@@ -999,7 +1214,10 @@ test("Groq request byte limit stops an oversized prompt before network access", 
       input: { source: "x".repeat(6_500) },
       schema: researchAgentOutputSchema,
     }),
-    (error: unknown) => error instanceof ModelProviderError && error.code === "provider_input_too_large",
+    (error: unknown) => error instanceof ModelProviderError
+      && error.code === "provider_input_too_large"
+      && error.message.includes("research")
+      && error.message.includes("6000-byte"),
   );
   assert.equal(fetchCalled, false);
 });

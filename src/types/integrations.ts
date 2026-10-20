@@ -24,6 +24,7 @@ export interface PublicNativeBalance {
 export interface ReadOnlyWalletState {
   status: ReadOnlyWalletStatus;
   address?: `0x${string}`;
+  providerName?: string;
   chainId?: number;
   networkName?: "Robinhood Chain" | "Robinhood Chain Testnet" | "Unsupported network";
   isQevraTargetNetwork?: boolean;

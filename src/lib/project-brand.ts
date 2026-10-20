@@ -1,4 +1,5 @@
-export const DEFAULT_PROJECT_NAME = "QEVRA";
+export const DEFAULT_PROJECT_NAME = "VEYRA";
+const SOURCE_PROJECT_NAME = "QEVRA";
 
 function cleanProjectName(value: string | undefined): string {
   return value
@@ -19,7 +20,7 @@ export function getProjectName(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function brandizeProjectName(text: string, projectName = PROJECT_NAME): string {
-  return projectName === DEFAULT_PROJECT_NAME ? text : text.replaceAll(DEFAULT_PROJECT_NAME, projectName);
+  return projectName === SOURCE_PROJECT_NAME ? text : text.replaceAll(SOURCE_PROJECT_NAME, projectName);
 }
 
 /** Brandize presentation fixtures only; object keys and non-plain data are left untouched. */

@@ -131,6 +131,11 @@ export function StatusView() {
             : "A preview with simulated data. This is what each part is meant to become, and what is known about it now."
         }
       />
+      <p className="st-network-link">
+        <Link className={buttonVariants({ variant: "ghost", size: "small" })} href="/app/networks">
+          Open Network &amp; Contracts Explorer
+        </Link>
+      </p>
 
       <div className="sm-wrap">
         <div className="sm" role="group" aria-label="Readiness map. Choose a part to see what it means.">

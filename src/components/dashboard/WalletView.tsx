@@ -7,6 +7,7 @@ import { brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 import { WalletBand } from "./WalletBand";
+import { buttonVariants } from "@/components/ui/Button";
 
 /**
  * Wallet: your external wallet, read-only, first. The experimental account is shown after it, as research and not as a task:
@@ -38,15 +39,19 @@ export function WalletView() {
             <div><dt>Expected chain ID</dt><dd>{net?.chainId ?? "Unavailable"}</dd></div>
             {live ? (
               <>
+                {w.connection?.address ? <div><dt>Wallet provider</dt><dd>{w.connection.providerName ?? "Injected EIP-1193 wallet provider"}</dd></div> : null}
                 <div><dt>RPC chain ID</dt><dd>{rpc.chainId ?? (rpc.status === "loading" ? "Checking" : "Unavailable")}</dd></div>
                 <div><dt>Latest block</dt><dd>{rpc.latestBlock ?? "Unavailable"}</dd></div>
                 {rpc.observedAt ? <div><dt>Observed at</dt><dd>{rpc.observedAt}</dd></div> : null}
+                {w.connection?.balance ? <div><dt>Wallet read block</dt><dd>{w.connection.balance.blockNumber}</dd></div> : null}
+                {w.connection?.balance?.observedAt ? <div><dt>Last successful wallet read</dt><dd><time dateTime={w.connection.balance.observedAt}>{w.connection.balance.observedAt}</time></dd></div> : null}
               </>
             ) : (
               <div><dt>Public RPC</dt><dd>Not queried in the preview</dd></div>
             )}
           </dl>
           {live && rpc.message ? <p role="status" className="sw-hint">{rpc.message}</p> : null}
+          <Link className={buttonVariants({ variant: "ghost", size: "small" })} href="/app/networks">Network &amp; contracts explorer</Link>
           {connected && w.eoa.facts.length > 0 ? (
             <details className="sw-about">
               <summary>More about this wallet read</summary>

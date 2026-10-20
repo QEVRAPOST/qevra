@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { copyTextToClipboard } from "@/features/wallet/clipboard";
 import { getInjectedReadOnlyProvider } from "@/features/wallet/browser";
 import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
 
@@ -80,6 +81,38 @@ test("wallet connection rejection and RPC errors remain explicit and read-only",
   });
   assert.equal(rpcFailure.status, "rpc_unavailable");
   assert.equal(rpcFailure.message, "The wallet's read-only RPC request failed. No write request was sent.");
+});
+
+test("wallet RPC failure retains the authorized address and chain but never a stale balance", async () => {
+  const address = "0x0000000000000000000000000000000000000008" as const;
+  const provider: ReadOnlyEip1193Provider = {
+    async request({ method }) {
+      if (method === "eth_requestAccounts" || method === "eth_accounts") return [address];
+      if (method === "eth_chainId") return "0xb626";
+      if (method === "eth_getBlockByNumber") throw Object.assign(new Error("RPC unavailable"), { code: -32000 });
+      throw new Error(`unexpected method: ${method}`);
+    },
+  };
+
+  const state = await connectReadOnlyWallet(provider);
+
+  assert.equal(state.status, "rpc_unavailable");
+  assert.equal(state.address, address);
+  assert.equal(state.chainId, 46_630);
+  assert.equal(state.networkName, "Robinhood Chain Testnet");
+  assert.equal(state.balance, undefined);
+});
+
+test("copy address reports whether the clipboard accepted the exact public address", async () => {
+  const copied: string[] = [];
+  const address = "0x0000000000000000000000000000000000000009";
+
+  const success = await copyTextToClipboard(address, { async writeText(value) { copied.push(value); } });
+  const failure = await copyTextToClipboard(address, { async writeText() { throw new Error("clipboard denied"); } });
+
+  assert.deepEqual(copied, [address]);
+  assert.equal(success, true);
+  assert.equal(failure, false);
 });
 
 test("wallet read fails closed when address or network changes during a balance read", async () => {

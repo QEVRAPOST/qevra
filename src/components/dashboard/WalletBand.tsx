@@ -5,6 +5,8 @@ import { AddressGlyph } from "@/components/ui/AddressGlyph";
 import { Button } from "@/components/ui/Button";
 import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
+import { CopyAddressButton } from "./CopyAddressButton";
+import { NETWORKS, getExplorerAddressUrl } from "@/lib/config/networks";
 import type { Material, ReadOnlyWalletStatus } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 
@@ -29,24 +31,6 @@ function middle(address: string): string {
   return address.length > 14 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
 }
 
-function Copy({ text }: { text: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      type="button"
-      className="wl-copy"
-      onClick={() => {
-        void navigator.clipboard?.writeText(text).then(() => {
-          setDone(true);
-          window.setTimeout(() => setDone(false), 1600);
-        });
-      }}
-    >
-      {done ? "Copied" : "Copy address"}
-    </button>
-  );
-}
-
 /**
  * The wallet route's opening: an identity, not a form. A ring pattern drawn from the address, the address with its middle folded away, the
  * network and whether it matches the app, the public balance, and what this connection can and cannot do. When nothing is connected the same
@@ -61,6 +45,7 @@ export function WalletBand() {
   const status: ReadOnlyWalletStatus = live ? (conn?.status ?? "disconnected") : w.stage === 0 ? "disconnected" : "connected";
   const info = STATES[status];
   const connected = live ? !!conn?.address : w.stage > 0;
+  const [showFullAddress, setShowFullAddress] = useState(false);
   const walletReadFailed = live && status === "rpc_unavailable";
   const walletRefreshing = live && status === "loading" && conn?.message?.startsWith("Refreshing");
   const canRecoverWallet = walletReadFailed || walletRefreshing;
@@ -72,6 +57,8 @@ export function WalletBand() {
   const busy = status === "loading";
   const mismatch = live && model.network.walletMismatch;
   const walletNet = live ? (conn?.networkName ?? `Chain ${conn?.chainId ?? "unknown"}`) : (net?.label ?? "Unavailable");
+  const walletNetwork = live ? NETWORKS.find((network) => network.chainId === conn?.chainId) : undefined;
+  const addressExplorerUrl = address && walletNetwork ? getExplorerAddressUrl(walletNetwork.id, address) : undefined;
 
   return (
     <section className={`wl-band${connected || canRecoverWallet ? " on" : ""}`} aria-labelledby="h-wl-band">
@@ -90,8 +77,16 @@ export function WalletBand() {
         {connected ? (
           <>
             <div className="wl-addr-row">
-              <p className="wl-address" title={live ? address : undefined}>{shown}</p>
-              {live && address ? <Copy text={address} /> : null}
+              <p className="wl-address" title={live ? address : undefined}>{showFullAddress ? address : shown}</p>
+              {live && address ? (
+                <>
+                  <button type="button" className="wl-copy" onClick={() => setShowFullAddress((visible) => !visible)}>
+                    {showFullAddress ? "Shorten address" : "Show full address"}
+                  </button>
+                  <CopyAddressButton address={address} />
+                  {addressExplorerUrl ? <a className="wl-copy" href={addressExplorerUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
+                </>
+              ) : null}
             </div>
             <p className={`wl-net${mismatch ? " warn" : ""}`}>
               <span className="wl-pip" aria-hidden="true" />
@@ -102,7 +97,10 @@ export function WalletBand() {
             <div className="wl-bal">
               <span className="wl-bal-n">{balance ? balance.amount : exBalance ? exBalance.amount : "Not available"}</span>
               {balance || exBalance ? <span className="wl-bal-s">{balance ? balance.symbol : exBalance?.symbol}</span> : null}
-              <span className="wl-bal-m">{balance ? `Public balance · read at block ${balance.blockNumber}, a snapshot` : live ? "Shown only after a successful read" : "Simulated value"}</span>
+              <span className="wl-bal-m">
+                {balance ? `Public balance · read at block ${balance.blockNumber}, a snapshot` : live ? "Shown only after a successful read" : "Simulated value"}
+                {balance?.observedAt ? <> · Last successful read <time dateTime={balance.observedAt}>{balance.observedAt}</time></> : null}
+              </span>
             </div>
           </>
         ) : walletReadFailed ? (

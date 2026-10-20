@@ -128,6 +128,7 @@ function buildLiveWallet(wallet: ReadOnlyWalletState): AppModel["wallet"] {
   const hasAddress = wallet.address !== undefined;
   const facts = [
     { label: "Network", value: wallet.networkName ?? "Not connected" },
+    ...(hasAddress ? [{ label: "Provider", value: wallet.providerName ?? "Injected EIP-1193 wallet provider" }] : []),
     ...(wallet.chainId !== undefined ? [{ label: "Chain ID", value: String(wallet.chainId) }] : []),
     ...(wallet.balance ? [
       { label: "Latest block", value: wallet.balance.blockNumber },
@@ -148,7 +149,9 @@ function buildLiveWallet(wallet: ReadOnlyWalletState): AppModel["wallet"] {
     origin: "live",
     stage: hasAddress ? 1 : 0,
     setupDone: hasAddress ? 1 : 0,
-    walletButtonLabel: hasAddress ? "Disconnect wallet" : "Connect wallet",
+    walletButtonLabel: wallet.status === "loading"
+      ? wallet.message?.startsWith("Refreshing") ? "Refreshing balance…" : "Connecting…"
+      : hasAddress ? "Disconnect wallet" : "Connect wallet",
     connection: wallet,
     eoa: {
       kind: "eoa",

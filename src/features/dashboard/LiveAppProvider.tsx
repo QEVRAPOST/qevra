@@ -213,6 +213,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const [wallet, setWallet] = useState<ReadOnlyWalletState>({ status: "disconnected" });
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkId>(DEFAULT_NETWORK_ID);
   const [networkRpc, setNetworkRpc] = useState<NetworkRpcState>({ status: "not_requested" });
+  const [networkRefreshNonce, setNetworkRefreshNonce] = useState(0);
   const [capabilities, setCapabilities] = useState<AppModel["security"]["capabilities"]>();
   const [history, setHistory] = useState<ResearchHistoryState>({ runs: null, loadedPageCount: 0, isLoadingMore: false });
   const [preferredRunId, setPreferredRunId] = useState<string>();
@@ -487,7 +488,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       active = false;
       window.clearInterval(interval);
     };
-  }, [selectedNetwork]);
+  }, [selectedNetwork, networkRefreshNonce]);
 
   useEffect(() => () => {
     walletRequestGuardRef.current.invalidate();
@@ -656,6 +657,10 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     pressSwapButton() { /* No swap route or transaction method is configured. */ },
     pressWalletButton() { void connectWallet(); },
     refreshWallet: () => { void refreshWallet(); },
+    refreshNetwork() {
+      setNetworkRpc({ status: "loading" });
+      setNetworkRefreshNonce((current) => current + 1);
+    },
     pressLedgerAction(id) {
       if (id === "connect") void connectWallet();
       else if (id === "disconnect") disconnectWallet();

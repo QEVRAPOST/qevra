@@ -43,6 +43,8 @@ export interface AppActions {
   pressLedgerAction(id: LedgerActionId): void;
   /** Refreshes an already-connected wallet's public balance without requesting account access again. */
   refreshWallet?(): void;
+  /** Repeats the selected network's public chain and block read. */
+  refreshNetwork?(): void;
   /** Starts a server-side, approved-topic research run only when live capabilities allow it. */
   createSecurityRun(topicId: import("./integrations").ResearchTopicId): void;
   /** Clears the server-issued session cookie. */

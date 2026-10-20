@@ -36,13 +36,16 @@ function Row({ r }: { r: ReadinessRow }) {
  * exactly as recorded; in the preview it is a reference the visitor can play an illustration on. Nothing moves on its own.
  */
 export function OverviewView() {
-  const { model } = useAppModel();
+  const { model, actions } = useAppModel();
   const live = model.mode === "live";
   const rows = buildReadiness(model);
   const sec = model.security;
   const latest = sec.runs.slice(0, 3);
   const ill = useIllustration();
   const lastRun = live && sec.status === "ready" ? sec.runs[0] : undefined;
+  const walletConnection = model.wallet.connection;
+  const walletPending = live && walletConnection?.status === "loading";
+  const walletConnected = live && Boolean(walletConnection?.address);
   const canvas = ill.step !== null ? illustrationModel(ill.step) : lastRun ? pipelineFor(lastRun) : null;
 
   return (
@@ -64,9 +67,19 @@ export function OverviewView() {
           <Link className={buttonVariants({ variant: "primary" })} href="/app/security">
             Explore Security Swarm
           </Link>
-          <Link className={buttonVariants({ variant: "ghost" })} href="/app/wallet">
-            {live ? "Connect wallet" : "Open the wallet"}
-          </Link>
+          {live && walletPending ? (
+            <Button variant="ghost" disabled aria-live="polite">
+              {walletConnection?.message?.startsWith("Refreshing") ? "Refreshing balance…" : "Connecting…"}
+            </Button>
+          ) : live && walletConnected ? (
+            <Link className={buttonVariants({ variant: "ghost" })} href="/app/wallet">View wallet</Link>
+          ) : live ? (
+            <Button variant="ghost" onClick={actions.pressWalletButton}>
+              {walletConnection?.status === "connection_rejected" ? "Connect wallet again" : "Connect wallet"}
+            </Button>
+          ) : (
+            <Link className={buttonVariants({ variant: "ghost" })} href="/app/wallet">Open the wallet</Link>
+          )}
           <Link className="ov-l" href="/app/activity">
             View research activity<span aria-hidden="true">→</span>
           </Link>

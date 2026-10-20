@@ -10,6 +10,8 @@ export interface NetworkOption {
   chainId: number;
   /** Official public read-only JSON-RPC endpoint. */
   rpcUrl: string;
+  /** Official block explorer root for read-only address and block links. */
+  explorerUrl: string;
   /** Whether the network can be selected for public reads; this grants no deployment or write capability. */
   available: boolean;
   /** why it cannot be picked, in a few words */

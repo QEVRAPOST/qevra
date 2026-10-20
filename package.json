@@ -23,7 +23,8 @@
     "robinhood:deploy:validate": "bun scripts/robinhood.ts deploy validate testnet",
     "robinhood:deploy:dry-run": "bun scripts/robinhood.ts deploy dry-run testnet",
     "robinhood:explorer:readiness": "bun scripts/robinhood.ts explorer readiness testnet",
-    "deploy:simulate": "bun scripts/deploy-simulate.ts"
+    "deploy:simulate": "bun scripts/deploy-simulate.ts",
+    "deploy:show": "bun scripts/deploy-simulate.ts"
   },
   "dependencies": {
     "@radix-ui/react-select": "2.4.1",

@@ -8,6 +8,7 @@ type ReadOnlyMethod = "eth_requestAccounts" | "eth_accounts" | "eth_chainId" | "
 
 export interface ReadOnlyEip1193Provider {
   request(args: { method: ReadOnlyMethod; params?: readonly unknown[] }): Promise<unknown>;
+  providerName?: string;
   on?(event: "accountsChanged" | "chainChanged" | "disconnect", listener: (...args: unknown[]) => void): void;
   removeListener?(event: "accountsChanged" | "chainChanged" | "disconnect", listener: (...args: unknown[]) => void): void;
 }
@@ -90,22 +91,28 @@ export function disconnectReadOnlyWallet(): ReadOnlyWalletState {
 
 async function readWallet(provider: ReadOnlyEip1193Provider, requestAccounts: boolean): Promise<ReadOnlyWalletState> {
   let readStage = false;
+  let address: Address | undefined;
+  let chainId: number | undefined;
+  let networkName: "Robinhood Chain" | "Robinhood Chain Testnet" | undefined;
+  const providerInfo = provider.providerName ? { providerName: provider.providerName } : {};
   try {
     const accounts = await provider.request({ method: requestAccounts ? "eth_requestAccounts" : "eth_accounts" });
     if (!Array.isArray(accounts) || accounts.length === 0) return { status: "disconnected" };
-    const address = accounts[0];
-    if (typeof address !== "string" || !isAddress(address)) {
+    const account = accounts[0];
+    if (typeof account !== "string" || !isAddress(account)) {
       return { status: "invalid_rpc_response", message: "The wallet returned an invalid account address." };
     }
+    address = account as Address;
 
     readStage = true;
-    const chainId = parseChainId(await provider.request({ method: "eth_chainId" }));
-    if (!chainId) return { status: "invalid_rpc_response", address: address as Address, message: "The wallet returned an invalid chain ID." };
-    const networkName = targetNetworks().get(chainId);
+    chainId = parseChainId(await provider.request({ method: "eth_chainId" }));
+    if (!chainId) return { status: "invalid_rpc_response", address, ...providerInfo, message: "The wallet returned an invalid chain ID." };
+    networkName = targetNetworks().get(chainId);
     if (!networkName) {
       return {
         status: "unsupported_network",
-        address: address as Address,
+        address,
+        ...providerInfo,
         chainId,
         networkName: "Unsupported network",
         isQevraTargetNetwork: false,
@@ -117,7 +124,8 @@ async function readWallet(provider: ReadOnlyEip1193Provider, requestAccounts: bo
     if (!block) {
       return {
         status: "invalid_rpc_response",
-        address: address as Address,
+        address,
+        ...providerInfo,
         chainId,
         networkName,
         isQevraTargetNetwork: true,
@@ -129,7 +137,8 @@ async function readWallet(provider: ReadOnlyEip1193Provider, requestAccounts: bo
     if (balance === undefined) {
       return {
         status: "invalid_rpc_response",
-        address: address as Address,
+        address,
+        ...providerInfo,
         chainId,
         networkName,
         isQevraTargetNetwork: true,
@@ -158,9 +167,15 @@ async function readWallet(provider: ReadOnlyEip1193Provider, requestAccounts: bo
       provider: "connected_wallet_rpc",
       observedAt: new Date().toISOString(),
     };
-    return { status: "connected", address: address as Address, chainId, networkName, isQevraTargetNetwork: true, balance: publicBalance };
+    return { status: "connected", address, ...providerInfo, chainId, networkName, isQevraTargetNetwork: true, balance: publicBalance };
   } catch (error) {
-    return providerErrorState(error, readStage);
+    return {
+      ...providerErrorState(error, readStage),
+      ...(address ? { address } : {}),
+      ...providerInfo,
+      ...(chainId !== undefined ? { chainId } : {}),
+      ...(networkName ? { networkName, isQevraTargetNetwork: true } : chainId !== undefined ? { isQevraTargetNetwork: false } : {}),
+    };
   }
 }
 

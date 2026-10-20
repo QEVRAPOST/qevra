@@ -12,3 +12,8 @@ test("Robinhood read-only targets use documented RPC URLs and chain IDs", () => 
   );
   assert.equal(DEFAULT_NETWORK_ID, "testnet");
 });
+
+test("each Robinhood network exposes its official explorer base URL", () => {
+  assert.equal(NETWORKS.find((network) => network.id === "testnet")?.explorerUrl, "https://explorer.testnet.chain.robinhood.com");
+  assert.equal(NETWORKS.find((network) => network.id === "mainnet")?.explorerUrl, "https://robinhoodchain.blockscout.com");
+});

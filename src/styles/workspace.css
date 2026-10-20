@@ -2606,3 +2606,93 @@
     align-items: flex-start;
   }
 }
+
+/* ---------- public network and deployment explorer ---------- */
+.ne-links,
+.ne-picker-actions,
+.ne-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.ne-picker {
+  display: grid;
+  gap: 12px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.ne-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+.ne-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  background: var(--bg-2);
+}
+.ne-readonly,
+.ne-separation {
+  color: var(--muted);
+  font: 400 12px/1.5 var(--f-mono);
+}
+.ne-error {
+  color: var(--fail);
+  font: 400 13px/1.5 var(--f-mono);
+}
+.ne-empty {
+  margin-top: 2px;
+}
+.ne-empty p {
+  margin-top: 8px;
+}
+.ne-contracts {
+  display: grid;
+  gap: 18px;
+}
+.ne-contract {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.ne-contract h3 {
+  font: 400 20px/1.2 var(--f-display);
+}
+.ne-contract code {
+  overflow-wrap: anywhere;
+  font: 400 12px/1.5 var(--f-mono);
+}
+.st-network-link {
+  margin: 0 0 18px;
+}
+@media (max-width: 900px) {
+  .ne-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ne-panel {
+    padding: 18px;
+  }
+}
+@media (max-width: 640px) {
+  .ne-picker-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ne-picker-actions [data-slot="button"] {
+    width: 100%;
+  }
+  .ne-actions > *,
+  .ne-links > * {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+}
