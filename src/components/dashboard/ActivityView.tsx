@@ -12,6 +12,7 @@ import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 import { MiniPipeline } from "./SwarmPipeline";
 import { STATUS_TEXT } from "@/lib/swarm-view";
+import { LiveResearchAccessBoundary, useLiveResearchAccess } from "@/features/dashboard/LiveAppProvider";
 
 type View = "runs" | "transactions";
 type RunFilter = "all" | "progress" | "completed" | "stopped";
@@ -86,6 +87,7 @@ function RunReport({ run }: { run: SwarmRun }) {
 
 function Runs() {
   const { model } = useAppModel();
+  const researchAccess = useLiveResearchAccess();
   const sec = model.security;
   const live = sec.origin === "live";
   const [filter, setFilter] = useState<RunFilter>("all");
@@ -95,7 +97,7 @@ function Runs() {
   const shown = filter === "all" ? runs : runs.filter((r) => runGroup(r) === filter);
   const selected = shown.find((r) => r.id === pickedId) ?? shown[0];
   const stats: Array<{ id: RunFilter; label: string }> = [
-    { id: "all", label: "All runs" },
+    { id: "all", label: live ? "Loaded runs" : "All runs" },
     { id: "progress", label: "In progress" },
     { id: "completed", label: "Completed" },
     { id: "stopped", label: "Stopped" },
@@ -107,6 +109,9 @@ function Runs() {
         <p className="ac-note">
           <b>These runs are simulated.</b> They show how your history will look. When you start a real run in the <Link href="/app/security">Security Swarm</Link>, it is listed here with what it found and what it could not tell you.
         </p>
+      ) : null}
+      {live && sec.status === "ready" ? (
+        <p className="ac-note">Showing {runs.length} loaded run record{runs.length === 1 ? "" : "s"}, newest first. {researchAccess?.hasMoreRuns ? "More history is available." : "No additional page is currently reported."}</p>
       ) : null}
       {sec.status === "ready" ? (
         <div className="ac-stats" role="group" aria-label="Filter research runs">
@@ -146,10 +151,21 @@ function Runs() {
             </EmptyState>
           )}
           {sec.status === "unavailable" && <EmptyState as="li" title="Run history unavailable.">{sec.unavailableMessage ?? "The run feed is not connected. No simulated runs are substituted, and this is not a statement that there are none."}</EmptyState>}
-          {sec.status === "ready" && shown.length === 0 ? <EmptyState as="li" title="No runs match this filter.">Choose All runs to see every one.</EmptyState> : null}
+          {sec.status === "ready" && shown.length === 0 ? <EmptyState as="li" title="No runs match this filter.">Choose {live ? "Loaded runs" : "All runs"} to see the available records.</EmptyState> : null}
         </ol>
         {sec.status === "ready" && selected ? <RunReport run={selected} /> : null}
       </div>
+      {researchAccess?.historyError ? <p role="status" className="ac-note">{researchAccess.historyError}</p> : null}
+      {live && researchAccess?.hasMoreRuns ? (
+        <button type="button" className="btn" disabled={researchAccess.isLoadingMore} onClick={() => { void researchAccess.loadMoreRuns(); }}>
+          {researchAccess.isLoadingMore ? "Loading more…" : "Load more"}
+        </button>
+      ) : null}
+      {live && sec.status === "unavailable" && researchAccess && !researchAccess.hasMoreRuns ? (
+        <button type="button" className="btn" disabled={sec.isRefreshing} onClick={() => researchAccess.refreshHistory()}>
+          {sec.isRefreshing ? "Retrying…" : "Retry run history"}
+        </button>
+      ) : null}
     </>
   );
 }
@@ -250,7 +266,7 @@ export function ActivityView() {
         ]}
       />
       <div className="ac-view" key={view}>
-        {view === "runs" ? <Runs /> : <Transactions />}
+        {view === "runs" ? <LiveResearchAccessBoundary><Runs /></LiveResearchAccessBoundary> : <Transactions />}
       </div>
     </section>
   );

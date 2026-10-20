@@ -11,16 +11,19 @@ export function AppNotice({
   lead,
   busy = false,
   tone = "info",
+  as = "main",
   children,
 }: {
   title: string;
   lead: React.ReactNode;
   busy?: boolean;
   tone?: "info" | "problem";
+  as?: "main" | "section";
   children?: React.ReactNode;
 }) {
+  const Container = as;
   return (
-    <main className={`wrap wide notice-page notice-${tone}`} id="main" tabIndex={-1} aria-busy={busy || undefined}>
+    <Container className={`wrap wide notice-page notice-${tone}`} {...(as === "main" ? { id: "main", tabIndex: -1 } : {})} aria-busy={busy || undefined}>
       <div className="rhead">
         <h1>{title}</h1>
         <p>{lead}</p>
@@ -36,6 +39,6 @@ export function AppNotice({
           Back to the landing page
         </Link>
       </p>
-    </main>
+    </Container>
   );
 }

@@ -212,11 +212,26 @@ function buildLiveSwap(): AppModel["swap"] {
   };
 }
 
-function buildLiveStatusBar(wallet: ReadOnlyWalletState, capabilities?: SecurityResearchCapabilities, serviceError = false): StatusBarItem[] {
+function buildLiveStatusBar(
+  wallet: ReadOnlyWalletState,
+  capabilities: SecurityResearchCapabilities | undefined,
+  accessState: NonNullable<AppModel["security"]["accessState"]>,
+  serviceError = false,
+): StatusBarItem[] {
   const walletText = wallet.address
     ? `Wallet · ${wallet.networkName === "Robinhood Chain Testnet" ? "Testnet" : wallet.networkName === "Robinhood Chain" ? "Mainnet" : "Unknown"}`
     : `Wallet · ${wallet.status === "disconnected" ? "not connected" : wallet.status.replaceAll("_", " ")}`;
-  const swarmText = serviceError
+  const swarmText = accessState === "unauthenticated"
+    ? "Swarm · sign in required"
+    : accessState === "not_configured"
+      ? "Swarm · access not configured"
+      : accessState === "checking"
+        ? "Swarm · checking access"
+        : accessState === "rate_limited"
+          ? "Swarm · access rate-limited"
+          : accessState === "service_error"
+            ? "Swarm · access unavailable"
+            : serviceError
     ? "Live service · error"
     : !capabilities
       ? "Swarm · checking"
@@ -238,7 +253,13 @@ function buildLiveStatusBar(wallet: ReadOnlyWalletState, capabilities?: Security
   ];
 }
 
-function buildLiveCoverage(wallet: ReadOnlyWalletState, capabilities?: SecurityResearchCapabilities, runCount = 0): CoverageRow[] {
+function buildLiveCoverage(
+  wallet: ReadOnlyWalletState,
+  capabilities: SecurityResearchCapabilities | undefined,
+  accessState: NonNullable<AppModel["security"]["accessState"]>,
+  runs: ResearchRunSummary[] | null,
+  historyError?: string,
+): CoverageRow[] {
   return COVERAGE_ROWS.map((sourceRow) => {
     const row = brandizeDisplayStrings(sourceRow, PROJECT_NAME);
     if (row.id === "wallet-connection") {
@@ -253,14 +274,32 @@ function buildLiveCoverage(wallet: ReadOnlyWalletState, capabilities?: SecurityR
       };
     }
     if (row.id === "swarm-runs") {
+      const runCount = runs?.length ?? 0;
+      const signedOutLabel = accessState === "unauthenticated"
+        ? "Sign-in required"
+        : accessState === "not_configured"
+          ? "Operator access not configured"
+          : accessState === "checking"
+            ? "Checking access"
+            : accessState === "rate_limited"
+              ? "Access rate-limited"
+              : accessState === "service_error"
+                ? "Access unavailable"
+            : undefined;
       return {
         ...row,
-        tone: capabilities?.provider === "available" ? "exp" : "unk",
-        material: runCount > 0 ? "solid" : capabilities?.provider === "available" ? "outline" : "dotted",
-        statusLabel: runCount > 0 ? `${runCount} live record${runCount === 1 ? "" : "s"}` : "No live runs recorded",
-        note: capabilities?.provider === "available"
-          ? "Run history comes from the authenticated Security Research API. Agent completion is not a passed security test."
-          : "Live run history is read from the API; new AI research is unavailable until a provider is configured and billing is approved.",
+        tone: signedOutLabel ? "unk" : capabilities?.provider === "available" ? "exp" : "unk",
+        material: signedOutLabel ? "dotted" : runCount > 0 ? "solid" : capabilities?.provider === "available" ? "outline" : "dotted",
+        statusLabel: signedOutLabel ?? (runCount > 0
+          ? `${runCount} loaded record${runCount === 1 ? "" : "s"}`
+          : runs === null ? historyError ? "History unavailable" : "Checking history" : "No live runs recorded"),
+        note: signedOutLabel
+          ? "Research history and run creation require an operator session. Public wallet and network reads remain available."
+          : runs === null
+            ? historyError ?? "Checking the authenticated Security Research API."
+            : capabilities?.provider === "available"
+            ? "Loaded run history comes from the authenticated Security Research API. Additional records may be available. Agent completion is not a passed security test."
+            : "Live run history is read from the API; new AI research is unavailable until a provider is configured and billing is approved.",
       };
     }
     return row;
@@ -273,30 +312,39 @@ export function buildLiveAppModel(input: {
   networkRpc?: NetworkRpcState;
   capabilities?: SecurityResearchCapabilities;
   runs: ResearchRunSummary[] | null;
+  accessState?: NonNullable<AppModel["security"]["accessState"]>;
+  accessMessage?: string;
   preferredRunId?: string;
   dataError?: string;
+  hasMoreRuns?: boolean;
   isRefreshing: boolean;
   isCreating: boolean;
   actionMessage?: string;
 }): AppModel {
   const { wallet, capabilities, runs } = input;
+  const accessState = input.accessState ?? "authenticated";
   const selectedNetwork = input.selectedNetwork ?? "testnet";
   const rpc = input.networkRpc ?? { status: "loading" as const };
   const selectedChainId = NETWORKS.find((network) => network.id === selectedNetwork)?.chainId;
   const walletMismatch = wallet.address !== undefined && wallet.chainId !== undefined && wallet.chainId !== selectedChainId;
   const liveRuns = runs?.map((run) => toLiveSwarmRun(run)) ?? [];
-  const securityStatus: AppModel["security"]["status"] = runs === null
+  const unavailableMessage = input.accessMessage ?? input.dataError;
+  const securityStatus: AppModel["security"]["status"] = accessState !== "authenticated"
+    ? "unavailable"
+    : runs === null
     ? input.dataError ? "unavailable" : "loading"
     : liveRuns.length > 0 ? "ready" : "empty";
   const security: AppModel["security"] = {
     origin: "live",
+    accessState,
     status: securityStatus,
     runs: liveRuns,
     ...(input.preferredRunId ? { preferredRunId: input.preferredRunId } : {}),
     capabilities,
     isRefreshing: input.isRefreshing,
     isCreating: input.isCreating,
-    ...(input.dataError ? { unavailableMessage: input.dataError } : {}),
+    hasMoreRuns: input.hasMoreRuns,
+    ...(unavailableMessage ? { unavailableMessage } : {}),
     ...(input.actionMessage ? { actionMessage: input.actionMessage } : {}),
   };
   const activity: ActivityView = {
@@ -308,8 +356,8 @@ export function buildLiveAppModel(input: {
 
   return {
     mode: "live",
-    statusBar: buildLiveStatusBar(wallet, capabilities, Boolean(input.dataError)),
-    coverage: buildLiveCoverage(wallet, capabilities, liveRuns.length),
+    statusBar: buildLiveStatusBar(wallet, capabilities, accessState, Boolean(input.dataError)),
+    coverage: buildLiveCoverage(wallet, capabilities, accessState, runs, input.dataError),
     network: { selected: selectedNetwork, options: [...NETWORKS], rpc, walletMismatch },
     wallet: buildLiveWallet(wallet),
     swap: buildLiveSwap(),

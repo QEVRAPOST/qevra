@@ -38,6 +38,8 @@ export interface SwarmRun {
 
 export interface SecurityView {
   origin: "demo" | "live";
+  /** Operator access is independent from public wallet and network reads. */
+  accessState?: "checking" | "not_configured" | "unauthenticated" | "authenticated" | "service_error" | "rate_limited";
   /** "unavailable" means the run feed is not connected, which says nothing about whether the system is safe */
   status: "loading" | "ready" | "empty" | "unavailable";
   runs: SwarmRun[];
@@ -45,6 +47,7 @@ export interface SecurityView {
   capabilities?: SecurityResearchCapabilities;
   isRefreshing?: boolean;
   isCreating?: boolean;
+  hasMoreRuns?: boolean;
   /** A newly persisted run that the presentation may select immediately. */
   preferredRunId?: string;
   actionMessage?: string;

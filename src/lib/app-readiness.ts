@@ -49,7 +49,17 @@ export function buildReadiness(model: AppModel): ReadinessRow[] {
     : { id: "wallet", group: "now", label: "Wallet", value: model.wallet.stage === 0 ? "Not connected · example" : "Example wallet", detail: "A pretend wallet that shows how the screen will look. It is not a real account.", tone: "demo", material: "dotted", href: "/app/wallet", linkLabel: "Open wallet" };
 
   const swarm: ReadinessRow = live
-    ? !caps
+    ? sec.accessState === "unauthenticated"
+      ? { id: "swarm", group: "now", label: "Security Swarm", value: "Sign-in required", detail: "Saved research and new runs require an operator session. Public wallet and network reads are available without it.", tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Sign in to Swarm" }
+      : sec.accessState === "not_configured"
+        ? { id: "swarm", group: "now", label: "Security Swarm", value: "Access not configured", detail: "The server has not configured operator authentication. Public wallet and network reads remain available.", tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Open Swarm" }
+        : sec.accessState === "checking"
+          ? { id: "swarm", group: "now", label: "Security Swarm", value: "Checking access", detail: "Checking the operator session. Public wallet and network reads remain available.", tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Open Swarm" }
+          : sec.accessState === "service_error" || sec.accessState === "rate_limited"
+            ? { id: "swarm", group: "now", label: "Security Swarm", value: sec.accessState === "rate_limited" ? "Access rate-limited" : "Access unavailable", detail: sec.unavailableMessage ?? "Operator access could not be checked. Public wallet and network reads remain available.", tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Retry access" }
+          : !caps && sec.unavailableMessage
+            ? { id: "swarm", group: "now", label: "Security Swarm", value: "Research service unavailable", detail: sec.unavailableMessage, tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Retry history" }
+          : !caps
       ? { id: "swarm", group: "now", label: "Security Swarm", value: "Checking", detail: "Asking the research service what it can do right now.", tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Open Swarm" }
       : caps.provider === "available" && caps.worker === "available" && caps.persistence === "available"
         ? { id: "swarm", group: "now", label: "Security Swarm", value: "Ready to research", detail: "You can start a run on an approved topic. A finished run is research, not an audit.", tone: "neutral", material: "outline", href: "/app/security", linkLabel: "Start a run" }

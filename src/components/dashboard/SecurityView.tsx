@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SimTag } from "@/components/ui/SimTag";
@@ -24,6 +24,7 @@ import { PageHead } from "./PageHead";
 import { startBlocker, SwarmLaunch } from "./SwarmLaunch";
 import { MiniPipeline, SwarmPipeline } from "./SwarmPipeline";
 import { SwarmRunDetail } from "./SwarmRunDetail";
+import { LiveResearchAccessBoundary, useLiveResearchAccess } from "@/features/dashboard/LiveAppProvider";
 
 /** The four phases of one run, as a trail. The current phase is marked; earlier ones are done. */
 function Trail({ phase }: { phase: number }) {
@@ -43,17 +44,34 @@ function Trail({ phase }: { phase: number }) {
  * Security Swarm: the centre of the app. Choose a topic, start a run, watch the three agents, then read the evidence and its
  * limits. Saved runs are the history. A finished run is never called safe, audited or approved.
  */
-export function SecurityView() {
+function SecurityResearchView() {
   const { model, actions } = useAppModel();
+  const researchAccess = useLiveResearchAccess();
   const sec = model.security;
   const live = sec.origin === "live";
   const detailId = useId();
   const pipeRef = useRef<HTMLDivElement>(null);
   const wanted = useSearchParams().get("run");
   const [selectedId, setSelectedId] = useState<string | null>(wanted);
+  const [seenWanted, setSeenWanted] = useState<string | null>(wanted);
+  const requestedRunId = useRef<string | null>(null);
   /* a run the service has just persisted is shown at once: adjusted during render, once per new id */
   const [seenPreferred, setSeenPreferred] = useState<string | undefined>(undefined);
   const [topicId, setTopicId] = useState<ResearchTopicId>("security-evidence");
+  const loadResearchRun = researchAccess?.loadResearchRun;
+  if (wanted !== seenWanted) {
+    setSeenWanted(wanted);
+    setSelectedId(wanted);
+  }
+  useEffect(() => {
+    if (!wanted) requestedRunId.current = null;
+  }, [wanted]);
+  useEffect(() => {
+    if (live && wanted && requestedRunId.current !== wanted && !sec.runs.some((run) => run.id === wanted)) {
+      requestedRunId.current = wanted;
+      void loadResearchRun?.(wanted);
+    }
+  }, [live, wanted, sec.runs, loadResearchRun]);
   if (sec.preferredRunId && sec.preferredRunId !== seenPreferred) {
     setSeenPreferred(sec.preferredRunId);
     setSelectedId(sec.preferredRunId);
@@ -61,7 +79,7 @@ export function SecurityView() {
   /* the example-mode walkthrough: step is null when it is not playing */
   const ill = useIllustration();
   const step = ill.step;
-  const selected = sec.runs.find((r) => r.id === selectedId) ?? sec.runs[0];
+  const selected = sec.runs.find((r) => r.id === selectedId) ?? (live && wanted ? undefined : sec.runs[0]);
   const illustrating = step !== null;
   const pipeline = illustrating ? illustrationModel(step) : selected ? pipelineFor(selected) : null;
   const blocker = live ? startBlocker(sec.capabilities) : null;
@@ -148,6 +166,9 @@ export function SecurityView() {
                   {sec.unavailableMessage ?? "The live run feed is unavailable. No simulated data is substituted."}
                 </EmptyState>
               )}
+              {sec.status === "ready" && live && wanted && !sec.runs.some((run) => run.id === wanted) ? (
+                <EmptyState as="li" title="Loading the requested run.">Looking up this saved run directly from the authenticated Security Research API.</EmptyState>
+              ) : null}
             </ul>
           </div>
         </aside>
@@ -182,4 +203,8 @@ export function SecurityView() {
       </p>
     </section>
   );
+}
+
+export function SecurityView() {
+  return <LiveResearchAccessBoundary><SecurityResearchView /></LiveResearchAccessBoundary>;
 }

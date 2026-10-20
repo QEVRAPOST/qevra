@@ -120,10 +120,14 @@ export function OverviewView() {
         </section>
         <section aria-labelledby="h-ov-latest" className="ov-latest">
           <h2 id="h-ov-latest" className="ov-h">Latest research</h2>
-          {sec.status === "loading" ? <EmptyState title="Loading live run history.">Checking the authenticated Security Research API. No simulated runs are substituted.</EmptyState> : null}
-          {sec.status === "unavailable" ? <EmptyState title="Run history unavailable.">{sec.unavailableMessage ?? "The run feed is not connected. This is not a statement that there are no runs, or that the system is safe."}</EmptyState> : null}
-          {sec.status === "empty" ? <EmptyState title="No runs recorded yet.">{live ? "Start the first run in the Security Swarm. It will appear here." : "When a run is recorded it appears here with its evidence and its limits."}</EmptyState> : null}
-          {sec.status === "ready" ? (
+          {live && sec.accessState === "checking" ? <EmptyState title="Checking Security Swarm access.">Public wallet and network information remain available while operator access is checked.</EmptyState> : null}
+          {live && sec.accessState === "unauthenticated" ? <EmptyState title="Sign in to view research history.">Saved research and new runs require an operator session. Public wallet and network information remain available. <Link href="/app/security">Sign in to Security Swarm</Link>.</EmptyState> : null}
+          {live && sec.accessState === "not_configured" ? <EmptyState title="Operator access is not configured.">Research history needs server-side operator authentication. Public wallet and network information remain available.</EmptyState> : null}
+          {live && (sec.accessState === "service_error" || sec.accessState === "rate_limited") ? <EmptyState title={sec.accessState === "rate_limited" ? "Security Swarm access is rate-limited." : "Security Swarm access is unavailable."}>{sec.unavailableMessage ?? "Operator access could not be checked. Public wallet and network information remain available."} <Link href="/app/security">Open Security Swarm</Link>.</EmptyState> : null}
+          {(!live || sec.accessState === "authenticated") && sec.status === "loading" ? <EmptyState title="Loading live run history.">Checking the authenticated Security Research API. No simulated runs are substituted.</EmptyState> : null}
+          {(!live || sec.accessState === "authenticated") && sec.status === "unavailable" ? <EmptyState title="Run history unavailable.">{sec.unavailableMessage ?? "The run feed is not connected. This is not a statement that there are no runs, or that the system is safe."}</EmptyState> : null}
+          {(!live || sec.accessState === "authenticated") && sec.status === "empty" ? <EmptyState title="No runs recorded yet.">{live ? "Start the first run in the Security Swarm. It will appear here." : "When a run is recorded it appears here with its evidence and its limits."}</EmptyState> : null}
+          {(!live || sec.accessState === "authenticated") && sec.status === "ready" ? (
             <ul className="ov-runs">
               {latest.map((r) => {
                 const badge = runBadge(r);

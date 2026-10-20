@@ -56,7 +56,7 @@ export const analysisAgentOutputSchema = z
           title: boundedText(180),
           severity: z.enum(["critical", "high", "medium", "low", "unknown"]),
           analysis: boundedText(900),
-          sourceIds: z.array(sourceIdSchema).max(5),
+          sourceIds: z.array(sourceIdSchema).min(1).max(5),
         }).strict(),
       )
       .max(10),

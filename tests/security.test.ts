@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { createSession, hasSessionConfiguration, verifyAccessToken, verifySessionCookie } from "@/features/security/auth";
 import { requireResearchAccess } from "@/features/security/api";
@@ -17,7 +18,7 @@ import {
   researchAgentOutputSchema,
   verificationAgentOutputSchema,
 } from "@/features/security/schemas";
-import type { ResearchTopicId } from "@/types/integrations";
+import type { ResearchAgentRole, ResearchTopicId } from "@/types/integrations";
 
 const source: StoredSource = {
   id: "nist-fips-204",
@@ -27,6 +28,7 @@ const source: StoredSource = {
   status: "available",
   text: "FIPS 204 specifies ML-DSA as a module-lattice-based digital signature standard. Applications must validate public keys before use.",
   excerpt: "FIPS 204 specifies ML-DSA as a module-lattice-based digital signature standard.",
+  sha256: createHash("sha256").update("FIPS 204 specifies ML-DSA as a module-lattice-based digital signature standard. Applications must validate public keys before use.").digest("hex"),
 };
 
 const researchOutput = {
@@ -164,9 +166,10 @@ test("research run validates exact source quotes and strips private source text 
   });
 
   assert.equal(run.status, "completed");
+  assert.deepEqual(run.research?.claims.map((claim) => claim.id), ["fips-204-standard"]);
+  assert.equal(run.findings.length, 1);
   assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
-  assert.equal(run.findings[1]?.evidenceStatus, "not_verified");
-  assert.equal(run.findings[1]?.evidence[0]?.exactQuoteMatched, false);
+  assert.ok(run.limitations.some((item) => /exact matches in available approved source excerpts/i.test(item)));
   const detail = (await import("@/features/security/public-view")).toResearchRunDetail(run);
   assert.equal("text" in (detail.sources[0] ?? {}), false);
   assert.equal(detail.sources[0]?.excerpt, source.excerpt);
@@ -194,7 +197,7 @@ test("research pipeline fails closed and sanitizes provider failures", async () 
 });
 
 test("rate-limit failures persist safe provider limit metadata without retrying later agents", async () => {
-  const run = createQueuedRun("33333334-3333-4333-8333-333333333333", "robinhood-readonly-wallet", "Read-only evidence question");
+  const run = createQueuedRun("33333334-3333-4333-8333-333333333333", "mldsa-key-registration", "FIPS evidence question");
   const provider: ModelProvider = {
     name: "mock",
     async completeJson() {
@@ -594,6 +597,290 @@ test("Research Agent schema caps quote-bearing claims to the documented response
     ...researchOutput,
     claims: [...researchOutput.claims, { ...researchOutput.claims[0]!, id: "third-claim" }],
   }).success, false);
+});
+
+test("Analysis and Verification prompts enumerate their strict JSON contracts and provenance rules", async () => {
+  const prompts: Partial<Record<ResearchAgentRole, string>> = {};
+  const inputs: Partial<Record<ResearchAgentRole, unknown>> = {};
+  const delegate = mockProvider();
+  const provider: ModelProvider = {
+    name: "capture-offline-contracts",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      prompts[request.agent] = request.systemPrompt;
+      inputs[request.agent] = request.input;
+      return delegate.completeJson(request);
+    },
+  };
+  const run = createQueuedRun("88888881-8888-4888-8888-888888888888", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  const analysis = prompts.analysis ?? "";
+  for (const field of ['"summary"', '"assumptions"', '"risks"', '"unknowns"', '"recommendations"', '"sourceIds"']) {
+    assert.ok(analysis.includes(field), `Analysis prompt must enumerate ${field}`);
+  }
+  assert.match(analysis, /severity.*critical.*high.*medium.*low.*unknown/i);
+  assert.match(analysis, /sourceIds.*exact.*available.*source/i);
+  assert.match(analysis, /1-5/);
+  assert.match(analysis, /do not add|no extra keys|no additional keys/i);
+  assert.match(analysis, /400[- ]completion[- ]token/i);
+
+  const verification = prompts.verification ?? "";
+  for (const field of ['"summary"', '"claimChecks"', '"testArtifactChecks"', '"limitations"', '"claimId"', '"assessment"', '"evidence"', '"sourceId"', '"quote"', '"rationale"', '"artifactId"']) {
+    assert.ok(verification.includes(field), `Verification prompt must enumerate ${field}`);
+  }
+  assert.match(verification, /supported.*contradicted.*unclear/i);
+  assert.match(verification, /supports.*contradicts.*inconclusive/i);
+  assert.match(verification, /exact.*research.*claim/i);
+  assert.match(verification, /exact.*substring/i);
+  assert.match(verification, /empty (evidence|check) arrays/i);
+  assert.match(verification, /400[- ]completion[- ]token/i);
+
+  assert.deepEqual((inputs.analysis as { research: unknown }).research, run.research);
+  assert.deepEqual((inputs.verification as { research: unknown }).research, run.research);
+  assert.equal(run.research?.claims.length, 1, "Research claims without an exact approved-source quote must not flow downstream");
+  assert.deepEqual((inputs.verification as { analysis: unknown }).analysis, analysisOutput);
+  assert.deepEqual((inputs.verification as { approvedArtifactIds: string[] }).approvedArtifactIds, []);
+});
+
+test("Analysis risks require at least one source reference", () => {
+  const output = {
+    ...analysisOutput,
+    risks: [{ id: "source-risk", title: "Unsupported risk", severity: "high", analysis: "No source is cited.", sourceIds: [] }],
+  };
+  assert.equal(analysisAgentOutputSchema.safeParse(output).success, false);
+});
+
+test("Analysis and Verification schemas reject missing fields, wrong types, and invalid enums while allowing empty checks", () => {
+  const validAnalysis = {
+    ...analysisOutput,
+    risks: [{ id: "source-risk", title: "Bounded risk", severity: "medium", analysis: "A cited implementation needs review.", sourceIds: [source.id] }],
+  };
+  assert.equal(analysisAgentOutputSchema.safeParse(validAnalysis).success, true);
+  assert.equal(analysisAgentOutputSchema.safeParse(({ ...validAnalysis, summary: undefined })).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, assumptions: "not-an-array" }).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, risks: [{ ...validAnalysis.risks[0]!, severity: "urgent" }] }).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, risks: [{ ...validAnalysis.risks[0]!, sourceIds: [7] }] }).success, false);
+
+  const validVerification = {
+    summary: "No claims or completed artifacts were returned for checking.",
+    claimChecks: [],
+    testArtifactChecks: [],
+    limitations: [],
+  };
+  assert.equal(verificationAgentOutputSchema.safeParse(validVerification).success, true);
+  assert.equal(verificationAgentOutputSchema.safeParse(({ ...validVerification, claimChecks: undefined })).success, false);
+  assert.equal(verificationAgentOutputSchema.safeParse({
+    ...validVerification,
+    claimChecks: [{ claimId: "fips-claim", assessment: "maybe", evidence: [], rationale: "Unclear." }],
+  }).success, false);
+  assert.equal(verificationAgentOutputSchema.safeParse({
+    ...validVerification,
+    claimChecks: [{ claimId: "fips-claim", assessment: "supported", evidence: [{ sourceId: "nist-fips-204", quote: 42 }], rationale: "Cited." }],
+  }).success, false);
+  assert.equal(verificationAgentOutputSchema.safeParse({
+    ...validVerification,
+    testArtifactChecks: [{ artifactId: "phase0-test", assessment: "passed", rationale: "No such enum." }],
+  }).success, false);
+});
+
+test("pipeline filters unproven source, claim, and artifact references and keeps empty evidence unverified", async () => {
+  const quote = researchOutput.claims[0]!.evidence[0]!.quote;
+  const outputs = {
+    research: researchOutput,
+    analysis: {
+      ...analysisOutput,
+      summary: "An unapproved source proves this risk.",
+      risks: [{ id: "unsupported-risk", title: "Uncited risk", severity: "high" as const, analysis: "The cited source is not in the approved set.", sourceIds: ["unapproved-source"] }],
+    },
+    verification: {
+      ...verificationOutput,
+      summary: "Every claim is supported by a source quotation.",
+      claimChecks: [
+        { claimId: "fips-204-standard", assessment: "supported" as const, evidence: [{ sourceId: "unapproved-source", quote }], rationale: "The model cited an unapproved source." },
+        { claimId: "not-a-research-claim", assessment: "supported" as const, evidence: [{ sourceId: source.id, quote }], rationale: "The model added a claim that Research did not return." },
+      ],
+      testArtifactChecks: [{ artifactId: "not-run", assessment: "supports" as const, rationale: "No such test was run." }],
+      limitations: [],
+    },
+  };
+  const provider: ModelProvider = {
+    name: "invalid-cross-reference-offline-fixture",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      return { output: outputs[request.agent] as T };
+    },
+  };
+  const run = createQueuedRun("88888882-8888-4888-8888-888888888888", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  assert.equal(run.status, "completed");
+  assert.deepEqual(run.research?.claims.map((claim) => claim.id), ["fips-204-standard"]);
+  assert.deepEqual(run.analysis?.risks, []);
+  assert.match(run.analysis?.summary ?? "", /normalized.*source provenance/i);
+  assert.deepEqual(run.verification?.testArtifactChecks, []);
+  assert.deepEqual(run.verification?.claimChecks.map((check) => check.claimId), run.research?.claims.map((claim) => claim.id));
+  assert.ok(run.verification?.claimChecks.every((check) => check.assessment === "unclear" && check.evidence.length === 0));
+  assert.match(run.verification?.summary ?? "", /references.*excluded|discarded|normalized/i);
+  assert.ok(run.limitations.some((item) => /unapproved|unavailable.*source|citation/i.test(item)));
+  assert.ok(run.findings.every((finding) => finding.evidenceStatus === "not_verified" && finding.evidence.length === 0));
+});
+
+test("empty Research claims produce an honest empty findings report", async () => {
+  const outputs = {
+    research: { ...researchOutput, claims: [], scopeLimitations: ["The source did not support a claim for this question."] },
+    analysis: analysisOutput,
+    verification: { ...verificationOutput, claimChecks: [], testArtifactChecks: [] },
+  };
+  const provider: ModelProvider = {
+    name: "empty-claims-offline-fixture",
+    async completeJson<T>(request: StructuredModelRequest<T>) { return { output: outputs[request.agent] as T }; },
+  };
+  const run = createQueuedRun("88888883-8888-4888-8888-888888888888", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+  assert.equal(run.status, "completed");
+  assert.deepEqual(run.findings, []);
+  assert.deepEqual(run.verification?.claimChecks, []);
+});
+
+test("mocked three-agent pipeline stays within the unchanged Groq output, request, source, and spacing limits", async () => {
+  const unseenQuote = "TAIL_SENTINEL_OUTSIDE_FIRST_1200_CHARACTERS";
+  const sourceText = `${source.text} ${"Additional public standard context. ".repeat(80)}${unseenQuote}`;
+  const longSource: StoredSource = {
+    ...source,
+    text: sourceText,
+    excerpt: sourceText.slice(0, 1_200),
+    sha256: createHash("sha256").update(sourceText).digest("hex"),
+  };
+  assert.equal(longSource.text?.slice(0, 1_200).includes(unseenQuote), false);
+  const quote = source.text;
+  const outputs = {
+    research: {
+      summary: "FIPS 204 defines the signature standard.",
+      claims: [
+        { id: "fips-scope", claim: "FIPS 204 specifies ML-DSA for digital signatures.", evidence: [{ sourceId: source.id, quote }] },
+        { id: "outside-excerpt", claim: "A quote beyond the supplied excerpt must not be accepted.", evidence: [{ sourceId: source.id, quote: unseenQuote }] },
+      ],
+      scopeLimitations: ["Only the supplied page was checked."],
+    },
+    analysis: {
+      summary: "The supplied standard supports a narrow scope statement.",
+      assumptions: [],
+      risks: [{ id: "implementation-review", title: "Implementation review", severity: "medium" as const, analysis: "The standard page does not validate this application's implementation.", sourceIds: [source.id] }],
+      unknowns: ["No implementation audit was performed."],
+      recommendations: ["Review the implementation separately."],
+    },
+    verification: {
+      summary: "The Research claim's quotation exactly matches the supplied source.",
+      claimChecks: [{ claimId: "fips-scope", assessment: "supported" as const, evidence: [{ sourceId: source.id, quote }], rationale: "The quote is an exact source substring and directly matches the bounded claim." }],
+      testArtifactChecks: [],
+      limitations: ["Source quotation matching does not establish implementation security."],
+    },
+  };
+  let now = 1_000;
+  const requestBytes: number[] = [];
+  const requestMaxOutputTokens: number[] = [];
+  const requestInputs: Array<{ agent: string; sourceTextLength: number; textIsExcerpt: boolean; researchClaimCount: number }> = [];
+  const sleeps: number[] = [];
+  let slots = 0;
+  const provider = new OpenAICompatibleProvider({
+    apiKey: "offline-fixture-key",
+    model: "openai/gpt-oss-20b",
+    baseUrl: "https://api.groq.com/openai/v1",
+    maxOutputTokens: 400,
+    maxRequestBytes: 6_000,
+    minimumRequestIntervalMs: 61_000,
+    expectedTokensPerMinute: 8_000,
+    requireRateLimitHeaders: true,
+    timeoutMs: 1_000,
+    nowImpl: () => now,
+    sleepImpl: async (ms) => { sleeps.push(ms); now += ms; },
+    beforeRequest: async () => { slots += 1; },
+    fetchImpl: async (_url, init) => {
+      const bodyText = String(init?.body);
+      requestBytes.push(Buffer.byteLength(bodyText, "utf8"));
+      const body = JSON.parse(bodyText) as { max_completion_tokens?: number; messages: Array<{ content?: string }> };
+      requestMaxOutputTokens.push(body.max_completion_tokens ?? 0);
+      const user = JSON.parse(body.messages[1]?.content ?? "{}") as { agent: keyof typeof outputs; payload: { sources?: Array<{ text?: string; textIsExcerpt?: boolean }>; research?: { claims?: unknown[] } } };
+      const modelOutput = outputs[user.agent];
+      requestInputs.push({ agent: user.agent, sourceTextLength: user.payload.sources?.[0]?.text?.length ?? 0, textIsExcerpt: user.payload.sources?.[0]?.textIsExcerpt === true, researchClaimCount: user.payload.research?.claims?.length ?? 0 });
+      now += 1_000;
+      return Response.json({
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify(modelOutput) } }],
+        usage: { prompt_tokens: 100, completion_tokens: 80, total_tokens: 180, completion_tokens_details: { reasoning_tokens: 20 } },
+      }, { headers: { "x-ratelimit-limit-tokens": "8000", "x-ratelimit-remaining-tokens": "7800", "x-ratelimit-reset-tokens": "60s" } });
+    },
+  });
+  const run = createQueuedRun("88888885-8888-4888-8888-888888888888", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [longSource],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+    maxSourceTextChars: 1_200,
+  });
+  assert.equal(run.status, "completed");
+  assert.deepEqual(requestInputs.map((request) => request.agent), ["research", "analysis", "verification"]);
+  assert.ok(requestBytes.every((bytes) => bytes <= 6_000));
+  assert.deepEqual(requestMaxOutputTokens, [400, 400, 400]);
+  assert.ok(requestInputs.every((request) => request.sourceTextLength <= 1_200 && request.textIsExcerpt));
+  assert.deepEqual(requestInputs.map((request) => request.researchClaimCount), [0, 1, 1]);
+  assert.deepEqual(run.research?.claims.map((claim) => claim.id), ["fips-scope"]);
+  assert.equal(slots, 3);
+  assert.deepEqual(sleeps, [61_000, 61_000]);
+  assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
+  assert.equal(run.sources[0]?.sha256, longSource.sha256);
+});
+
+test("Analysis schema diagnostics survive pipeline persistence without raw provider output", async () => {
+  const researchProvider = mockProvider();
+  const invalidAnalysis = new OpenAICompatibleProvider({
+    apiKey: "offline-fixture-key",
+    model: "test-model",
+    baseUrl: "https://api.example.test/v1",
+    maxOutputTokens: 128,
+    timeoutMs: 1_000,
+    fetchImpl: async () => Response.json({
+      choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ summary: 42, assumptions: [], risks: [], unknowns: [], recommendations: [], private_provider_payload: "do-not-persist" }) } }],
+      usage: { prompt_tokens: 9, completion_tokens: 11, total_tokens: 20 },
+    }),
+  });
+  const provider: ModelProvider = {
+    name: "offline-analysis-validation",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      return request.agent === "analysis" ? invalidAnalysis.completeJson(request) : researchProvider.completeJson(request);
+    },
+  };
+  const run = createQueuedRun("88888884-8888-4888-8888-888888888888", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+  const detail = await (await import("@/features/security/public-view")).toResearchRunDetail(run);
+  const failedAgent = detail.agents.find((agent) => agent.role === "analysis");
+  assert.equal(run.status, "failed");
+  assert.equal(failedAgent?.errorCode, "provider_output_invalid");
+  assert.equal(failedAgent?.providerReportedUsage?.totalTokens, 20);
+  assert.equal(failedAgent?.providerReportedUsage?.outputDiagnostics?.finishReason, "stop");
+  assert.equal(failedAgent?.providerReportedUsage?.outputDiagnostics?.validationCategory, "schema_validation");
+  assert.ok(failedAgent?.providerReportedUsage?.outputDiagnostics?.validationIssues?.some((issue) => issue.path[0] === "summary" && issue.code === "invalid_type"));
+  assert.ok(failedAgent?.providerReportedUsage?.outputDiagnostics?.validationIssues?.some((issue) => issue.path.length === 0 && issue.code === "unrecognized_keys"));
+  assert.doesNotMatch(JSON.stringify(detail), /do-not-persist|private_provider_payload/);
 });
 
 test("model provider classifies authentication, quota, malformed JSON, and schema failures without exposing bodies", async () => {
