@@ -1,14 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
-import { DemoChip } from "@/components/ui/Chip";
+import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import type { Material, ReadOnlyWalletStatus } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 
-/** What each wallet state means for the visitor, and what they can do about it. The wallet's own words are never replaced. */
+/** What each wallet state means for the visitor. The wallet's own words are never replaced. */
 const STATES: Record<ReadOnlyWalletStatus, { label: string; material: Material; help: string }> = {
-  disconnected: { label: "Not connected", material: "dotted", help: "Connecting is optional and only when you press the button. It reads your public address and balance. It never signs or sends." },
+  disconnected: { label: "No wallet connected", material: "dotted", help: "Connecting is optional and happens only when you press the button." },
   loading: { label: "Waiting for your wallet", material: "outline", help: "Your wallet is asking you to approve read access. Nothing is shared until you do." },
   connected: { label: "Connected · read-only", material: "outline", help: "The app can read this account’s public data. It cannot sign, send, or change your wallet’s network." },
   unsupported_network: { label: "Unsupported network", material: "dotted", help: "Your wallet is on a network this app does not read. The wallet was not changed; switch it yourself if you want to see a balance." },
@@ -24,8 +24,9 @@ function short(address: string): string {
 }
 
 /**
- * The first thing on the wallet route: is a wallet connected, which network is it on, and what is its public balance.
- * One primary action, always the one that fits. It is read-only: there is no signing here, and no way to switch the wallet's network.
+ * The wallet route's opening: one ring that says whether a wallet is connected, and what it can see. When nothing is connected
+ * this is a plain invitation with the read-only boundary in three short lines. It is read-only: there is no signing here, and no way
+ * to switch the wallet's network.
  */
 export function WalletBand() {
   const { model, actions } = useAppModel();
@@ -34,63 +35,89 @@ export function WalletBand() {
   const conn = w.connection;
   const status: ReadOnlyWalletStatus = live ? (conn?.status ?? "disconnected") : w.stage === 0 ? "disconnected" : "connected";
   const info = STATES[status];
-  const connected = status === "connected" || (status === "unsupported_network" && !!conn?.address) || (live && !!conn?.address);
+  const connected = live ? !!conn?.address : w.stage > 0;
   const net = model.network.options.find((n) => n.id === model.network.selected);
   const address = live ? conn?.address : w.eoa.address?.label;
   const balance = live ? conn?.balance : undefined;
   const busy = status === "loading";
+  const exBalance = !live && w.eoa.assets[0] ? `${w.eoa.assets[0].amount} ${w.eoa.assets[0].symbol}` : null;
 
   return (
-    <section className="wl-band" aria-labelledby="h-wl-band">
-      <h2 id="h-wl-band" className="ov-h">Connection</h2>
-      <div className="wl-grid">
-        <div className="wl-cell">
-          <span className="ov-k">Status</span>
-          <b className="wl-v">
-            <StatusMaterial material={live ? info.material : connected ? "outline" : "dotted"} />
-            {live ? info.label : connected ? "Connected · example wallet" : "Not connected · example"}
-          </b>
-          <span className="wl-addr">
-            {address ? short(address) : "No address"}
-            {!live && address ? <DemoChip>EXAMPLE</DemoChip> : null}
-          </span>
-        </div>
-        <div className="wl-cell">
-          <span className="ov-k">Network</span>
-          <b className="wl-v">{live && conn?.address ? (conn.networkName ?? `Chain ${conn.chainId ?? "unknown"}`) : (net?.label ?? "Unavailable")}</b>
-          <span className="wl-sub">
-            {live
-              ? conn?.address
-                ? model.network.walletMismatch
-                  ? `Differs from the network the app reads (${net?.short ?? "selected"}). Your wallet was not changed.`
-                  : "Matches the network the app reads."
-                : `The app reads ${net?.label ?? "the selected network"} when you connect.`
-              : "Example mode reads no chain."}
-          </span>
-        </div>
-        <div className="wl-cell">
-          <span className="ov-k">Public balance</span>
-          <b className="wl-v">{balance ? `${balance.amount} ${balance.symbol}` : live ? "Not available" : w.eoa.assets[0] ? `${w.eoa.assets[0].amount} ${w.eoa.assets[0].symbol}` : "Not available"}</b>
-          <span className="wl-sub">{balance ? `Read at block ${balance.blockNumber}. A snapshot, not a live feed.` : live ? "Shown only after a successful read." : w.eoa.assets[0] ? "Example value." : "Connect to see one."}</span>
-        </div>
+    <section className={`wl-band${connected ? " on" : ""}`} aria-labelledby="h-wl-band">
+      <h2 id="h-wl-band" className="sr">Connection</h2>
+      <div className="wl-orb" aria-hidden="true">
+        <span className="wl-r3" />
+        <span className="wl-r2" />
+        <span className="wl-r1">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+            <rect x="3" y="6" width="18" height="13" rx="2" />
+            <path d="M3 10h18M16 14.5h2" />
+          </svg>
+        </span>
+      </div>
+      <div className="wl-body">
+        <p className="wl-state">
+          <StatusMaterial material={connected ? "outline" : "dotted"} />
+          {live ? info.label : connected ? "Connected · simulated wallet" : "No wallet connected"}
+          {!live && connected ? <SimTag /> : null}
+        </p>
+        {connected ? (
+          <>
+            <p className="wl-address">{address ? short(address) : "No address"}</p>
+            <dl className="wl-facts">
+              <div>
+                <dt>Network</dt>
+                <dd>{live ? (conn?.networkName ?? `Chain ${conn?.chainId ?? "unknown"}`) : (net?.label ?? "Unavailable")}</dd>
+                <small>
+                  {live
+                    ? model.network.walletMismatch
+                      ? `Differs from the network the app reads (${net?.short ?? "selected"}). Your wallet was not changed.`
+                      : "Matches the network the app reads."
+                    : "Simulated: nothing is read."}
+                </small>
+              </div>
+              <div>
+                <dt>Public balance</dt>
+                <dd>{balance ? `${balance.amount} ${balance.symbol}` : (exBalance ?? "Not available")}</dd>
+                <small>{balance ? `Read at block ${balance.blockNumber}. A snapshot, not a live feed.` : live ? "Shown only after a successful read." : "Simulated value."}</small>
+              </div>
+            </dl>
+          </>
+        ) : (
+          <>
+            <h2 className="wl-h">Look at a wallet without handing it over.</h2>
+            <ul className="wl-rules">
+              <li>Reads the public address and balance you choose to show.</li>
+              <li>Never signs, sends or switches your network.</li>
+              <li>Disconnect any time.</li>
+            </ul>
+          </>
+        )}
+        <p className="wl-help" role="status">
+          {live && conn?.message ? `${conn.message} ` : ""}
+          {connected ? (live ? info.help : "") : live ? info.help : ""}
+        </p>
         <div className="wl-act">
           {connected ? (
             live ? (
-              <Button variant="ghost" onClick={() => actions.pressLedgerAction("disconnect")}>
-                Disconnect
-              </Button>
+              <>
+                {actions.refreshWallet ? (
+                  <Button variant="ghost" onClick={actions.refreshWallet}>
+                    Refresh balance
+                  </Button>
+                ) : null}
+                <Button variant="ghost" onClick={() => actions.pressLedgerAction("disconnect")}>
+                  Disconnect
+                </Button>
+              </>
             ) : null
           ) : (
             <Button variant="primary" onClick={() => actions.pressLedgerAction("connect")} disabled={busy}>
-              {busy ? "Waiting…" : live ? "Connect wallet, read-only" : "Connect example wallet"}
+              {busy ? "Waiting…" : live ? "Connect wallet, read-only" : "Connect a simulated wallet"}
             </Button>
           )}
         </div>
       </div>
-      <p className="wl-help" role="status">
-        {live && conn?.message ? `${conn.message} ` : ""}
-        {info.help}
-      </p>
     </section>
   );
 }

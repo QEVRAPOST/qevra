@@ -41,6 +41,8 @@ export interface AppActions {
   pressWalletButton(): void;
   /** a button inside a ledger */
   pressLedgerAction(id: LedgerActionId): void;
+  /** Refreshes an already-connected wallet's public balance without requesting account access again. */
+  refreshWallet?(): void;
   /** Starts a server-side, approved-topic research run only when live capabilities allow it. */
   createSecurityRun(topicId: import("./integrations").ResearchTopicId): void;
   /** Clears the server-issued session cookie. */

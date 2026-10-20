@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useState } from "react";
-import { DemoChip } from "@/components/ui/Chip";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { defaultStage, pipelineAnnouncement, STAGE_META, STAGE_ORDER, STATUS_TEXT, type PipelineModel, type PipelineStage } from "@/lib/swarm-view";
 import type { Material, ResearchAgentRole, ResearchAgentStatus } from "@/types";
@@ -19,8 +18,16 @@ function time(iso: string | undefined): string {
   return iso ?? "not recorded";
 }
 
-function StageDetail({ stage, model, id }: { stage: PipelineStage; model: PipelineModel; id: string }) {
-  const facts: Array<[string, React.ReactNode]> = [["Status", STATUS_TEXT[stage.status]]];
+/** The arc the three agents sit on. Sources and the human review are its two ends, drawn apart on purpose. */
+const SEGMENTS = [
+  "M110 230 C190 230 260 160 350 130",
+  "M350 130 C450 100 510 80 600 80",
+  "M600 80 C690 80 750 100 850 130",
+  "M850 130 C940 160 1010 230 1090 230",
+] as const;
+
+function Inspector({ stage, model, id }: { stage: PipelineStage; model: PipelineModel; id: string }) {
+  const facts: Array<[string, React.ReactNode]> = [];
   if (!model.example) {
     facts.push(["Started", time(stage.startedAt)], ["Finished", time(stage.completedAt)]);
     if (stage.tokens !== undefined) facts.push(["Provider-reported tokens", String(stage.tokens)]);
@@ -30,18 +37,32 @@ function StageDetail({ stage, model, id }: { stage: PipelineStage; model: Pipeli
   if (stage.errorCode) facts.push(["Error code", <code key="c">{stage.errorCode}</code>]);
   return (
     <div className="pipe-detail" id={id} role="group" aria-label={`${stage.title} detail`}>
-      {model.illustration ? <p className="pd-ex">Illustration: nothing is running. It replays the order of a run, so there is no time, token count or source to show.</p> : model.example ? <p className="pd-ex">Example: no agent ran, so there is no time, token count or source to show.</p> : null}
+      <div className="pd-head">
+        <h4>{stage.title}</h4>
+        <span className={`pd-st s-${stage.status}`}>
+          <StatusMaterial material={MATERIAL[stage.status]} />
+          {STATUS_TEXT[stage.status]}
+        </span>
+      </div>
+      <p className="pd-does">{stage.does}</p>
+      {model.illustration ? (
+        <p className="pd-ex">Illustration: nothing is running. It replays the order of a run, so there is no time, token count or source to show.</p>
+      ) : model.example ? (
+        <p className="pd-ex">Simulated: no agent ran, so there is no time, token count or source to show.</p>
+      ) : null}
       {stage.status === "blocked" ? <p className="pd-warn">Blocked: an earlier stage stopped, so this agent did not run.</p> : null}
       {stage.status === "failed" ? <p className="pd-warn">This agent stopped with an error. Nothing it would have produced is shown as a result.</p> : null}
       {stage.unreported && !model.example ? <p className="pd-ex">The service did not report this agent, so it is shown as waiting.</p> : null}
-      <dl className="pd-facts">
-        {facts.map(([k, v]) => (
-          <div key={k}>
-            <dt>{k}</dt>
-            <dd>{v}</dd>
-          </div>
-        ))}
-      </dl>
+      {facts.length > 0 ? (
+        <dl className="pd-facts">
+          {facts.map(([k, v]) => (
+            <div key={k}>
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
       {stage.role === "verification" && model.verificationNote ? <p className="pd-note"><b>Note from the agent.</b> {model.verificationNote}</p> : null}
       {stage.events.length > 0 ? (
         <ol className="pd-events" aria-label={`${stage.title} events`}>
@@ -57,14 +78,16 @@ function StageDetail({ stage, model, id }: { stage: PipelineStage; model: Pipeli
 }
 
 /**
- * The Security Swarm pipeline: Research → Analysis → Verification, then a separate Human review dock.
+ * The Security Swarm canvas: Research → Analysis → Verification on an arc, then a separate Human review station.
  *
- * Each node is drawn from the agent's own state (nothing is invented and nothing is added): waiting is dotted, running is
- * outlined with a signal travelling into it, completed is outlined, failed is red with its error code, blocked is hatched.
- * The signal moves only for a genuinely running agent of a live run; an example run never moves.
- * A completed run is never drawn as verified: the dock stays unlit until a person records a review.
+ * Each station is drawn from the agent's own state (nothing is invented and nothing is added): waiting is a dotted ring, running
+ * an amber ring with a signal travelling into it, completed a silver ring, failed a red one with its error code, blocked a hatched,
+ * dim one. The signal moves only for a genuinely running agent of a live run, or during an illustration the visitor started.
+ * A completed run is never drawn as verified: the review station stays unlit until a person records a review.
+ *
+ * `compact` drops the counts, the legend and the standing note (the overview shows the canvas alone).
  */
-export function SwarmPipeline({ model }: { model: PipelineModel | null }) {
+export function SwarmPipeline({ model, compact = false, title }: { model: PipelineModel | null; compact?: boolean; title?: string }) {
   const uid = useId();
   const [picked, setPicked] = useState<ResearchAgentRole | null>(null);
   const guide = model === null;
@@ -76,16 +99,20 @@ export function SwarmPipeline({ model }: { model: PipelineModel | null }) {
   const moves = !!model && (!model.example || !!model.illustration);
   const running = (i: number) => moves && stages[i].status === "running";
   const detailId = `${uid}-detail`;
+  /* the signal that arrives at stage i travels on segment i (segment 0 is Sources → Research) */
+  const segState = (i: number): string => (i < 3 ? stages[i].status : "pending");
 
   return (
     <section
-      className={["pipe", model?.example ? "is-example" : "", model?.illustration ? "is-illustration" : "", guide ? "is-guide" : ""].filter(Boolean).join(" ")}
+      className={["pipe", model?.example ? "is-example" : "", model?.illustration ? "is-illustration" : "", guide ? "is-guide" : "", compact ? "is-compact" : ""].filter(Boolean).join(" ")}
       id="swarm-pipe"
       aria-labelledby={`${uid}-h`}
     >
       <header className="pipe-head">
-        <h3 id={`${uid}-h`}>{guide ? "How a run works" : "Agent pipeline"}</h3>
-        {model?.example ? <DemoChip>{model.illustration ? "ILLUSTRATION · NO AGENT RAN" : "EXAMPLE · NO AGENT RAN"}</DemoChip> : guide ? <span className="pipe-tag">Reference, no run selected</span> : <span className="pipe-tag">From the run record</span>}
+        <h3 id={`${uid}-h`}>{title ?? (guide ? "How a run works" : "Agent pipeline")}</h3>
+        <span className="pipe-tag">
+          {model?.illustration ? "Illustration · no agent ran" : model?.example ? "Simulated · no agent ran" : guide ? "Reference, no run selected" : "From the run record"}
+        </span>
       </header>
       {model ? (
         <p className="sr" role="status">
@@ -93,16 +120,31 @@ export function SwarmPipeline({ model }: { model: PipelineModel | null }) {
         </p>
       ) : null}
 
-      <div className="pipe-track">
-        <div className="pipe-src" role="group" aria-label="Sources">
+      <div className="pipe-track om">
+        <svg className="om-svg" viewBox="0 0 1200 330" aria-hidden="true" focusable="false">
+          <g className="om-rings">
+            <ellipse cx="600" cy="345" rx="585" ry="285" />
+            <ellipse cx="600" cy="345" rx="470" ry="225" />
+            <ellipse cx="600" cy="345" rx="350" ry="165" />
+          </g>
+          {SEGMENTS.map((d, i) => (
+            <g key={d} className={`om-seg s-${segState(i)}${i === 3 ? " out" : ""}`}>
+              <path className="om-line" d={d} />
+              {i < 3 && running(i) ? <path className="om-flow" d={d} /> : null}
+            </g>
+          ))}
+        </svg>
+
+        <div className="pipe-src om-src" role="group" aria-label="Sources">
+          <span className="om-sring" aria-hidden="true" />
           <span className="ps-k">Sources</span>
           <b>{model?.sources ? `${model.sources.available} of ${model.sources.total}` : model?.example ? "none read" : "approved"}</b>
-          <span className="ps-s">{model?.sources ? "available" : model?.example ? "example" : "public pages"}</span>
+          <span className="ps-s">{model?.sources ? "available" : model?.example ? "simulated" : "public pages"}</span>
         </div>
-        <span className={`plink in s-${stages[0].status}${running(0) ? " flow" : ""}`} aria-hidden="true" />
+
         <ol className="pipe-nodes" aria-label="Agents, in the order they run">
           {stages.map((stage, i) => (
-            <li key={stage.role} className="pipe-li">
+            <li key={stage.role} className={`pipe-li om-n${i + 1}`}>
               {i > 0 ? <span className={`plink s-${stage.status}${running(i) ? " flow" : ""}`} aria-hidden="true" /> : null}
               <button
                 type="button"
@@ -112,28 +154,32 @@ export function SwarmPipeline({ model }: { model: PipelineModel | null }) {
                 disabled={guide}
                 onClick={() => setPicked(stage.role)}
               >
-                <span className="pn-top">
+                <span className="om-ring" aria-hidden="true">
+                  <i className="om-halo" />
+                  <b>{i + 1}</b>
+                </span>
+                <span className="pn-body">
                   <span className="pn-step">Step {i + 1}</span>
+                  <span className="pn-title">{stage.title}</span>
                   <span className="pn-state">
                     <StatusMaterial material={MATERIAL[stage.status]} />
-                    {guide ? "—" : STATUS_TEXT[stage.status]}
-                    {model?.example && stage.status === "running" ? " (example)" : ""}
+                    {guide ? "Waiting for a run" : STATUS_TEXT[stage.status]}
+                    {model?.example && stage.status === "running" ? " (simulated)" : ""}
                   </span>
+                  <span className="pn-does">{stage.does}</span>
+                  {stage.status === "failed" || stage.status === "blocked" ? (
+                    <span className="pn-err">
+                      {stage.status === "failed" ? "Error" : "Did not run"}
+                      {stage.errorCode ? <>: <code>{stage.errorCode}</code></> : null}
+                    </span>
+                  ) : null}
                 </span>
-                <span className="pn-title">{stage.title}</span>
-                <span className="pn-does">{stage.does}</span>
-                {stage.status === "failed" || stage.status === "blocked" ? (
-                  <span className="pn-err">
-                    {stage.status === "failed" ? "Error" : "Did not run"}
-                    {stage.errorCode ? <>: <code>{stage.errorCode}</code></> : null}
-                  </span>
-                ) : null}
               </button>
             </li>
           ))}
         </ol>
-        <span className="plink out" aria-hidden="true" />
-        <div className={`pipe-dock${model?.review.recorded ? " lit" : ""}`}>
+
+        <div className={`pipe-dock om-dock${model?.review.recorded ? " lit" : ""}`}>
           <span className="pd-lamp" aria-hidden="true" />
           <div>
             <b>Human review</b>
@@ -148,9 +194,9 @@ export function SwarmPipeline({ model }: { model: PipelineModel | null }) {
         </div>
       </div>
 
-      {!guide ? <StageDetail key={selected.role} stage={selected} model={model} id={detailId} /> : null}
+      {!guide && !compact ? <Inspector key={selected.role} stage={selected} model={model} id={detailId} /> : null}
 
-      {model && !model.example ? (
+      {model && !model.example && !compact ? (
         <dl className="pipe-stats" aria-label="Evidence in this run">
           <div>
             <dt>Findings</dt>
@@ -171,14 +217,18 @@ export function SwarmPipeline({ model }: { model: PipelineModel | null }) {
         </dl>
       ) : null}
 
-      <ul className="pipe-key" aria-label="What the circles mean">
-        {(["pending", "running", "completed", "failed", "blocked"] as const).map((s) => (
-          <li key={s} className={`pk-${s}`}>
-            <StatusMaterial material={MATERIAL[s]} /> {STATUS_TEXT[s]}
-          </li>
-        ))}
-      </ul>
-      {!guide ? <p className="pipe-note">Completed means an agent returned output. It is not an audit, a passed test, or a human review.</p> : null}
+      {compact ? null : (
+        <>
+          <ul className="pipe-key" aria-label="What the circles mean">
+            {(["pending", "running", "completed", "failed", "blocked"] as const).map((s) => (
+              <li key={s} className={`pk-${s}`}>
+                <StatusMaterial material={MATERIAL[s]} /> {STATUS_TEXT[s]}
+              </li>
+            ))}
+          </ul>
+          {!guide ? <p className="pipe-note">Completed means an agent returned output. It is not an audit, a passed test, or a human review.</p> : null}
+        </>
+      )}
     </section>
   );
 }

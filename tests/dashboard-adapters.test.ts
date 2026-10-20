@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { toLiveDashboardSnapshot, toLiveSecurityRun } from "@/features/dashboard/live-adapters";
 import { createSecurityRun, getSecuritySessionStatus, SecurityApiClientError } from "@/features/security/client";
-import { buildLiveAppModel, toLiveSwarmRun } from "@/features/dashboard/live-model";
+import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "@/features/dashboard/live-model";
 import { createResearchRunRequestSchema } from "@/features/security/schemas";
 import { buildDemoModel } from "@/lib/demo/model";
 import { pipelineFor } from "@/lib/swarm-view";
@@ -159,6 +159,63 @@ test("live status bar distinguishes provider configuration, provider availabilit
   assert.equal(makeModel({ ...capabilities, provider: "unavailable" }).statusBar.find((item) => item.id === "swarm-live")?.text, "AI provider · unavailable");
   assert.equal(makeModel({ ...capabilities, provider: "available", persistence: "unavailable" }).statusBar.find((item) => item.id === "swarm-live")?.text, "Run history · unavailable");
   assert.equal(makeModel({ ...capabilities, provider: "available", persistence: "available", worker: "unavailable" }).statusBar.find((item) => item.id === "swarm-live")?.text, "Research worker · unavailable");
+});
+
+test("research run history is newest-first, stable for invalid dates, and reconciles optimistic rows without duplicates", () => {
+  const older: ResearchRunSummary = {
+    id: "11111111-1111-4111-8111-111111111111",
+    topicId: "security-evidence",
+    topic: "Older run",
+    status: "completed",
+    currentStage: "completed",
+    createdAt: "2026-10-18T00:00:00.000Z",
+    updatedAt: "2026-10-18T00:01:00.000Z",
+    agents: [],
+    sourceCount: 0,
+    availableSourceCount: 0,
+    findingCount: 0,
+    events: [],
+  };
+  const newest: ResearchRunSummary = {
+    ...older,
+    id: "22222222-2222-4222-8222-222222222222",
+    topic: "Newest run",
+    createdAt: "2026-10-19T00:00:00.000Z",
+    updatedAt: "2026-10-19T00:00:00.000Z",
+  };
+  const invalidTimestamp: ResearchRunSummary = {
+    ...older,
+    id: "33333333-3333-4333-8333-333333333333",
+    topic: "Timestamp unavailable",
+    createdAt: "not-a-timestamp",
+  };
+
+  const ordered = newestFirstResearchRuns([older, invalidTimestamp, newest, { ...older, topic: "duplicate payload" }]);
+  assert.deepEqual(ordered.map((run) => run.id), [newest.id, older.id, invalidTimestamp.id]);
+  assert.equal(ordered[1]?.topic, "duplicate payload");
+  assert.equal(ordered[2]?.createdAt, "not-a-timestamp");
+
+  const reconciled = reconcileResearchRunHistory([older, newest], [newest, invalidTimestamp]);
+  assert.deepEqual(reconciled.map((run) => run.id), [newest.id, older.id, invalidTimestamp.id]);
+  const justCreated: ResearchRunSummary = {
+    ...newest,
+    id: "44444444-4444-4444-8444-444444444444",
+    topic: "Just created",
+    createdAt: newest.createdAt,
+    updatedAt: newest.updatedAt,
+  };
+  const optimistic = reconcileResearchRunHistory([older, newest], [justCreated]);
+  assert.equal(optimistic[0]?.id, justCreated.id);
+  assert.equal(optimistic[0]?.createdAt, justCreated.createdAt);
+  const model = buildLiveAppModel({
+    wallet: { status: "disconnected" },
+    runs: optimistic,
+    preferredRunId: justCreated.id,
+    isRefreshing: false,
+    isCreating: false,
+  });
+  assert.equal(model.security.runs[0]?.id, justCreated.id);
+  assert.equal(model.security.preferredRunId, justCreated.id);
 });
 
 test("live model keeps the app network independent from the connected wallet chain", () => {

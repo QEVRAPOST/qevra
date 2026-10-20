@@ -94,13 +94,15 @@ function LiveCaption({ c, demo, projectName }: { c: IntentComparison; demo: bool
  * rings are a separate, labelled DESIGN DEMONSTRATION on example values: turning a ring changes this picture and
  * nothing else. It verifies nothing, signs nothing and writes no state.
  */
-export function IntentLockPanel({ comparison }: { comparison: IntentComparison }) {
+export function IntentLockPanel({ comparison, driven }: { comparison: IntentComparison; driven?: boolean[] }) {
   const [scene, setScene] = useState<ApertureScene | null>(null);
   const [rings, setRings] = useState<RingsInfo>(NO_RINGS);
   /* the demonstration was started with a button; dragging a ring out of line also starts it */
   const [started, setStarted] = useState(false);
   const turnedCount = rings.turned.filter(Boolean).length;
-  const demo = started || turnedCount > 0;
+  /* `driven` (the swap preview) turns each ring out of line by the swap's own changes, so the picture follows the form */
+  const demo = !driven && (started || turnedCount > 0);
+  const drivenKey = driven?.map((c) => (c ? "1" : "0")).join("");
   const shown = demo ? buildDemoIntentComparison(rings.turned) : comparison;
   const selected = rings.selected;
 
@@ -108,6 +110,11 @@ export function IntentLockPanel({ comparison }: { comparison: IntentComparison }
   useEffect(() => {
     scene?.set({ lit: demo || comparison.reviewed ? 1 : 0, mis: !demo && comparison.changedCount > 0 ? 1 : 0 });
   }, [scene, demo, comparison.reviewed, comparison.changedCount]);
+
+  useEffect(() => {
+    if (!scene || !drivenKey) return;
+    [...drivenKey].forEach((c, i) => scene.setRingAngle(i, c === "1" ? AMOUNT_TURN : 0));
+  }, [scene, drivenKey]);
 
   const reset = useCallback(() => {
     scene?.resetRings();
@@ -181,13 +188,14 @@ export function IntentLockPanel({ comparison }: { comparison: IntentComparison }
           initial={GLYPH_INITIAL}
           fitExplode={0}
           pointer
-          interactive
+          interactive={!driven}
           label={GLYPH_LABEL}
           onSceneChange={setScene}
           onRingsChange={setRings}
         />
       </figure>
 
+      {driven ? null : (
       <div className="ilctl">
         <div className="row">
           <span id="il-demo-l">Design demonstration</span>
@@ -224,6 +232,7 @@ export function IntentLockPanel({ comparison }: { comparison: IntentComparison }
           </span>
         </div>
       </div>
+      )}
 
       <p className="dnote">Each row is one parameter of the transaction. “Reviewed” is what you approved; “To be signed” is what would be sent. Any difference is marked.</p>
       <ScrollRegion className="itwrap" label="Swap details as reviewed and as they would be signed">

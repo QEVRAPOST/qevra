@@ -45,6 +45,8 @@ export interface SecurityView {
   capabilities?: SecurityResearchCapabilities;
   isRefreshing?: boolean;
   isCreating?: boolean;
+  /** A newly persisted run that the presentation may select immediately. */
+  preferredRunId?: string;
   actionMessage?: string;
   unavailableMessage?: string;
 }

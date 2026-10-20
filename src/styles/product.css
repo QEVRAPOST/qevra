@@ -79,30 +79,6 @@
   gap: 10px;
   margin-top: 8px;
 }
-.ov-ready {
-  display: grid;
-  gap: 12px;
-}
-.ov-ready ul {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid var(--line-2);
-}
-.ov-ready li {
-  display: grid;
-  align-content: start;
-  gap: 5px;
-  padding: 14px 18px 16px 0;
-  margin-right: 18px;
-  border-bottom: 1px solid var(--line);
-}
-.ov-ready li:not(:nth-child(3n)) {
-  border-right: 1px solid var(--line);
-}
-.ov-ready li:nth-child(3n) {
-  margin-right: 0;
-  padding-right: 0;
-}
 .ov-k {
   font: 400 11.5px/1.3 var(--f-mono);
   color: var(--muted);
@@ -129,56 +105,6 @@
   font-size: 13px;
   line-height: 1.45;
   color: var(--fg-2);
-}
-.ov-journey {
-  display: grid;
-  gap: 12px;
-}
-.ov-journey ol {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
-  border-top: 1px solid var(--line-2);
-  counter-reset: none;
-}
-.ov-journey li {
-  position: relative;
-  display: grid;
-  align-content: start;
-  gap: 6px;
-  padding: 18px 22px 18px 0;
-}
-.ov-journey li + li {
-  padding-left: 22px;
-  border-left: 1px solid var(--line);
-}
-.ov-n {
-  font: 400 40px/1 var(--f-display);
-  color: var(--exp);
-}
-.ov-journey h3 {
-  font: 400 24px/1.1 var(--f-display);
-  letter-spacing: -0.005em;
-}
-.ov-journey p {
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--fg-2);
-}
-.ov-st {
-  font: 400 11.5px/1.3 var(--f-mono);
-  color: var(--muted);
-}
-.ov-latest {
-  display: grid;
-  gap: 12px;
-}
-.ov-lh {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 .ov-runs {
   display: grid;
@@ -218,49 +144,8 @@
 }
 
 @media (max-width: 1180px) {
-  .ov-ready ul,
-  .ov-journey ol {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .ov-ready li:not(:nth-child(3n)) {
-    border-right: 0;
-  }
-  .ov-ready li:nth-child(odd) {
-    border-right: 1px solid var(--line);
-  }
-  .ov-ready li:nth-child(even) {
-    margin-right: 0;
-    padding-right: 0;
-  }
-  .ov-journey li:nth-child(3) {
-    grid-column: 1 / -1;
-    padding-left: 0;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
 }
 @media (max-width: 640px) {
-  .ov-ready ul,
-  .ov-journey ol {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .ov-ready li,
-  .ov-ready li:nth-child(odd),
-  .ov-ready li:nth-child(even) {
-    border-right: 0;
-    margin-right: 0;
-    padding-right: 0;
-  }
-  .ov-journey li,
-  .ov-journey li + li,
-  .ov-journey li:nth-child(3) {
-    padding-left: 0;
-    padding-right: 0;
-    border-left: 0;
-  }
-  .ov-journey li + li {
-    border-top: 1px solid var(--line);
-  }
   .ov-cta > * {
     flex: 1 1 100%;
   }

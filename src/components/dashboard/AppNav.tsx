@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RouteIcon, APP_ROUTES } from "./routes";
-import { useAppModel } from "./DemoAppProvider";
-import { PROJECT_NAME } from "@/lib/project-brand";
+import { useLayoutEffect, useRef, useState } from "react";
+import { APP_ROUTES, RouteIcon } from "./routes";
 
 /** `/app` is the overview and only matches itself; every other route also matches its sub-paths. */
 function isCurrent(pathname: string, href: string): boolean {
@@ -12,52 +11,47 @@ function isCurrent(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** Left rail on desktop (1025px and up). Hidden by CSS at 1024px and below, where the tab bar shows. */
-export function Rail() {
+/**
+ * The route bar in the header (1100px and up). One thin amber line slides to the route you are on, so moving between
+ * routes reads as moving, not as a page swap. Below 1100px the tab bar takes over.
+ */
+export function CommandNav() {
   const pathname = usePathname();
-  const { model } = useAppModel();
-  const done = model.wallet.setupDone;
+  const ref = useRef<HTMLElement>(null);
+  const [bar, setBar] = useState<{ x: number; w: number } | null>(null);
+  /* the first placement must not animate in from nowhere */
+  const [ready, setReady] = useState(false);
+
+  useLayoutEffect(() => {
+    const place = () => {
+      const nav = ref.current;
+      const cur = nav?.querySelector<HTMLElement>('a[aria-current="page"]');
+      if (!nav || !cur) return setBar(null);
+      setBar({ x: cur.offsetLeft, w: cur.offsetWidth });
+    };
+    place();
+    const raf = requestAnimationFrame(() => setReady(true));
+    window.addEventListener("resize", place);
+    document.fonts?.ready.then(place);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", place);
+    };
+  }, [pathname]);
+
   return (
-    <nav className="rail" aria-label="App sections">
-      <ul>
-        {APP_ROUTES.map((r) => (
-          <li key={r.key}>
-            <Link href={r.href} aria-current={isCurrent(pathname, r.href) ? "page" : undefined}>
-              <RouteIcon route={r} size={18} />
-              <span className="rl">
-                {r.label}
-                <small>{r.kind}</small>
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-      <div className="setupmini">
-        {model.mode === "demo" ? (
-          <>
-            <span>Setup: {done} of 4</span>
-            <span className="bar" aria-hidden="true">
-              {[0, 1, 2, 3].map((i) => (
-                <i key={i} className={i < done ? "on" : ""} />
-              ))}
-            </span>
-            {done < 4 ? <Link href="/app/wallet">Continue setup</Link> : <span>Example account funded</span>}
-          </>
-        ) : (
-            <span>Live mode · read-only · no {PROJECT_NAME} account</span>
-        )}
-      </div>
-      <Link className="rail-home" href="/">
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-          <path d="M10 3 5 8l5 5" />
-        </svg>
-        Landing page
-      </Link>
+    <nav className="cnav" aria-label="App sections" ref={ref}>
+      {APP_ROUTES.map((r) => (
+        <Link key={r.key} href={r.href} aria-current={isCurrent(pathname, r.href) ? "page" : undefined} title={r.kind}>
+          {r.nav}
+        </Link>
+      ))}
+      <span className={`cnav-bar${ready ? " go" : ""}`} aria-hidden="true" style={bar ? { width: bar.w, transform: `translateX(${bar.x}px)`, opacity: 1 } : { opacity: 0 }} />
     </nav>
   );
 }
 
-/** Bottom tab bar at 1024px and below. */
+/** Bottom tab bar below 1100px. */
 export function TabBar() {
   const pathname = usePathname();
   return (

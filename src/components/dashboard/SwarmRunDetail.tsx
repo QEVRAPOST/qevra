@@ -1,7 +1,9 @@
 "use client";
 
-import { Chip, DemoChip } from "@/components/ui/Chip";
+import { useState } from "react";
+import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import type { DeterministicTestSummary, ResearchFinding, SwarmRun } from "@/types";
 
@@ -32,10 +34,13 @@ const short = (hash: string): string => `${hash.slice(0, 12)}…`;
 /** A source link is followed only if it is a plain web address. */
 const safeHref = (url: string): string | undefined => (/^https?:\/\//i.test(url) ? url : undefined);
 
+type TabId = "summary" | "findings" | "sources" | "tests" | "limits" | "events";
+
 /**
- * The detail of one run: what it shows and does not show, then (for a live run) its errors, findings with their citations,
- * sources with their provenance, deterministic tests, limits and recorded events, as real lists. Nothing here is a live
- * region: the short status sentence in the pipeline is the only thing a screen reader is told about as the run changes.
+ * The evidence explorer for one run. The summary is always there (what it shows, how, what it does not show); for a live run
+ * the rest sits one tab away so the screen is never a wall: findings with their quoted citations, sources with provenance,
+ * deterministic tests, limits and recorded events, as real lists. Nothing here is a live region: the short status sentence in
+ * the pipeline is the only thing a screen reader is told about as the run changes.
  */
 export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: string }) {
   const review = run.humanReview;
@@ -47,6 +52,24 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
   const problem = agents.filter((a) => a.status === "failed" || a.status === "blocked");
   const errorCode = (detail ?? run.liveSummary)?.errorCode;
   const hasError = live && (problem.length > 0 || !!errorCode || !!detail?.errorMessage);
+  const withDetail = live && !!detail;
+
+  const tabs: Array<{ id: TabId; label: string }> = [{ id: "summary", label: "Summary" }];
+  if (withDetail && detail.findings.length > 0) tabs.push({ id: "findings", label: `Findings (${detail.findings.length})` });
+  if (withDetail && detail.sources.length > 0) tabs.push({ id: "sources", label: `Sources (${detail.sources.length})` });
+  if (withDetail && detail.deterministicTests.length > 0) tabs.push({ id: "tests", label: `Tests (${detail.deterministicTests.length})` });
+  if (withDetail && (detail.limitations.length > 0 || detail.assumptions.length > 0 || detail.recommendations.length > 0)) tabs.push({ id: "limits", label: "Limits" });
+  if (withDetail && detail.events.length > 0) tabs.push({ id: "events", label: `Events (${detail.events.length})` });
+  const [picked, setPicked] = useState<TabId>(withDetail && detail.findings.length > 0 ? "findings" : "summary");
+  const tab = tabs.some((t) => t.id === picked) ? picked : "summary";
+  const onKey = (e: React.KeyboardEvent, i: number) => {
+    const to = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
+    if (to === null) return;
+    e.preventDefault();
+    const next = tabs[(to + tabs.length) % tabs.length]!;
+    setPicked(next.id);
+    document.getElementById(`${headingId}-t-${next.id}`)?.focus();
+  };
 
   return (
     <aside className={`drawer${example ? " is-example" : ""}`} aria-labelledby={headingId}>
@@ -55,7 +78,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
         <span>{run.id}</span>
         <span>{run.role}</span>
         {live && run.liveSummary?.createdAt ? <span>Started {run.liveSummary.createdAt}</span> : null}
-        {example ? <DemoChip>{run.exampleTag}</DemoChip> : null}
+        {example ? <SimTag /> : null}
       </div>
 
       {hasError ? (
@@ -78,181 +101,186 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
         </div>
       ) : null}
 
-      <dl className="dfacts">
-        <div>
-          <dt>What this shows</dt>
-          <dd>{run.shows}</dd>
+      {tabs.length > 1 ? (
+        <div className="ev-tabs" role="tablist" aria-label="Evidence">
+          {tabs.map((t, i) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`${headingId}-t-${t.id}`}
+              aria-selected={tab === t.id}
+              aria-controls={`${headingId}-p`}
+              tabIndex={tab === t.id ? 0 : -1}
+              onClick={() => setPicked(t.id)}
+              onKeyDown={(e) => onKey(e, i)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-        <div>
-          <dt>How it was measured</dt>
-          <dd>{run.how}</dd>
-        </div>
-        <div>
-          <dt>What it does not show</dt>
-          <dd>{run.notShown}</dd>
-        </div>
-        {!(live && detail && detail.limitations.length > 0) ? (
-          <div>
-            <dt>Limitation</dt>
-            <dd>{run.limitation}</dd>
-          </div>
-        ) : null}
-        {!(live && detail) ? (
-          <div>
-            <dt>Evidence</dt>
-            <dd>
-              {run.unavailableSource ? <StatusMaterial material="dotted" /> : null}
-              {run.unavailableSource ? " " : null}
-              {run.evidence}
-            </dd>
-          </div>
-        ) : null}
-      </dl>
-
-      {run.zeroFindings ? (
-        <EmptyState title="No findings recorded.">This is not a statement that none exist. It only says no finding has been recorded.</EmptyState>
-      ) : null}
-      {run.withheld ? <div className="withheld">Detail withheld. A real finding links to its responsible disclosure path here, not a blank.</div> : null}
-
-      {live && run.detailUnavailable ? (
-        <p className="dnote" role="status">
-          <b>Run detail.</b> {run.detailUnavailable}
-        </p>
       ) : null}
 
-      {live && detail ? (
-        <>
-          {detail.findings.length > 0 ? (
-            <section className="dsec" aria-label="Findings and citations">
-              <h4>Findings and citations</h4>
-              <ul className="finds">
-                {detail.findings.map((f) => {
-                  const a = ASSESSMENT[f.modelAssessment];
-                  return (
-                    <li key={f.id}>
-                      <div className="fchips">
-                        <Chip tone={a.tone} material={a.material}>{a.label}</Chip>
-                        <Chip tone={f.evidenceStatus === "quote_matched" ? "neutral" : "unk"} material={f.evidenceStatus === "quote_matched" ? "outline" : "dotted"}>
-                          {f.evidenceStatus === "quote_matched" ? "Quote matched" : "Quote not verified"}
-                        </Chip>
-                      </div>
-                      <p className="claim">{f.claim}</p>
-                      {f.rationale ? <p className="why">{f.rationale}</p> : null}
-                      {f.evidence.length > 0 ? (
-                        <ul className="quotes" aria-label="Quotes">
-                          {f.evidence.map((q, i) => {
-                            const src = sourceById.get(q.sourceId);
-                            return (
-                              <li key={`${q.sourceId}-${i}`}>
-                                <q>{q.quote}</q>
-                                <span className="qsrc">
-                                  {q.exactQuoteMatched ? "Quote matched" : "Quote not verified"} in{" "}
-                                  {src && src.status === "available" && safeHref(src.url) ? (
-                                    <a href={safeHref(src.url)} target="_blank" rel="noopener noreferrer">{src.title}</a>
-                                  ) : (
-                                    src?.title ?? q.sourceId
-                                  )}
-                                </span>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-              <p className="dnote">Quote matched means the quoted words appear in the fetched source. It does not show the claim is true.</p>
-            </section>
-          ) : null}
+      <div className="ev-panel" id={`${headingId}-p`} role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `${headingId}-t-${tab}` : undefined} key={tab}>
+        {tab === "summary" ? (
+          <>
+            <dl className="dfacts">
+              <div>
+                <dt>What this shows</dt>
+                <dd>{run.shows}</dd>
+              </div>
+              <div>
+                <dt>How it was measured</dt>
+                <dd>{run.how}</dd>
+              </div>
+              <div>
+                <dt>What it does not show</dt>
+                <dd>{run.notShown}</dd>
+              </div>
+              {!(withDetail && detail.limitations.length > 0) ? (
+                <div>
+                  <dt>Limitation</dt>
+                  <dd>{run.limitation}</dd>
+                </div>
+              ) : null}
+              {!withDetail ? (
+                <div>
+                  <dt>Evidence</dt>
+                  <dd>
+                    {run.unavailableSource ? <StatusMaterial material="dotted" /> : null}
+                    {run.unavailableSource ? " " : null}
+                    {run.evidence}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+            {run.zeroFindings ? <EmptyState title="No findings recorded.">This is not a statement that none exist. It only says no finding has been recorded.</EmptyState> : null}
+            {run.withheld ? <div className="withheld">Detail withheld. A real finding links to its responsible disclosure path here, not a blank.</div> : null}
+            {live && run.detailUnavailable ? (
+              <p className="dnote" role="status">
+                <b>Run detail.</b> {run.detailUnavailable}
+              </p>
+            ) : null}
+          </>
+        ) : null}
 
-          {detail.sources.length > 0 ? (
-            <section className="dsec" aria-label="Sources and provenance">
-              <h4>Sources and provenance</h4>
-              <ul className="srcs">
-                {detail.sources.map((s) => (
-                  <li key={s.id}>
-                    <Chip tone={s.status === "available" ? "neutral" : "unk"} material={s.status === "available" ? "outline" : "dotted"}>
-                      {s.status === "available" ? "Available" : "Unavailable"}
-                    </Chip>
+        {tab === "findings" && withDetail ? (
+          <section className="dsec" aria-label="Findings and citations">
+            <ul className="finds">
+              {detail.findings.map((f) => {
+                const a = ASSESSMENT[f.modelAssessment];
+                return (
+                  <li key={f.id}>
+                    <div className="fchips">
+                      <Chip tone={a.tone} material={a.material}>{a.label}</Chip>
+                      <Chip tone={f.evidenceStatus === "quote_matched" ? "neutral" : "unk"} material={f.evidenceStatus === "quote_matched" ? "outline" : "dotted"}>
+                        {f.evidenceStatus === "quote_matched" ? "Quote matched" : "Quote not verified"}
+                      </Chip>
+                    </div>
+                    <p className="claim">{f.claim}</p>
+                    {f.rationale ? <p className="why">{f.rationale}</p> : null}
+                    {f.evidence.length > 0 ? (
+                      <ul className="quotes" aria-label="Quotes">
+                        {f.evidence.map((q, i) => {
+                          const src = sourceById.get(q.sourceId);
+                          return (
+                            <li key={`${q.sourceId}-${i}`}>
+                              <q>{q.quote}</q>
+                              <span className="qsrc">
+                                {q.exactQuoteMatched ? "Quote matched" : "Quote not verified"} in{" "}
+                                {src && src.status === "available" && safeHref(src.url) ? (
+                                  <a href={safeHref(src.url)} target="_blank" rel="noopener noreferrer">{src.title}</a>
+                                ) : (
+                                  src?.title ?? q.sourceId
+                                )}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="dnote">Quote matched means the quoted words appear in the fetched source. It does not show the claim is true.</p>
+          </section>
+        ) : null}
+
+        {tab === "sources" && withDetail ? (
+          <section className="dsec" aria-label="Sources and provenance">
+            <ul className="srcs">
+              {detail.sources.map((s) => (
+                <li key={s.id}>
+                  <Chip tone={s.status === "available" ? "neutral" : "unk"} material={s.status === "available" ? "outline" : "dotted"}>
+                    {s.status === "available" ? "Available" : "Unavailable"}
+                  </Chip>
+                  <span className="st">
+                    {s.status === "available" && safeHref(s.url) ? <a href={safeHref(s.url)} target="_blank" rel="noopener noreferrer">{s.title}</a> : s.title}
+                    <span className="sm">
+                      retrieved {s.retrievedAt}
+                      {s.sha256 ? <> · SHA-256 <code title={s.sha256}>{short(s.sha256)}</code></> : null}
+                      {s.errorCode ? <> · <code>{s.errorCode}</code></> : null}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {tab === "tests" && withDetail ? (
+          <section className="dsec" aria-label="Deterministic tests">
+            <ul className="tests">
+              {detail.deterministicTests.map((t) => {
+                const c = TEST[t.status];
+                return (
+                  <li key={t.id}>
+                    <Chip tone={c.tone} material={c.material}>{c.label}</Chip>
                     <span className="st">
-                      {s.status === "available" && safeHref(s.url) ? <a href={safeHref(s.url)} target="_blank" rel="noopener noreferrer">{s.title}</a> : s.title}
+                      {t.name}
                       <span className="sm">
-                        retrieved {s.retrievedAt}
-                        {s.sha256 ? <> · SHA-256 <code title={s.sha256}>{short(s.sha256)}</code></> : null}
-                        {s.errorCode ? <> · <code>{s.errorCode}</code></> : null}
+                        {t.exitCode !== undefined ? <>exit {t.exitCode}</> : null}
+                        {t.artifactSha256 ? <>{t.exitCode !== undefined ? " · " : ""}SHA-256 <code title={t.artifactSha256}>{short(t.artifactSha256)}</code></> : null}
                       </span>
                     </span>
                   </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
 
-          {detail.deterministicTests.length > 0 ? (
-            <section className="dsec" aria-label="Deterministic tests">
-              <h4>Deterministic tests</h4>
-              <ul className="tests">
-                {detail.deterministicTests.map((t) => {
-                  const c = TEST[t.status];
-                  return (
-                    <li key={t.id}>
-                      <Chip tone={c.tone} material={c.material}>{c.label}</Chip>
-                      <span className="st">
-                        {t.name}
-                        <span className="sm">
-                          {t.exitCode !== undefined ? <>exit {t.exitCode}</> : null}
-                          {t.artifactSha256 ? <>{t.exitCode !== undefined ? " · " : ""}SHA-256 <code title={t.artifactSha256}>{short(t.artifactSha256)}</code></> : null}
-                        </span>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          ) : null}
+        {tab === "limits" && withDetail ? (
+          <section className="dsec" aria-label="Limits and assumptions">
+            <ul className="plain">
+              {detail.limitations.map((l, i) => (
+                <li key={`l${i}`}><b>Limit.</b> {l}</li>
+              ))}
+              {detail.assumptions.map((l, i) => (
+                <li key={`a${i}`}><b>Assumption.</b> {l}</li>
+              ))}
+              {detail.recommendations.map((r, i) => (
+                <li key={`r${i}`}><b>Recommendation.</b> {r}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
-          {detail.limitations.length > 0 || detail.assumptions.length > 0 ? (
-            <section className="dsec" aria-label="Limits and assumptions">
-              <h4>Limits and assumptions</h4>
-              <ul className="plain">
-                {detail.limitations.map((l, i) => (
-                  <li key={`l${i}`}><b>Limit.</b> {l}</li>
-                ))}
-                {detail.assumptions.map((l, i) => (
-                  <li key={`a${i}`}><b>Assumption.</b> {l}</li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          {detail.recommendations.length > 0 ? (
-            <section className="dsec" aria-label="Recommendations">
-              <h4>Recommendations</h4>
-              <ul className="plain">
-                {detail.recommendations.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          {detail.events.length > 0 ? (
-            <section className="dsec" aria-label="Recorded events">
-              <h4>Recorded events</h4>
-              <ol className="events">
-                {detail.events.map((e, i) => (
-                  <li key={`${e.at}-${i}`}>
-                    <time>{e.at}</time>
-                    <code>{e.stage}</code>
-                    <span>{e.message}</span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          ) : null}
-        </>
-      ) : null}
+        {tab === "events" && withDetail ? (
+          <section className="dsec" aria-label="Recorded events">
+            <ol className="events">
+              {detail.events.map((e, i) => (
+                <li key={`${e.at}-${i}`}>
+                  <time>{e.at}</time>
+                  <code>{e.stage}</code>
+                  <span>{e.message}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+      </div>
 
       <div className="dock">
         <i className={review.recorded ? "lit" : undefined} aria-hidden="true" />

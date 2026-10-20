@@ -15,7 +15,7 @@ import type {
 import { NETWORKS } from "@/lib/config/networks";
 import { COVERAGE_ROWS } from "@/lib/content/status";
 import { brandizeDisplayStrings, brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
-import { liveRunBadge, summarizeAgentStatuses } from "@/lib/swarm-view";
+import { runBadge, STAGE_META, STAGE_ORDER, STATUS_TEXT } from "@/lib/swarm-view";
 
 const READ_ONLY_NOTICE = brandizeProjectName("This view only reads public account/network data. QEVRA has no smart account, custody, signing, approvals, or swap execution.", PROJECT_NAME);
 
@@ -38,9 +38,31 @@ function appendProviderDiagnostics(detail: ResearchRunDetail): ResearchRunDetail
   return { ...detail, errorMessage: [detail.errorMessage, ...messages].filter(Boolean).join(" ") };
 }
 
+function summarizeAgentStatuses(agents: ResearchRunSummary["agents"]): string {
+  return STAGE_ORDER.map((role) => {
+    const agent = agents.find((candidate) => candidate.role === role);
+    return `${STAGE_META[role].title}: ${agent ? STATUS_TEXT[agent.status].toLowerCase() : "not reported"}`;
+  }).join(" · ");
+}
+
 export function toLiveSwarmRun(summary: ResearchRunSummary, detail?: ResearchRunDetail, detailUnavailable?: string): SwarmRun {
   const state = detail ?? summary;
   const safeDetail = detail ? appendProviderDiagnostics(detail) : undefined;
+  const badgeInput: SwarmRun = {
+    origin: "live",
+    id: summary.id,
+    role: "Research · Analysis · Verification",
+    goal: summary.topic,
+    status: { label: "Live research run", tone: "neutral", material: "outline" },
+    shows: "",
+    how: "",
+    notShown: "",
+    limitation: "",
+    evidence: "",
+    humanReview: { recorded: false },
+    liveSummary: summary,
+    ...(safeDetail ? { liveDetail: safeDetail } : {}),
+  };
   const hasUnavailableSource = detail
     ? detail.sources.some((source) => source.status === "unavailable")
     : summary.availableSourceCount < summary.sourceCount;
@@ -55,7 +77,7 @@ export function toLiveSwarmRun(summary: ResearchRunSummary, detail?: ResearchRun
     id: summary.id,
     role: "Research · Analysis · Verification",
     goal: summary.topic,
-    status: liveRunBadge(state),
+    status: runBadge(badgeInput),
     shows: detail?.summary ?? `${state.findingCount} findings; ${state.availableSourceCount} of ${state.sourceCount} sources available.`,
     how: `Current stage: ${state.currentStage}. ${summarizeAgentStatuses(state.agents)}.`,
     notShown: "Model research is not an audit, an independent review, or proof that the system is safe.",
@@ -72,6 +94,34 @@ export function toLiveSwarmRun(summary: ResearchRunSummary, detail?: ResearchRun
     ...(safeDetail ? { liveDetail: safeDetail } : {}),
     ...(detailUnavailable ? { detailUnavailable } : {}),
   };
+}
+
+/** Deduplicate persisted run records and sort only from their stored timestamps. Invalid timestamps stay visible, last. */
+export function newestFirstResearchRuns(runs: readonly ResearchRunSummary[]): ResearchRunSummary[] {
+  const unique = new Map<string, ResearchRunSummary>();
+  for (const run of runs) unique.set(run.id, run);
+
+  const timed: Array<{ run: ResearchRunSummary; timestamp: number; index: number }> = [];
+  const untimed: ResearchRunSummary[] = [];
+  for (const [index, run] of Array.from(unique.values()).entries()) {
+    const timestamp = Date.parse(run.createdAt);
+    if (Number.isFinite(timestamp)) timed.push({ run, timestamp, index });
+    else untimed.push(run);
+  }
+  timed.sort((a, b) => b.timestamp - a.timestamp || a.index - b.index);
+  return [...timed.map(({ run }) => run), ...untimed];
+}
+
+/** Server records win over optimistic copies; unconfirmed creates remain visible until the list includes them. */
+export function reconcileResearchRunHistory(
+  serverRuns: readonly ResearchRunSummary[],
+  optimisticRuns: readonly ResearchRunSummary[],
+): ResearchRunSummary[] {
+  const serverIds = new Set(serverRuns.map((run) => run.id));
+  return newestFirstResearchRuns([
+    ...optimisticRuns.filter((run) => !serverIds.has(run.id)),
+    ...serverRuns,
+  ]);
 }
 
 function buildLiveWallet(wallet: ReadOnlyWalletState): AppModel["wallet"] {
@@ -223,6 +273,7 @@ export function buildLiveAppModel(input: {
   networkRpc?: NetworkRpcState;
   capabilities?: SecurityResearchCapabilities;
   runs: ResearchRunSummary[] | null;
+  preferredRunId?: string;
   dataError?: string;
   isRefreshing: boolean;
   isCreating: boolean;
@@ -241,6 +292,7 @@ export function buildLiveAppModel(input: {
     origin: "live",
     status: securityStatus,
     runs: liveRuns,
+    ...(input.preferredRunId ? { preferredRunId: input.preferredRunId } : {}),
     capabilities,
     isRefreshing: input.isRefreshing,
     isCreating: input.isCreating,

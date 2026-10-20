@@ -104,3 +104,53 @@ export function buildSwapView(
     comparison: buildIntentComparison(stage, amount, reviewed),
   };
 }
+
+/** The tokens the preview swap offers. Both are labelled examples with no price, balance or route. */
+export const PREVIEW_TOKENS = ["TKN-A", "TKN-B"] as const;
+export type PreviewToken = (typeof PREVIEW_TOKENS)[number];
+export const PREVIEW_SLIPPAGES = ["0.1", "0.5", "1"] as const;
+export type PreviewSlippage = (typeof PREVIEW_SLIPPAGES)[number];
+
+/** The parameters of a previewed swap that Intent Lock reviews. Presentation state only: nothing here is sent anywhere. */
+export interface PreviewParams {
+  pay: PreviewToken;
+  /** NaN when the field is empty or not a positive number */
+  amount: number;
+  slippage: PreviewSlippage;
+  chainId: number;
+}
+
+export const otherToken = (t: PreviewToken): PreviewToken => (t === "TKN-A" ? "TKN-B" : "TKN-A");
+
+function previewValues(p: PreviewParams): Record<IntentRow["id"], string> {
+  return {
+    recipient: "Simulated account",
+    chain: String(p.chainId),
+    tokens: `${p.pay} to ${otherToken(p.pay)}`,
+    amount: Number.isNaN(p.amount) ? "—" : `${formatAmount(p.amount)} ${p.pay}`,
+    router: "Not configured",
+    slippage: `${p.slippage}%, no quote`,
+    nonce: "Simulated",
+    deadline: "Simulated",
+  };
+}
+
+/**
+ * Compare the parameters the visitor reviewed with the ones now on screen. A picture of the idea on simulated values, not a
+ * check: change the amount, the pair, the slippage or the network after reviewing, and exactly that row (and its ring) turns out
+ * of line. `driven` is the same result as one flag per row, in ring order.
+ */
+export function buildPreviewComparison(reviewed: PreviewParams | null, now: PreviewParams): { comparison: IntentComparison; driven: boolean[] } {
+  const before = reviewed ? previewValues(reviewed) : null;
+  const after = previewValues(now);
+  const driven = FIXED_ROWS.map((r) => !!before && r.id !== "router" && before[r.id] !== after[r.id]);
+  const rows: IntentRow[] = FIXED_ROWS.map((r, i) => ({
+    id: r.id,
+    label: r.label,
+    reviewed: before ? before[r.id] : "—",
+    toSign: after[r.id],
+    match: !before ? "not-reviewed" : driven[i] ? "changed" : r.dim ? "not-set" : "same",
+    dim: r.dim && !driven[i],
+  }));
+  return { comparison: { rows, reviewed: !!before, changedCount: driven.filter(Boolean).length, setupComplete: true }, driven };
+}

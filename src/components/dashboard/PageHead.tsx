@@ -1,22 +1,24 @@
 "use client";
 
-import { Chip, DemoChip } from "@/components/ui/Chip";
-import { useAppModel } from "./DemoAppProvider";
-
 /**
- * The head of every /app route: what kind of page it is, its name, one plain sentence, and whether the data on it is
- * an example or live. The mode mark is here so no route can forget it.
+ * The head of every /app route: what kind of page it is, its name and one plain sentence. Whether the data is simulated or live
+ * is said once, in the header indicator, not on every page.
  */
 export function PageHead({ id, kicker, title, lede, extra }: { id: string; kicker: string; title: string; lede: React.ReactNode; extra?: React.ReactNode }) {
-  const { model } = useAppModel();
+  const words = title.split(" ");
   return (
     <header className="rhead pghead">
-      <div className="pg-kick">
-        <span>{kicker}</span>
-        {model.mode === "live" ? <Chip tone="neutral" material="outline">LIVE · READ-ONLY</Chip> : <DemoChip>EXAMPLE DATA</DemoChip>}
-      </div>
-      <h1 id={id}>{title}</h1>
-      <p>{lede}</p>
+      <p className="pg-kick">{kicker}</p>
+      <h1 id={id}>
+        {words.length > 1 ? (
+          <>
+            {words.slice(0, -1).join(" ")} <em>{words[words.length - 1]}</em>
+          </>
+        ) : (
+          title
+        )}
+      </h1>
+      <p className="pg-lede">{lede}</p>
       {extra}
     </header>
   );

@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Chip, DemoChip } from "@/components/ui/Chip";
+import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Panel } from "@/components/ui/Panel";
+import { SimTag } from "@/components/ui/SimTag";
 import { ToggleGroup } from "@/components/ui/ToggleGroup";
 import { pipelineFor, runBadge } from "@/lib/swarm-view";
 import type { ActivityRow, SwarmRun } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
-import { MiniPipeline } from "./SwarmPipeline";
+import { MiniPipeline, SwarmPipeline } from "./SwarmPipeline";
 
 type View = "runs" | "transactions";
 type RunFilter = "all" | "progress" | "completed" | "stopped";
@@ -38,13 +38,16 @@ function Runs() {
   const sec = model.security;
   const live = sec.origin === "live";
   const [filter, setFilter] = useState<RunFilter>("all");
+  const [pickedId, setPickedId] = useState<string | null>(null);
   const runs = useMemo(() => newestFirst(sec.runs), [sec.runs]);
   const count = (g: RunFilter) => (g === "all" ? runs.length : runs.filter((r) => runGroup(r) === g).length);
   const shown = filter === "all" ? runs : runs.filter((r) => runGroup(r) === filter);
+  const selected = shown.find((r) => r.id === pickedId) ?? shown[0];
+  const pipeline = selected ? pipelineFor(selected) : null;
+  const badge = selected ? runBadge(selected) : null;
 
   return (
     <>
-      <p className="ac-lede">Research runs from the Security Swarm. They are model research, not blockchain transactions, and none is an audit.</p>
       {sec.status === "ready" ? (
         <ToggleGroup
           label="Filter research runs"
@@ -58,37 +61,52 @@ function Runs() {
           ]}
         />
       ) : null}
-      <ol className="ac-time" aria-label={live ? "Live research runs" : "Example research runs"} aria-busy={sec.status === "loading" || undefined}>
-        {sec.status === "ready" &&
-          shown.map((r) => {
-            const badge = runBadge(r);
-            const when = r.liveSummary?.createdAt;
-            return (
-              <li key={r.id}>
-                <span className="ac-when">{when ?? (r.exampleTag ? "Example" : "")}</span>
-                <span className="ac-what">
-                  <span className="ac-g">{r.goal}</span>
-                  <span className="ac-m">
-                    {r.exampleTag ? <DemoChip>{r.exampleTag}</DemoChip> : null}
-                    <Chip tone={badge.tone} material={badge.material}>{badge.label}</Chip>
-                    <MiniPipeline model={pipelineFor(r)} />
-                  </span>
-                </span>
-                <Link className="ov-l" href={`/app/security?run=${encodeURIComponent(r.id)}`}>
-                  Open evidence<span aria-hidden="true">→</span>
-                </Link>
-              </li>
-            );
-          })}
-        {sec.status === "loading" && <EmptyState as="li" title="Loading live run history.">Checking the authenticated Security Research API. No example runs are substituted.</EmptyState>}
-        {sec.status === "empty" && (
-          <EmptyState as="li" title="No research runs yet.">
-            Start one in the <Link href="/app/security">Security Swarm</Link>. It will appear here with its evidence and its limits. This is not a statement that the system is safe.
-          </EmptyState>
-        )}
-        {sec.status === "unavailable" && <EmptyState as="li" title="Run history unavailable.">{sec.unavailableMessage ?? "The run feed is not connected. No example runs are substituted, and this is not a statement that there are none."}</EmptyState>}
-        {sec.status === "ready" && shown.length === 0 ? <EmptyState as="li" title="No runs match this filter.">Choose All to see every run.</EmptyState> : null}
-      </ol>
+      <div className="ac-body">
+        <ol className="ac-time" aria-label={live ? "Live research runs" : "Simulated research runs"} aria-busy={sec.status === "loading" || undefined}>
+          {sec.status === "ready" &&
+            shown.map((r) => {
+              const b = runBadge(r);
+              const when = r.liveSummary?.createdAt;
+              return (
+                <li key={r.id} className={r.id === selected?.id ? "on" : ""}>
+                  <button type="button" aria-pressed={r.id === selected?.id} onClick={() => setPickedId(r.id)}>
+                    <span className={`ac-dot s-${runGroup(r)}`} aria-hidden="true" />
+                    {when ? <span className="ac-when">{when}</span> : null}
+                    <span className="ac-g">{r.goal}</span>
+                    <span className="ac-m">
+                      {r.exampleTag ? <SimTag /> : null}
+                      <Chip tone={b.tone} material={b.material}>{b.label}</Chip>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          {sec.status === "loading" && <EmptyState as="li" title="Loading live run history.">Checking the authenticated Security Research API. No simulated runs are substituted.</EmptyState>}
+          {sec.status === "empty" && (
+            <EmptyState as="li" title="No research runs yet.">
+              Start one in the <Link href="/app/security">Security Swarm</Link>. It will appear here with its evidence and its limits. This is not a statement that the system is safe.
+            </EmptyState>
+          )}
+          {sec.status === "unavailable" && <EmptyState as="li" title="Run history unavailable.">{sec.unavailableMessage ?? "The run feed is not connected. No simulated runs are substituted, and this is not a statement that there are none."}</EmptyState>}
+          {sec.status === "ready" && shown.length === 0 ? <EmptyState as="li" title="No runs match this filter.">Choose All to see every run.</EmptyState> : null}
+        </ol>
+        {sec.status === "ready" && selected && badge ? (
+          <aside className="ac-detail" key={selected.id} aria-labelledby="ac-detail-h">
+            <p className="pg-kick">{selected.liveSummary?.createdAt ? `Started ${selected.liveSummary.createdAt}` : "Simulated run"}</p>
+            <h3 id="ac-detail-h">{selected.goal}</h3>
+            <div className="ac-m">
+              {selected.exampleTag ? <SimTag /> : null}
+              <Chip tone={badge.tone} material={badge.material}>{badge.label}</Chip>
+              <MiniPipeline model={pipeline} />
+            </div>
+            <SwarmPipeline model={pipeline} compact title="Pipeline" />
+            <p className="ac-sum">{selected.shows}</p>
+            <Link className="ov-l" href={`/app/security?run=${encodeURIComponent(selected.id)}`}>
+              Open the evidence in Security Swarm<span aria-hidden="true">→</span>
+            </Link>
+          </aside>
+        ) : null}
+      </div>
     </>
   );
 }
@@ -104,7 +122,7 @@ function Transactions() {
 
   return (
     <>
-      <p className="ac-lede">Blockchain transactions only: each swap in one plain sentence, with its real state. Research runs are in the other view.</p>
+      <p className="ac-lede">Blockchain transactions only. Research runs are in the other view.</p>
       {a.status === "ready" ? (
         <ToggleGroup
           label="Filter transactions"
@@ -118,8 +136,8 @@ function Transactions() {
           ]}
         />
       ) : null}
-      <div className="act-body">
-        <ul className="acts" aria-label={a.origin === "demo" ? "Example transactions" : "Live transaction activity"}>
+      <div className="ac-body">
+        <ul className="acts" aria-label={a.origin === "demo" ? "Simulated transactions" : "Live transaction activity"}>
           {a.status === "ready" &&
             rows.map((r) => (
               <li key={r.id}>
@@ -128,7 +146,7 @@ function Transactions() {
                   <Chip tone={r.tone} material={r.material}>
                     {r.stateLabel}
                   </Chip>
-                  <span className="am">{r.exampleTag ?? [r.hash, r.time].filter(Boolean).join(" · ")}</span>
+                  <span className="am">{r.exampleTag ? <SimTag /> : null} {r.exampleTag ? "" : [r.hash, r.time].filter(Boolean).join(" · ")}</span>
                 </button>
               </li>
             ))}
@@ -147,7 +165,7 @@ function Transactions() {
           {a.status === "ready" && rows.length === 0 ? <EmptyState as="li" title="No transactions match this filter.">Choose All to see every transaction.</EmptyState> : null}
         </ul>
         {a.status === "ready" && selected ? (
-          <aside className="actd" aria-labelledby="act-detail-h">
+          <aside className="actd ac-detail" key={selected.id} aria-labelledby="act-detail-h">
             <h3 id="act-detail-h">{selected.sentence}</h3>
             <p className="note">{selected.note}</p>
             <dl className="kv">
@@ -173,37 +191,24 @@ function Transactions() {
   );
 }
 
-/** Activity: research history and blockchain transactions, kept apart on purpose. Example rows are always labelled. */
+/** Activity: what has happened. Research runs and blockchain transactions are kept apart on purpose. Simulated records are always marked. */
 export function ActivityView() {
-  const { model } = useAppModel();
   const [view, setView] = useState<View>("runs");
-  const a = model.activity;
   return (
-    <section className="route" aria-labelledby="h-act">
-      <PageHead id="h-act" kicker="Activity · history" title="Activity" lede="What has happened: research runs the Swarm made, and transactions made from a wallet. They are different things, so they are shown apart." />
-      <Panel
-        title={view === "runs" ? "Research runs" : "Transactions"}
-        aside={
-          view === "transactions" && a.origin === "live" ? (
-            <Chip tone="unk" material="dotted">NOT CONNECTED</Chip>
-          ) : view === "transactions" && a.sourceTag ? (
-            <DemoChip>{a.sourceTag}</DemoChip>
-          ) : view === "runs" && model.security.sourceTag ? (
-            <DemoChip>{model.security.sourceTag}</DemoChip>
-          ) : undefined
-        }
-      >
-        <ToggleGroup
-          label="Choose what to see"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "runs", label: "Research runs" },
-            { value: "transactions", label: "Transactions" },
-          ]}
-        />
+    <section className="route ac" aria-labelledby="h-act">
+      <PageHead id="h-act" kicker="Activity · history" title="Activity" lede="Research runs the Swarm made, and transactions made from a wallet. They are different things, so they are shown apart." />
+      <ToggleGroup
+        label="Choose what to see"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: "runs", label: "Research runs" },
+          { value: "transactions", label: "Transactions" },
+        ]}
+      />
+      <div className="ac-view" key={view}>
         {view === "runs" ? <Runs /> : <Transactions />}
-      </Panel>
+      </div>
     </section>
   );
 }

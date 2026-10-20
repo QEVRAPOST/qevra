@@ -13,14 +13,15 @@ import { useAppModel } from "./DemoAppProvider";
  */
 export function NetworkSelect() {
   const { model, actions } = useAppModel();
-  const narrow = useMediaQuery("(max-width: 560px)");
+  /* below 1440px the header is crowded, so the menu shows the short name; the chain id is in the open list */
+  const narrow = useMediaQuery("(max-width: 1439px)");
   const { selected, options } = model.network;
 
   return (
     <Select value={selected} onValueChange={(v) => actions.setNetwork(v as NetworkId)}>
       <SelectTrigger
         aria-label={model.mode === "live" ? "Application network" : "Example network"}
-        className="h-8 w-64 border-exp font-mono text-xs text-exp hover:border-exp hover:bg-exp/10 data-[state=open]:border-exp max-sm:w-auto max-sm:min-w-[6.5rem] max-sm:gap-1.5 max-sm:px-2.5"
+        className="h-9 w-auto min-w-[6.5rem] min-[1440px]:w-64 border-exp font-mono text-xs text-exp hover:border-exp hover:bg-exp/10 data-[state=open]:border-exp max-sm:gap-1.5 max-sm:px-2.5"
       >
         {/* the circle goes first on a narrow bar, so the name fits */}
         <span className="inline-flex max-[420px]:hidden">

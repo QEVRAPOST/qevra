@@ -31,7 +31,7 @@ import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWall
 import { getInjectedReadOnlyProvider } from "@/features/wallet/browser";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { DEFAULT_NETWORK_ID, isNetworkAvailable } from "@/lib/config/networks";
-import { buildLiveAppModel, toLiveSwarmRun } from "./live-model";
+import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "./live-model";
 
 type GateState = "checking" | "not_configured" | "unauthenticated" | "authenticated" | "service_error" | "rate_limited";
 const ACTIVE_RUN_POLL_INTERVAL_MS = 5_000;
@@ -178,6 +178,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const [networkRpc, setNetworkRpc] = useState<NetworkRpcState>({ status: "not_requested" });
   const [capabilities, setCapabilities] = useState<AppModel["security"]["capabilities"]>();
   const [summaries, setSummaries] = useState<ResearchRunSummary[] | null>(null);
+  const [preferredRunId, setPreferredRunId] = useState<string>();
   const [details, setDetails] = useState<Record<string, ResearchRunDetail>>({});
   const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -189,6 +190,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const walletRequestGuardRef = useRef(createWalletRequestGuard());
   const pollInFlight = useRef(false);
   const detailCache = useRef<Record<string, ResearchRunDetail>>({});
+  const optimisticRuns = useRef(new Map<string, ResearchRunSummary>());
   const sessionCheckId = useRef(0);
 
   const checkSession = useCallback(async () => {
@@ -274,7 +276,9 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       const list = listResult.value;
-      setSummaries(list.runs);
+      const serverIds = new Set(list.runs.map((run) => run.id));
+      for (const runId of serverIds) optimisticRuns.current.delete(runId);
+      setSummaries(reconcileResearchRunHistory(list.runs, [...optimisticRuns.current.values()]));
       if (capabilityResult.status === "fulfilled") setDataError(undefined);
 
       const retainedIds = new Set(list.runs.map((run) => run.id));
@@ -405,6 +409,8 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       setSummaries(null);
       setDetails({});
       detailCache.current = {};
+      optimisticRuns.current.clear();
+      setPreferredRunId(undefined);
       setCapabilities(undefined);
       setDataError(undefined);
     });
@@ -418,6 +424,9 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setIsCreating(true);
     setActionMessage(undefined);
     void createSecurityRun({ topicId }).then((run) => {
+      optimisticRuns.current.set(run.id, run);
+      setPreferredRunId(run.id);
+      setSummaries((current) => newestFirstResearchRuns([run, ...(current ?? []).filter((item) => item.id !== run.id)]));
       setActionMessage(`Live run ${run.id} queued. Completion is not a security approval or test pass.`);
       void loadLiveData();
     }).catch((error: unknown) => {
@@ -439,12 +448,13 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       selectedNetwork,
       networkRpc,
       capabilities,
-    runs: summaries,
-    dataError,
+      runs: summaries,
+      preferredRunId,
+      dataError,
     isRefreshing,
     isCreating,
     actionMessage,
-    }), [wallet, selectedNetwork, networkRpc, capabilities, summaries, dataError, isRefreshing, isCreating, actionMessage]);
+    }), [wallet, selectedNetwork, networkRpc, capabilities, summaries, preferredRunId, dataError, isRefreshing, isCreating, actionMessage]);
     const actions = useMemo<AppActions>(() => ({
       setNetwork(id) {
         if (!isNetworkAvailable(id)) return;
@@ -454,13 +464,14 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setAmount() { /* Swap input remains non-executable and disabled. */ },
     pressSwapButton() { /* No swap route or transaction method is configured. */ },
     pressWalletButton() { void connectWallet(); },
+    refreshWallet: () => { void refreshWallet(); },
     pressLedgerAction(id) {
       if (id === "connect") void connectWallet();
       else if (id === "disconnect") disconnectWallet();
     },
     createSecurityRun: startResearch,
     logout,
-    }), [connectWallet, disconnectWallet, startResearch, logout]);
+    }), [connectWallet, disconnectWallet, refreshWallet, startResearch, logout]);
   const value = useMemo<AppModelValue>(() => ({ model: { ...model, security: { ...model.security, runs: securityRuns } }, actions }), [model, actions, securityRuns]);
 
   if (gate !== "authenticated") {

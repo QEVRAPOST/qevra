@@ -71,34 +71,6 @@ export interface PipelineModel {
   verificationNote?: string;
 }
 
-/** One live interpretation for the API run state, independent of whether the summary or detail is displayed. */
-export function liveRunBadge(run: Pick<ResearchRunSummary, "status" | "errorCode" | "agents">): StatusBadge {
-  const agents = STAGE_ORDER.map((role) => run.agents.find((agent) => agent.role === role)?.status);
-  if (run.status === "failed") {
-    return run.errorCode === "provider_rate_limited"
-      ? { label: "Rate-limited", tone: "bad", material: "solid" }
-      : { label: "Research failed", tone: "bad", material: "solid" };
-  }
-  if (agents.some((status) => status === "failed" || status === "blocked")) {
-    return { label: "Stopped with errors", tone: "bad", material: "solid" };
-  }
-  if (run.status === "completed") {
-    return agents.every((status) => status === "completed")
-      ? { label: "Research completed", tone: "neutral", material: "outline" }
-      : { label: "Finished with gaps", tone: "bad", material: "outline" };
-  }
-  if (run.status === "running") return { label: "Research running", tone: "exp", material: "outline" };
-  return { label: "Research queued", tone: "unk", material: "dotted" };
-}
-
-/** Keep the concise live summary aligned with the three stages rendered in the pipeline. */
-export function summarizeAgentStatuses(agents: readonly AgentExecutionState[]): string {
-  return STAGE_ORDER.map((role) => {
-    const agent = agents.find((candidate) => candidate.role === role);
-    return `${STAGE_META[role].title}: ${agent ? STATUS_TEXT[agent.status].toLowerCase() : "not reported"}`;
-  }).join(" · ");
-}
-
 function stageOf(role: ResearchAgentRole, agent: AgentExecutionState | undefined, events: PipelineEvent[]): PipelineStage {
   return {
     role,
@@ -166,7 +138,20 @@ export function pipelineFor(run: SwarmRun): PipelineModel | null {
 export function runBadge(run: SwarmRun): StatusBadge {
   const s = run.liveDetail ?? run.liveSummary;
   if (run.origin !== "live" || !s) return run.status;
-  return liveRunBadge(s);
+  const agents = STAGE_ORDER.map((role) => s.agents.find((a) => a.role === role)?.status);
+  if (s.status === "failed") {
+    return s.errorCode === "provider_rate_limited"
+      ? { label: "Rate-limited", tone: "bad", material: "solid" }
+      : { label: "Research failed", tone: "bad", material: "solid" };
+  }
+  if (agents.some((a) => a === "failed" || a === "blocked")) return { label: "Stopped with errors", tone: "bad", material: "solid" };
+  if (s.status === "completed") {
+    return agents.every((a) => a === "completed")
+      ? { label: "Research completed", tone: "neutral", material: "outline" }
+      : { label: "Finished with gaps", tone: "bad", material: "outline" };
+  }
+  if (s.status === "running") return { label: "Research running", tone: "exp", material: "outline" };
+  return { label: "Research queued", tone: "unk", material: "dotted" };
 }
 
 /** One short sentence for a screen reader: the only live-region text of the pipeline. */

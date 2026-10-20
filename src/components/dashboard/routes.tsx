@@ -7,8 +7,11 @@ export interface AppRoute {
   key: "overview" | "security" | "wallet" | "swap" | "activity" | "status";
   href: string;
   label: string;
+  /** the label in the phone tab bar */
   short: string;
-  /** what kind of thing this is, in two or three words, shown under the name in the rail */
+  /** the label in the header route bar */
+  nav: string;
+  /** what kind of thing this is, in two or three words (a tooltip in the route bar) */
   kind: string;
   /** SVG path markup, 24px grid, 1.5 stroke */
   icon: React.ReactNode;
@@ -20,13 +23,13 @@ export const APP_ROUTES: readonly AppRoute[] = [
     href: "/app",
     label: "Overview",
     short: "Start",
+    nav: "Overview",
     kind: "Start here",
     icon: (
       <>
-        <rect x="3.5" y="3.5" width="7" height="7" />
-        <rect x="13.5" y="3.5" width="7" height="7" />
-        <rect x="3.5" y="13.5" width="7" height="7" />
-        <path d="M13.5 17h7M17 13.5v7" />
+        <circle cx="12" cy="12" r="8.5" />
+        <circle cx="12" cy="12" r="4.5" />
+        <circle cx="12" cy="12" r="0.8" />
       </>
     ),
   },
@@ -35,6 +38,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     href: "/app/security",
     label: "Security Swarm",
     short: "Swarm",
+    nav: "Security Swarm",
     kind: "Research only",
     icon: (
       <>
@@ -49,6 +53,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     href: "/app/wallet",
     label: "Wallet and PQ Vault",
     short: "Wallet",
+    nav: "Wallet",
     kind: "Read-only",
     icon: (
       <>
@@ -57,13 +62,30 @@ export const APP_ROUTES: readonly AppRoute[] = [
       </>
     ),
   },
-  { key: "swap", href: "/app/swap", label: "Swap", short: "Swap", kind: "Preview, switched off", icon: <path d="M4 8h13M13 4l4 4-4 4M20 16H7M11 12l-4 4 4 4" /> },
-  { key: "activity", href: "/app/activity", label: "Activity", short: "Activity", kind: "Runs and transactions", icon: <path d="M4 7h16M4 12h16M4 17h10" /> },
+  {
+    key: "swap",
+    href: "/app/swap",
+    label: "Swap",
+    short: "Swap",
+    nav: "Swap",
+    kind: "Preview, switched off",
+    icon: <path d="M4 8h13M13 4l4 4-4 4M20 16H7M11 12l-4 4 4 4" />,
+  },
+  {
+    key: "activity",
+    href: "/app/activity",
+    label: "Activity",
+    short: "Activity",
+    nav: "Activity",
+    kind: "Runs and transactions",
+    icon: <path d="M4 7h16M4 12h16M4 17h10" />,
+  },
   {
     key: "status",
     href: "/app/protocol",
     label: "Status",
     short: "Status",
+    nav: "Status",
     kind: "What works today",
     icon: (
       <>
