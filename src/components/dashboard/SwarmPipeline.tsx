@@ -38,7 +38,7 @@ function Inspector({ stage, model, id }: { stage: PipelineStage; model: Pipeline
   return (
     <div className="pipe-detail" id={id} role="group" aria-label={`${stage.title} detail`}>
       <div className="pd-head">
-        <h4>{stage.title}</h4>
+        <h3>{stage.title}</h3>
         <span className={`pd-st s-${stage.status}`}>
           <StatusMaterial material={MATERIAL[stage.status]} />
           {STATUS_TEXT[stage.status]}
@@ -87,7 +87,7 @@ function Inspector({ stage, model, id }: { stage: PipelineStage; model: Pipeline
  *
  * `compact` drops the counts, the legend and the standing note (the overview shows the canvas alone).
  */
-export function SwarmPipeline({ model, compact = false, title }: { model: PipelineModel | null; compact?: boolean; title?: string }) {
+export function SwarmPipeline({ model, compact = false, title, level = 2 }: { model: PipelineModel | null; compact?: boolean; title?: string; /** the heading level of the canvas title, so the page never skips one */ level?: 2 | 3 }) {
   const uid = useId();
   const [picked, setPicked] = useState<ResearchAgentRole | null>(null);
   const guide = model === null;
@@ -99,6 +99,8 @@ export function SwarmPipeline({ model, compact = false, title }: { model: Pipeli
   const moves = !!model && (!model.example || !!model.illustration);
   const running = (i: number) => moves && stages[i].status === "running";
   const detailId = `${uid}-detail`;
+  const Heading = level === 2 ? "h2" : "h3";
+  const hasInspector = !guide && !compact;
   /* the signal that arrives at stage i travels on segment i (segment 0 is Sources → Research) */
   const segState = (i: number): string => (i < 3 ? stages[i].status : "pending");
 
@@ -109,7 +111,7 @@ export function SwarmPipeline({ model, compact = false, title }: { model: Pipeli
       aria-labelledby={`${uid}-h`}
     >
       <header className="pipe-head">
-        <h3 id={`${uid}-h`}>{title ?? (guide ? "How a run works" : "Agent pipeline")}</h3>
+        <Heading id={`${uid}-h`}>{title ?? (guide ? "How a run works" : "Agent pipeline")}</Heading>
         <span className="pipe-tag">
           {model?.illustration ? "Illustration · no agent ran" : model?.example ? "Simulated · no agent ran" : guide ? "Reference, no run selected" : "From the run record"}
         </span>
@@ -149,8 +151,8 @@ export function SwarmPipeline({ model, compact = false, title }: { model: Pipeli
               <button
                 type="button"
                 className={`pn s-${stage.status}`}
-                aria-pressed={!guide && sel === stage.role}
-                aria-controls={guide ? undefined : detailId}
+                aria-pressed={hasInspector ? sel === stage.role : undefined}
+                aria-controls={hasInspector ? detailId : undefined}
                 disabled={guide}
                 onClick={() => setPicked(stage.role)}
               >

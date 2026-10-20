@@ -93,13 +93,13 @@ function Runs() {
         {sec.status === "ready" && selected && badge ? (
           <aside className="ac-detail" key={selected.id} aria-labelledby="ac-detail-h">
             <p className="pg-kick">{selected.liveSummary?.createdAt ? `Started ${selected.liveSummary.createdAt}` : "Simulated run"}</p>
-            <h3 id="ac-detail-h">{selected.goal}</h3>
+            <h2 id="ac-detail-h">{selected.goal}</h2>
             <div className="ac-m">
               {selected.exampleTag ? <SimTag /> : null}
               <Chip tone={badge.tone} material={badge.material}>{badge.label}</Chip>
               <MiniPipeline model={pipeline} />
             </div>
-            <SwarmPipeline model={pipeline} compact title="Pipeline" />
+            <SwarmPipeline model={pipeline} compact title="Pipeline" level={3} />
             <p className="ac-sum">{selected.shows}</p>
             <Link className="ov-l" href={`/app/security?run=${encodeURIComponent(selected.id)}`}>
               Open the evidence in Security Swarm<span aria-hidden="true">→</span>
@@ -166,7 +166,7 @@ function Transactions() {
         </ul>
         {a.status === "ready" && selected ? (
           <aside className="actd ac-detail" key={selected.id} aria-labelledby="act-detail-h">
-            <h3 id="act-detail-h">{selected.sentence}</h3>
+            <h2 id="act-detail-h">{selected.sentence}</h2>
             <p className="note">{selected.note}</p>
             <dl className="kv">
               {selected.detail.map((d) => (

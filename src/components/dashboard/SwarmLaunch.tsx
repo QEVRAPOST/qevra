@@ -39,7 +39,7 @@ export function SwarmLaunch({ live, topicId, onTopic, onStart, canStart, isCreat
   const uid = useId();
   return (
     <section className="sw-launch" aria-labelledby={`${uid}-h`}>
-      <h3 id={`${uid}-h`} className="ov-h">1 · Choose a topic</h3>
+      <h2 id={`${uid}-h`} className="ov-h">1 · Choose a topic</h2>
       <div className="sw-topics" role="radiogroup" aria-labelledby={`${uid}-h`}>
         {RESEARCH_TOPICS.map((t) => (
           <label key={t.id} className={`sw-topic${topicId === t.id ? " on" : ""}`}>
@@ -50,7 +50,7 @@ export function SwarmLaunch({ live, topicId, onTopic, onStart, canStart, isCreat
         ))}
       </div>
       <div className="sw-go">
-        <h3 className="ov-h">2 · Start</h3>
+        <h2 className="ov-h">2 · Start</h2>
         {live ? (
           <>
             <Button variant="primary" type="button" disabled={!canStart || isCreating} onClick={onStart}>

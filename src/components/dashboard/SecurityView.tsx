@@ -110,7 +110,7 @@ export function SecurityView() {
             <p>{brandizeProjectName(SWARM_PARAGRAPH, PROJECT_NAME)}</p>
           </details>
           <div className="sb-hist">
-            <h3 className="ov-h">Runs</h3>
+            <h2 className="ov-h">Runs</h2>
             <ul className="runs" aria-label={live ? "Live research runs" : "Simulated research runs"} aria-busy={sec.status === "loading" || undefined}>
               {sec.status === "ready" &&
                 sec.runs.map((r) => {
@@ -158,7 +158,7 @@ export function SecurityView() {
             <SwarmPipeline key={illustrating ? "illustration" : (selected?.id ?? "guide")} model={pipeline} />
           </div>
           <div id={detailId} className="sb-detail">
-            <h3 className="ov-h">Evidence</h3>
+            <h2 className="ov-h">Evidence</h2>
             {illustrating ? (
               <aside className="drawer is-example">
                 <h3>This is an illustration, not a run</h3>

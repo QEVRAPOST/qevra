@@ -324,7 +324,7 @@
   justify-content: space-between;
   gap: 6px 14px;
 }
-.pipe-head h3 {
+.pipe-head :is(h2, h3) {
   font: 400 28px/1.1 var(--f-display);
   letter-spacing: -0.005em;
 }
@@ -653,7 +653,7 @@
   align-items: baseline;
   gap: 4px 14px;
 }
-.pd-head h4 {
+.pd-head h3 {
   font: 400 30px/1.05 var(--f-display);
 }
 .pd-st {
@@ -1820,7 +1820,7 @@
   min-width: 0;
   animation: insp-in 300ms var(--ease);
 }
-.ac-detail h3 {
+.ac-detail h2 {
   font: 400 30px/1.12 var(--f-display);
   letter-spacing: -0.005em;
 }
@@ -2046,4 +2046,22 @@
   width: fit-content;
   max-width: 100%;
   overflow-x: auto;
+}
+
+/* phone: start, then watch (the canvas), then the history underneath */
+@media (max-width: 760px) {
+  .sw-side {
+    display: contents;
+  }
+  .sw-ws > .sw-main {
+    order: 3;
+  }
+  .sw-ws > .sw-side > .sb-hist {
+    order: 4;
+  }
+}
+@media (max-width: 560px) {
+  .sw-trail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
