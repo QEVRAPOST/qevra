@@ -30,7 +30,7 @@ function StageDetail({ stage, model, id }: { stage: PipelineStage; model: Pipeli
   if (stage.errorCode) facts.push(["Error code", <code key="c">{stage.errorCode}</code>]);
   return (
     <div className="pipe-detail" id={id} role="group" aria-label={`${stage.title} detail`}>
-      {model.example ? <p className="pd-ex">Example: no agent ran, so there is no time, token count or source to show.</p> : null}
+      {model.illustration ? <p className="pd-ex">Illustration: nothing is running. It replays the order of a run, so there is no time, token count or source to show.</p> : model.example ? <p className="pd-ex">Example: no agent ran, so there is no time, token count or source to show.</p> : null}
       {stage.status === "blocked" ? <p className="pd-warn">Blocked: an earlier stage stopped, so this agent did not run.</p> : null}
       {stage.status === "failed" ? <p className="pd-warn">This agent stopped with an error. Nothing it would have produced is shown as a result.</p> : null}
       {stage.unreported && !model.example ? <p className="pd-ex">The service did not report this agent, so it is shown as waiting.</p> : null}
@@ -73,19 +73,19 @@ export function SwarmPipeline({ model }: { model: PipelineModel | null }) {
     : STAGE_ORDER.map((role) => ({ role, ...STAGE_META[role], status: "pending" as const, events: [] }));
   const sel = picked ?? (model ? defaultStage(model) : "research");
   const selected = stages.find((s) => s.role === sel) ?? stages[0];
-  const moves = !!model && !model.example;
+  const moves = !!model && (!model.example || !!model.illustration);
   const running = (i: number) => moves && stages[i].status === "running";
   const detailId = `${uid}-detail`;
 
   return (
     <section
-      className={["pipe", model?.example ? "is-example" : "", guide ? "is-guide" : ""].filter(Boolean).join(" ")}
+      className={["pipe", model?.example ? "is-example" : "", model?.illustration ? "is-illustration" : "", guide ? "is-guide" : ""].filter(Boolean).join(" ")}
       id="swarm-pipe"
       aria-labelledby={`${uid}-h`}
     >
       <header className="pipe-head">
         <h3 id={`${uid}-h`}>{guide ? "How a run works" : "Agent pipeline"}</h3>
-        {model?.example ? <DemoChip>EXAMPLE · NO AGENT RAN</DemoChip> : guide ? <span className="pipe-tag">Reference, no run selected</span> : <span className="pipe-tag">From the run record</span>}
+        {model?.example ? <DemoChip>{model.illustration ? "ILLUSTRATION · NO AGENT RAN" : "EXAMPLE · NO AGENT RAN"}</DemoChip> : guide ? <span className="pipe-tag">Reference, no run selected</span> : <span className="pipe-tag">From the run record</span>}
       </header>
       {model ? (
         <p className="sr" role="status">

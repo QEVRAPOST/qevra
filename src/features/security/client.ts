@@ -16,7 +16,7 @@ export interface SecuritySessionStatus {
 }
 
 export class SecurityApiClientError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
+  constructor(readonly status: number, readonly code: string, message: string, readonly retryAfterMs?: number) {
     super(message);
     this.name = "SecurityApiClientError";
   }
@@ -32,7 +32,17 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const body = await response.json() as unknown;
   if (!response.ok) {
     const error = body && typeof body === "object" && "error" in body ? (body as { error?: { code?: string; message?: string } }).error : undefined;
-    throw new SecurityApiClientError(response.status, error?.code ?? "request_failed", error?.message ?? "The security service request failed.");
+    const retryAfterSeconds = response.headers.get("retry-after");
+    const retryAfter = retryAfterSeconds && /^\d+$/.test(retryAfterSeconds) ? Number(retryAfterSeconds) : undefined;
+    const retryAfterMs = retryAfter !== undefined && Number.isSafeInteger(retryAfter) && retryAfter <= 86_400
+      ? retryAfter * 1_000
+      : undefined;
+    throw new SecurityApiClientError(
+      response.status,
+      error?.code ?? "request_failed",
+      error?.message ?? "The security service request failed.",
+      retryAfterMs,
+    );
   }
   return body as T;
 }

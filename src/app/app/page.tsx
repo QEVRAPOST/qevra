@@ -1,6 +1,9 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { OverviewView } from "@/components/dashboard/OverviewView";
 
-/** The Launch App target. The app opens on Simple swap. */
+export const metadata: Metadata = { title: "Overview" };
+
+/** The Launch App target. The app opens on the overview: what works today, and where to start. */
 export default function AppIndex() {
-  redirect("/app/swap");
+  return <OverviewView />;
 }

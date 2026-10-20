@@ -6,7 +6,9 @@ import { RouteIcon, APP_ROUTES } from "./routes";
 import { useAppModel } from "./DemoAppProvider";
 import { PROJECT_NAME } from "@/lib/project-brand";
 
+/** `/app` is the overview and only matches itself; every other route also matches its sub-paths. */
 function isCurrent(pathname: string, href: string): boolean {
+  if (href === "/app") return pathname === "/app";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -22,7 +24,10 @@ export function Rail() {
           <li key={r.key}>
             <Link href={r.href} aria-current={isCurrent(pathname, r.href) ? "page" : undefined}>
               <RouteIcon route={r} size={18} />
-              <span>{r.label}</span>
+              <span className="rl">
+                {r.label}
+                <small>{r.kind}</small>
+              </span>
             </Link>
           </li>
         ))}

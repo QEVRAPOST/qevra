@@ -1,0 +1,62 @@
+/*
+ * What works today, in one place. The Overview and the Status route both read this, so they can never disagree.
+ * It is derived only from the app model (demo fixtures or live data): nothing here is fetched, guessed or made up,
+ * and a value the model does not have is shown as unavailable, never as a plausible number.
+ */
+import type { AppModel, Material, Tone } from "@/types";
+
+export type ReadinessId = "network" | "wallet" | "swarm" | "swap" | "pq" | "audit";
+
+export interface ReadinessRow {
+  id: ReadinessId;
+  label: string;
+  /** the state in a few words */
+  value: string;
+  /** one plain sentence of what that means for the visitor */
+  detail: string;
+  tone: Tone;
+  material: Material;
+  href: string;
+  linkLabel: string;
+}
+
+function short(address: string): string {
+  return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
+}
+
+export function buildReadiness(model: AppModel): ReadinessRow[] {
+  const live = model.mode === "live";
+  const net = model.network.options.find((n) => n.id === model.network.selected);
+  const rpc = model.network.rpc;
+  const conn = model.wallet.connection;
+  const sec = model.security;
+  const caps = sec.capabilities;
+
+  const network: ReadinessRow = live
+    ? rpc.status === "available"
+      ? { id: "network", label: "Network", value: `${net?.label ?? "Network"} · reading`, detail: `Public data is read from block ${rpc.latestBlock ?? "unknown"}. Nothing is written.`, tone: "neutral", material: "outline", href: "/app/protocol", linkLabel: "See status" }
+      : rpc.status === "loading"
+        ? { id: "network", label: "Network", value: "Checking", detail: "Asking the public RPC for the latest block.", tone: "unk", material: "dotted", href: "/app/protocol", linkLabel: "See status" }
+        : { id: "network", label: "Network", value: "RPC unavailable", detail: rpc.message ?? "The public RPC did not answer. No value is shown in its place.", tone: "bad", material: "outline", href: "/app/protocol", linkLabel: "See status" }
+    : { id: "network", label: "Network", value: `${net?.short ?? "Testnet"} · example`, detail: "Example mode reads no chain. The network name is only a label here.", tone: "demo", material: "dotted", href: "/app/protocol", linkLabel: "See status" };
+
+  const wallet: ReadinessRow = live
+    ? conn?.address
+      ? { id: "wallet", label: "Wallet", value: `${short(conn.address)} · read-only`, detail: model.network.walletMismatch ? "Your wallet is on a different network from the one the app reads. It was not changed." : "Connected for public reads. The app cannot sign or move anything.", tone: model.network.walletMismatch ? "exp" : "neutral", material: "outline", href: "/app/wallet", linkLabel: "Open wallet" }
+      : { id: "wallet", label: "Wallet", value: "Not connected", detail: "Connecting is optional and only when you choose. It shows a public balance.", tone: "unk", material: "dotted", href: "/app/wallet", linkLabel: "Connect read-only" }
+    : { id: "wallet", label: "Wallet", value: model.wallet.stage === 0 ? "Not connected · example" : "Example wallet", detail: "A pretend wallet that shows how the screen will look. It is not a real account.", tone: "demo", material: "dotted", href: "/app/wallet", linkLabel: "Open wallet" };
+
+  const swarm: ReadinessRow = live
+    ? !caps
+      ? { id: "swarm", label: "Security Swarm", value: "Checking", detail: "Asking the research service what it can do right now.", tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Open Swarm" }
+      : caps.provider === "available" && caps.worker === "available" && caps.persistence === "available"
+        ? { id: "swarm", label: "Security Swarm", value: "Ready to research", detail: "You can start a run on an approved topic. A finished run is research, not an audit.", tone: "neutral", material: "outline", href: "/app/security", linkLabel: "Start a run" }
+        : { id: "swarm", label: "Security Swarm", value: caps.provider !== "available" ? "Provider unavailable" : "Service unavailable", detail: "New runs cannot start. Saved runs can still be opened.", tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Open history" }
+    : { id: "swarm", label: "Security Swarm", value: "Example runs only", detail: "Example runs show how a run looks. No agent runs in example mode.", tone: "demo", material: "dotted", href: "/app/security", linkLabel: "See how it works" };
+
+  const swap: ReadinessRow = { id: "swap", label: "Swap", value: "Switched off", detail: "No route is configured, so there is no quote and no transaction. The page previews the steps.", tone: "unk", material: "dotted", href: "/app/swap", linkLabel: "See the preview" };
+  const pq: ReadinessRow = { id: "pq", label: "PQ authorization", value: "Experimental", detail: "ML-DSA is under evaluation. No key can be registered and no account exists.", tone: "exp", material: "outline", href: "/app/wallet", linkLabel: "See the account concept" };
+  const audit: ReadinessRow = { id: "audit", label: "Independent audit", value: "None yet", detail: "No independent audit has been done. Research runs are not a substitute for one.", tone: "unk", material: "dotted", href: "/app/protocol", linkLabel: "See limits" };
+
+  return [network, wallet, swarm, swap, pq, audit];
+}

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { toLiveDashboardSnapshot, toLiveSecurityRun } from "@/features/dashboard/live-adapters";
-import { createSecurityRun } from "@/features/security/client";
-import { buildLiveAppModel } from "@/features/dashboard/live-model";
+import { createSecurityRun, getSecuritySessionStatus, SecurityApiClientError } from "@/features/security/client";
+import { buildLiveAppModel, toLiveSwarmRun } from "@/features/dashboard/live-model";
 import { createResearchRunRequestSchema } from "@/features/security/schemas";
 import { buildDemoModel } from "@/lib/demo/model";
+import { pipelineFor } from "@/lib/swarm-view";
 import type { ReadOnlyWalletState, ResearchRunDetail, ResearchRunSummary, SecurityResearchCapabilities } from "@/types/integrations";
 
 test("live dashboard adapter keeps live provenance separate from demo fixtures and custody", () => {
@@ -89,6 +90,22 @@ test("typed security client sends same-origin cookie requests and rejects invali
   }
 });
 
+test("security client preserves bounded Retry-After metadata for a rate-limited session request", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json(
+    { error: { code: "rate_limit_exceeded", message: "Too many requests. Try again later." } },
+    { status: 429, headers: { "retry-after": "30" } },
+  );
+  try {
+    await assert.rejects(
+      getSecuritySessionStatus(),
+      (error: unknown) => error instanceof SecurityApiClientError && error.status === 429 && error.retryAfterMs === 30_000,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("live model shows backend failures honestly without demo fallback or executable swap actions", () => {
   const model = buildLiveAppModel({
     wallet: { status: "disconnected" },
@@ -111,6 +128,7 @@ test("live model shows backend failures honestly without demo fallback or execut
   assert.equal(model.security.origin, "live");
   assert.equal(model.security.status, "unavailable");
   assert.equal(model.security.capabilities?.providerName, "Credentials missing");
+  assert.equal(model.statusBar.find((item) => item.id === "swarm-live")?.text, "Live service · error");
   assert.deepEqual(model.security.runs, []);
   assert.equal(model.activity.origin, "live");
   assert.equal(model.activity.status, "unavailable");
@@ -118,6 +136,29 @@ test("live model shows backend failures honestly without demo fallback or execut
   assert.equal(model.swap.button.key, "route");
   assert.equal(model.wallet.qevra.address, undefined);
   assert.equal(model.wallet.qevra.actions.length, 0);
+});
+
+test("live status bar distinguishes provider configuration, provider availability, and persistence", () => {
+  const makeModel = (capabilities: SecurityResearchCapabilities) => buildLiveAppModel({
+    wallet: { status: "disconnected" },
+    capabilities,
+    runs: [],
+    isRefreshing: false,
+    isCreating: false,
+  });
+  const capabilities: SecurityResearchCapabilities = {
+    provider: "not_configured",
+    authentication: "available",
+    persistence: "available",
+    worker: "available",
+    deterministicExperiments: "not_configured",
+    sourceCount: 2,
+  };
+
+  assert.equal(makeModel(capabilities).statusBar.find((item) => item.id === "swarm-live")?.text, "AI provider · not configured");
+  assert.equal(makeModel({ ...capabilities, provider: "unavailable" }).statusBar.find((item) => item.id === "swarm-live")?.text, "AI provider · unavailable");
+  assert.equal(makeModel({ ...capabilities, provider: "available", persistence: "unavailable" }).statusBar.find((item) => item.id === "swarm-live")?.text, "Run history · unavailable");
+  assert.equal(makeModel({ ...capabilities, provider: "available", persistence: "available", worker: "unavailable" }).statusBar.find((item) => item.id === "swarm-live")?.text, "Research worker · unavailable");
 });
 
 test("live model keeps the app network independent from the connected wallet chain", () => {
@@ -165,19 +206,119 @@ test("live run labels distinguish rate limits and explicit research lifecycle st
   const labels = [
     { status: "queued" as const, expected: "Research queued" },
     { status: "running" as const, expected: "Research running" },
-    { status: "completed" as const, expected: "Research completed" },
+    {
+      status: "completed" as const,
+      agents: ["research", "analysis", "verification"].map((role) => ({ role: role as "research" | "analysis" | "verification", status: "completed" as const })),
+      expected: "Research completed",
+    },
     { status: "failed" as const, errorCode: "provider_http_error", expected: "Research failed" },
     { status: "failed" as const, errorCode: "provider_rate_limited", expected: "Rate-limited" },
   ];
   for (const entry of labels) {
     const model = buildLiveAppModel({
       wallet: { status: "disconnected" },
-      runs: [{ ...baseRun, status: entry.status, ...(entry.errorCode ? { errorCode: entry.errorCode } : {}) }],
+      runs: [{ ...baseRun, status: entry.status, ...(entry.errorCode ? { errorCode: entry.errorCode } : {}), ...(entry.agents ? { agents: entry.agents } : {}) }],
       isRefreshing: false,
       isCreating: false,
     });
     assert.equal(model.security.runs[0]?.status.label, entry.expected);
+    if (entry.status === "completed") assert.equal(model.security.runs[0]?.status.material, "outline");
   }
+});
+
+test("summary and detail use the same non-verifying run status and preserve per-agent gaps", () => {
+  const rateLimited: ResearchRunSummary = {
+    id: "77777778-7777-4777-8777-777777777777",
+    topicId: "security-evidence",
+    topic: "Public-source evidence",
+    status: "failed",
+    currentStage: "research",
+    createdAt: "2026-10-19T00:00:00.000Z",
+    updatedAt: "2026-10-19T00:01:00.000Z",
+    agents: [
+      { role: "research", status: "failed", errorCode: "provider_rate_limited" },
+      { role: "analysis", status: "blocked", errorCode: "prior_stage_failed" },
+      { role: "verification", status: "blocked", errorCode: "prior_stage_failed" },
+    ],
+    sourceCount: 2,
+    availableSourceCount: 2,
+    findingCount: 0,
+    errorCode: "provider_rate_limited",
+    events: [],
+  };
+  const detail: ResearchRunDetail = {
+    ...rateLimited,
+    sources: [],
+    findings: [],
+    assumptions: [],
+    limitations: ["Research stopped before analysis and verification."],
+    recommendations: [],
+    deterministicTests: [],
+    humanReview: { status: "not_reviewed" },
+  };
+  const summaryRun = toLiveSwarmRun(rateLimited);
+  const detailedRun = toLiveSwarmRun(rateLimited, detail);
+  assert.equal(summaryRun.status.label, "Rate-limited");
+  assert.equal(detailedRun.status.label, "Rate-limited");
+  assert.equal(summaryRun.status.material, "solid");
+  assert.equal(detailedRun.status.material, "solid");
+  assert.match(detailedRun.how, /Research: failed · Analysis: blocked · Verification: blocked/);
+
+  const diagnosticDetail: ResearchRunDetail = {
+    ...detail,
+    errorCode: "provider_output_invalid",
+    errorMessage: "The model response did not match the required output schema.",
+    sources: [{
+      id: "nist-source",
+      title: "NIST publication",
+      url: "https://csrc.nist.gov/pubs/fips/204/final",
+      retrievedAt: "2026-10-19T00:00:00.000Z",
+      status: "available",
+      sha256: "a".repeat(64),
+    }],
+    findings: [{
+      id: "claim-1",
+      claim: "A source-backed claim.",
+      modelAssessment: "supported",
+      evidenceStatus: "quote_matched",
+      evidence: [{ sourceId: "nist-source", quote: "Exact source text.", exactQuoteMatched: true }],
+      rationale: "The quote matches the captured source.",
+    }],
+    deterministicTests: [{ id: "test-1", name: "Offline parser test", status: "passed", command: "bun test", limitations: [] }],
+    agents: [{
+      role: "research",
+      status: "failed",
+      errorCode: "provider_output_invalid",
+      providerReportedUsage: {
+        promptTokens: 200,
+        completionTokens: 100,
+        outputDiagnostics: {
+          finishReason: "stop",
+          validationCategory: "schema_validation",
+          validationIssueCount: 1,
+          validationIssues: [{ code: "invalid_type", path: ["claims", 0, "id"] }],
+        },
+      },
+    }],
+  };
+  const diagnosticRun = toLiveSwarmRun(diagnosticDetail, diagnosticDetail);
+  assert.match(diagnosticRun.liveDetail?.errorMessage ?? "", /schema_validation/);
+  assert.match(diagnosticRun.liveDetail?.errorMessage ?? "", /claims\.\[0\]\.id \(invalid_type\)/);
+  assert.doesNotMatch(diagnosticRun.liveDetail?.errorMessage ?? "", /raw model response/i);
+  const pipeline = pipelineFor(diagnosticRun);
+  assert.deepEqual(pipeline?.quotes, { matched: 1, total: 1 });
+  assert.deepEqual(pipeline?.tests, { total: 1, passed: 1, failed: 0 });
+
+  const completedWithMissingAgent = toLiveSwarmRun({
+    ...rateLimited,
+    status: "completed",
+    currentStage: "completed",
+    errorCode: undefined,
+    agents: [{ role: "research", status: "completed" }, { role: "analysis", status: "completed" }],
+  });
+  assert.equal(completedWithMissingAgent.status.label, "Finished with gaps");
+  assert.equal(completedWithMissingAgent.status.material, "outline");
+  assert.match(completedWithMissingAgent.how, /Verification: not reported/);
 });
 
 test("live dashboard adapter preserves unverified evidence status", () => {

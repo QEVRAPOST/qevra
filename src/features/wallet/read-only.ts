@@ -137,6 +137,18 @@ async function readWallet(provider: ReadOnlyEip1193Provider, requestAccounts: bo
       };
     }
 
+    const currentAccounts = await provider.request({ method: "eth_accounts" });
+    const currentChainId = parseChainId(await provider.request({ method: "eth_chainId" }));
+    const currentAddress = Array.isArray(currentAccounts) && typeof currentAccounts[0] === "string" && isAddress(currentAccounts[0])
+      ? currentAccounts[0]
+      : undefined;
+    if (!currentAddress || currentAddress.toLowerCase() !== address.toLowerCase() || currentChainId !== chainId) {
+      return {
+        status: "provider_error",
+        message: "The wallet account or network changed while reading. Refresh to request a consistent address and balance snapshot.",
+      };
+    }
+
     const publicBalance: PublicNativeBalance = {
       symbol: "ETH",
       amount: formatEther(balance),

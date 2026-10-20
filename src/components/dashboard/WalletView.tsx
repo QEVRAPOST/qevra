@@ -8,12 +8,15 @@ import { ACCOUNT_CONTROL, ACCOUNT_CONTROL_LEAD, ACCOUNT_CONTROL_RULE, TWO_LEDGER
 import { brandizeDisplayStrings, brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import type { LedgerActionId, LedgerView } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
+import { PageHead } from "./PageHead";
+import { WalletBand } from "./WalletBand";
 
 function Ledger({ ledger, onAction }: { ledger: LedgerView; onAction: (id: LedgerActionId) => void }) {
   const headingId = `led-${ledger.kind}-h`;
   const noteId = `led-${ledger.kind}-note`;
   return (
     <article className={ledger.kind === "qevra" ? "ledger q" : "ledger"} aria-labelledby={headingId}>
+      <p className="wl-kick">{ledger.kind === "qevra" ? "Experimental · not available" : "Yours · external"}</p>
       <h3 id={headingId}>
         {ledger.kind === "qevra" ? <StatusMaterial material="outline" /> : null}
         {ledger.title}
@@ -87,10 +90,13 @@ export function WalletView() {
   const complete = w.setupDone === 4;
   return (
     <section className="route" aria-labelledby="h-wallet">
-      <div className="rhead">
-        <h1 id="h-wallet">{model.mode === "live" ? "Read-only wallet" : "Wallet and PQ Vault"}</h1>
-        <p>{brandizeProjectName(model.mode === "live" ? "Read-only external wallet observations. No QEVRA smart account exists in this mode." : "Your connected wallet and your QEVRA account are two different accounts.", PROJECT_NAME)}</p>
-      </div>
+      <PageHead
+        id="h-wallet"
+        kicker="Wallet and PQ Vault · read-only"
+        title={model.mode === "live" ? "Read-only wallet" : "Wallet and PQ Vault"}
+        lede={brandizeProjectName(model.mode === "live" ? "Look at your own wallet’s public balance. The app cannot sign, send or change anything. No QEVRA smart account exists in this mode." : "Your connected wallet and your QEVRA account are two different accounts. Only the wallet is a real idea today; the account is a concept being designed.", PROJECT_NAME)}
+      />
+      <WalletBand />
       <Panel
         title="Accounts"
         aside={

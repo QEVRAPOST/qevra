@@ -723,12 +723,22 @@ html[data-arrive] .appmain {
   gap: 14px;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "list"
     "pipe"
-    "detail";
+    "detail"
+    "list";
 }
-.swarm-body > .runs {
+.swarm-body > .sb-hist {
   grid-area: list;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.swarm-body > .sb-pipe,
+.swarm-body > .sb-detail {
+  display: grid;
+  gap: 10px;
+  align-content: start;
 }
 .swarm-body > .sb-pipe {
   grid-area: pipe;
@@ -1121,7 +1131,8 @@ html[data-arrive] .appmain {
   overflow-wrap: anywhere;
 }
 /* only a genuinely running agent of a live run breathes; the example's running state is a still picture */
-.pipe:not(.is-example) .pn.s-running .pn-state .mat {
+.pipe:not(.is-example) .pn.s-running .pn-state .mat,
+.pipe.is-illustration .pn.s-running .pn-state .mat {
   animation: pipe-breathe 2.4s ease-in-out infinite;
 }
 
@@ -1344,7 +1355,8 @@ html[data-arrive] .appmain {
     width: 100%;
     opacity: 0.6;
   }
-  .pipe:not(.is-example) .pn.s-running .pn-state .mat {
+  .pipe:not(.is-example) .pn.s-running .pn-state .mat,
+  .pipe.is-illustration .pn.s-running .pn-state .mat {
     animation: none;
   }
 }
@@ -1567,7 +1579,7 @@ html[data-arrive] .appmain {
 /* a plain key and value list: the label is quiet, the value is the content, and a long value wraps instead of running off */
 .kv {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: 0 28px;
   font-size: 13.5px;
 }

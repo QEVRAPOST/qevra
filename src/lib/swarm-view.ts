@@ -52,8 +52,13 @@ export interface PipelineStage {
 }
 
 export interface PipelineModel {
-  /** an example run: nothing ran and nothing moves */
+  /** an example run: nothing ran and nothing moves (unless `illustration`) */
   example: boolean;
+  /**
+   * A walkthrough the visitor started themselves, to see the order of a run. It is still an example (nothing ran), but it
+   * may move, because the visitor asked to watch it.
+   */
+  illustration?: boolean;
   runState: ResearchRunStatus | "example";
   stages: PipelineStage[];
   sources: { total: number; available: number } | null;
@@ -64,6 +69,34 @@ export interface PipelineModel {
   error?: { code?: string; message?: string };
   /** the verification agent's own note, when the run recorded one */
   verificationNote?: string;
+}
+
+/** One live interpretation for the API run state, independent of whether the summary or detail is displayed. */
+export function liveRunBadge(run: Pick<ResearchRunSummary, "status" | "errorCode" | "agents">): StatusBadge {
+  const agents = STAGE_ORDER.map((role) => run.agents.find((agent) => agent.role === role)?.status);
+  if (run.status === "failed") {
+    return run.errorCode === "provider_rate_limited"
+      ? { label: "Rate-limited", tone: "bad", material: "solid" }
+      : { label: "Research failed", tone: "bad", material: "solid" };
+  }
+  if (agents.some((status) => status === "failed" || status === "blocked")) {
+    return { label: "Stopped with errors", tone: "bad", material: "solid" };
+  }
+  if (run.status === "completed") {
+    return agents.every((status) => status === "completed")
+      ? { label: "Research completed", tone: "neutral", material: "outline" }
+      : { label: "Finished with gaps", tone: "bad", material: "outline" };
+  }
+  if (run.status === "running") return { label: "Research running", tone: "exp", material: "outline" };
+  return { label: "Research queued", tone: "unk", material: "dotted" };
+}
+
+/** Keep the concise live summary aligned with the three stages rendered in the pipeline. */
+export function summarizeAgentStatuses(agents: readonly AgentExecutionState[]): string {
+  return STAGE_ORDER.map((role) => {
+    const agent = agents.find((candidate) => candidate.role === role);
+    return `${STAGE_META[role].title}: ${agent ? STATUS_TEXT[agent.status].toLowerCase() : "not reported"}`;
+  }).join(" · ");
 }
 
 function stageOf(role: ResearchAgentRole, agent: AgentExecutionState | undefined, events: PipelineEvent[]): PipelineStage {
@@ -133,20 +166,7 @@ export function pipelineFor(run: SwarmRun): PipelineModel | null {
 export function runBadge(run: SwarmRun): StatusBadge {
   const s = run.liveDetail ?? run.liveSummary;
   if (run.origin !== "live" || !s) return run.status;
-  const agents = STAGE_ORDER.map((role) => s.agents.find((a) => a.role === role)?.status);
-  if (s.status === "failed") {
-    return s.errorCode === "provider_rate_limited"
-      ? { label: "Rate-limited", tone: "bad", material: "solid" }
-      : { label: "Research failed", tone: "bad", material: "solid" };
-  }
-  if (agents.some((a) => a === "failed" || a === "blocked")) return { label: "Stopped with errors", tone: "bad", material: "solid" };
-  if (s.status === "completed") {
-    return agents.every((a) => a === "completed")
-      ? { label: "Research completed", tone: "neutral", material: "outline" }
-      : { label: "Finished with gaps", tone: "bad", material: "outline" };
-  }
-  if (s.status === "running") return { label: "Research running", tone: "exp", material: "outline" };
-  return { label: "Research queued", tone: "unk", material: "dotted" };
+  return liveRunBadge(s);
 }
 
 /** One short sentence for a screen reader: the only live-region text of the pipeline. */
@@ -164,4 +184,45 @@ export function defaultStage(model: PipelineModel): ResearchAgentRole {
   if (failed) return failed.role;
   const done = [...model.stages].reverse().find((s) => s.status === "completed");
   return done?.role ?? "research";
+}
+
+/** The steps of the illustrative walkthrough: nothing running, then each agent in turn, then all done. */
+const ILLUSTRATION_STEPS: ReadonlyArray<readonly [ResearchAgentStatus, ResearchAgentStatus, ResearchAgentStatus]> = [
+  ["pending", "pending", "pending"],
+  ["running", "pending", "pending"],
+  ["completed", "running", "pending"],
+  ["completed", "completed", "running"],
+  ["completed", "completed", "completed"],
+];
+export const ILLUSTRATION_LAST = ILLUSTRATION_STEPS.length - 1;
+
+/** The pipeline of the walkthrough at a step. It shows the order of a run and nothing else: no times, counts or sources. */
+export function illustrationModel(step: number): PipelineModel {
+  const states = ILLUSTRATION_STEPS[Math.max(0, Math.min(ILLUSTRATION_LAST, step))]!;
+  return {
+    example: true,
+    illustration: true,
+    runState: "example",
+    stages: STAGE_ORDER.map((role, i) => stageOf(role, { role, status: states[i]! }, [])),
+    sources: null,
+    findings: null,
+    quotes: null,
+    tests: null,
+    review: { recorded: false },
+  };
+}
+
+/** The phases of one research run, as the visitor lives them. */
+export const JOURNEY: readonly string[] = ["Choose a topic", "Start a run", "Watch the agents", "Read the evidence"];
+
+/** Where the visitor is in that journey: 0 to 3. A finished or stopped run means the evidence is the thing to read. */
+export function journeyPhase(model: PipelineModel | null, selected: SwarmRun | undefined, canStart: boolean): number {
+  if (model?.illustration) {
+    const done = model.stages.every((s) => s.status === "completed");
+    const started = model.stages.some((s) => s.status !== "pending");
+    return done ? 3 : started ? 2 : 1;
+  }
+  if (!selected || !model) return canStart ? 0 : 3;
+  if (model.example) return 3;
+  return model.runState === "queued" || model.runState === "running" ? 2 : 3;
 }

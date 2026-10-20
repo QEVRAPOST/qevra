@@ -225,6 +225,7 @@ export function IntentLockPanel({ comparison }: { comparison: IntentComparison }
         </div>
       </div>
 
+      <p className="dnote">Each row is one parameter of the transaction. “Reviewed” is what you approved; “To be signed” is what would be sent. Any difference is marked.</p>
       <ScrollRegion className="itwrap" label="Swap details as reviewed and as they would be signed">
         <table className="itable">
           <caption className="sr">Swap details as reviewed and as they would be signed</caption>

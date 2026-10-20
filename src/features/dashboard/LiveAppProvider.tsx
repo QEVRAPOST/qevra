@@ -13,10 +13,9 @@ import type {
   NetworkRpcState,
 } from "@/types";
 import { Button } from "@/components/ui/Button";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Field } from "@/components/ui/Field";
 import { Panel } from "@/components/ui/Panel";
-import { StatusBar } from "@/components/ui/StatusBar";
+import { AppNotice } from "@/components/ui/AppNotice";
 import { ModelContext } from "@/components/dashboard/AppModelContext";
 import {
   createSecurityRun,
@@ -32,12 +31,11 @@ import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWall
 import { getInjectedReadOnlyProvider } from "@/features/wallet/browser";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { DEFAULT_NETWORK_ID, isNetworkAvailable } from "@/lib/config/networks";
-import { toLiveSecurityRun } from "./live-adapters";
-import { buildLiveAppModel } from "./live-model";
+import { buildLiveAppModel, toLiveSwarmRun } from "./live-model";
 
-type GateState = "checking" | "unconfigured" | "login" | "authenticated" | "unavailable";
-const STATUS = [{ id: "live-access", tone: "unk" as const, text: "LIVE DATA · READ-ONLY ACCESS" }];
-const POLL_INTERVAL_MS = 5_000;
+type GateState = "checking" | "not_configured" | "unauthenticated" | "authenticated" | "service_error" | "rate_limited";
+const ACTIVE_RUN_POLL_INTERVAL_MS = 5_000;
+const IDLE_POLL_INTERVAL_MS = 30_000;
 const DETAIL_BATCH_SIZE = 3;
 const NETWORK_REFRESH_INTERVAL_MS = 30_000;
 
@@ -50,117 +48,95 @@ function isUnauthorized(error: unknown): boolean {
   return error instanceof SecurityApiClientError && error.status === 401;
 }
 
-function detailToRun(
-  summary: ResearchRunSummary,
-  detail?: ResearchRunDetail,
-  detailUnavailable?: string,
-) {
-  if (!detail) {
-    return {
-      origin: "live" as const,
-      id: summary.id,
-      role: "Research · Analysis · Verification",
-      goal: summary.topic,
-      status: summary.status === "completed"
-        ? { label: "Research completed", tone: "neutral" as const, material: "solid" as const }
-        : summary.status === "failed"
-          ? { label: "Failed", tone: "bad" as const, material: "solid" as const }
-          : summary.status === "running"
-            ? { label: "Running", tone: "exp" as const, material: "outline" as const }
-            : { label: "Queued", tone: "unk" as const, material: "dotted" as const },
-      shows: `${summary.findingCount} findings; ${summary.availableSourceCount} of ${summary.sourceCount} sources available.`,
-      how: `Current stage: ${summary.currentStage}. ${summary.agents.map((agent) => `${agent.role}: ${agent.status}`).join(" · ")}.`,
-      notShown: "Research completion is not an audit, independent review, or security guarantee.",
-      limitation: "Full source evidence and limitations are not currently available.",
-      evidence: detailUnavailable ? "Full run detail is unavailable." : "Loading full source evidence and limitations.",
-      unavailableSource: summary.availableSourceCount < summary.sourceCount,
-      zeroFindings: summary.status === "completed" && summary.findingCount === 0,
-      humanReview: { recorded: false as const },
-      liveSummary: summary,
-      ...(detailUnavailable ? { detailUnavailable } : {}),
-    };
-  }
+function sessionErrorGate(error: unknown): Extract<GateState, "service_error" | "rate_limited"> {
+  return error instanceof SecurityApiClientError && (error.status === 429 || error.code === "rate_limit_exceeded")
+    ? "rate_limited"
+    : "service_error";
+}
 
-  const hasUnavailableSource = detail.sources.some((source) => source.status === "unavailable");
-  const sourceText = detail.sources.map((source) =>
-    `${source.status}: ${source.title} · ${source.url} · retrieved ${source.retrievedAt}${source.sha256 ? ` · SHA-256 ${source.sha256}` : ""}`,
-  ).join("\n");
-  const findingText = detail.findings.map((finding) =>
-    `${finding.modelAssessment}/${finding.evidenceStatus}: ${finding.claim}`,
-  ).join("\n");
-  return {
-    ...toLiveSecurityRun(detail),
-    role: "Research · Analysis · Verification",
-    goal: detail.topic,
-    status: detail.status === "completed"
-      ? { label: "Research completed", tone: "neutral" as const, material: "solid" as const }
-      : detail.status === "failed"
-        ? { label: "Failed", tone: "bad" as const, material: "solid" as const }
-        : detail.status === "running"
-          ? { label: "Running", tone: "exp" as const, material: "outline" as const }
-          : { label: "Queued", tone: "unk" as const, material: "dotted" as const },
-    shows: detail.summary ?? `${detail.findings.length} findings recorded.`,
-    how: `Current stage: ${detail.currentStage}. ${detail.agents.map((agent) => `${agent.role}: ${agent.status}`).join(" · ")}.`,
-    notShown: "Research completion is not an audit, independent review, or security guarantee.",
-    limitation: detail.limitations.join(" · ") || "No limitations were recorded by the agents; this does not imply that none exist.",
-    evidence: [sourceText, findingText].filter(Boolean).join("\n") || "No source or finding evidence was recorded.",
-    unavailableSource: hasUnavailableSource,
-    zeroFindings: detail.status === "completed" && detail.findings.length === 0,
-    humanReview: detail.humanReview.status === "reviewed" && detail.humanReview.reviewer && detail.humanReview.reviewedAt
-      ? { recorded: true as const, by: detail.humanReview.reviewer, at: detail.humanReview.reviewedAt }
-      : { recorded: false as const },
-    liveSummary: summary,
-    liveDetail: detail,
-  };
+function sessionStatusGate(status: { configured: boolean; authenticated: boolean }): GateState {
+  if (!status.configured) return "not_configured";
+  return status.authenticated ? "authenticated" : "unauthenticated";
 }
 
 function LiveAccessGate({
   gate,
   message,
   onLogin,
+  onRetry,
 }: {
   gate: Exclude<GateState, "authenticated">;
   message?: string;
   onLogin: (token: string) => Promise<void>;
+  onRetry: () => void;
 }) {
   const [token, setToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string>();
+  const [loginRateLimited, setLoginRateLimited] = useState(false);
+  const [loginRetryAt, setLoginRetryAt] = useState<number>();
+  const [clock, setClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (loginRetryAt === undefined) return;
+    const timeout = window.setTimeout(() => {
+      setLoginRetryAt(undefined);
+      setLoginRateLimited(false);
+      setLoginError(undefined);
+    }, Math.max(0, loginRetryAt - Date.now()));
+    const interval = window.setInterval(() => setClock(Date.now()), 1_000);
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearInterval(interval);
+    };
+  }, [loginRetryAt]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token || submitting) return;
     setSubmitting(true);
     setLoginError(undefined);
+    setLoginRateLimited(false);
     try {
       await onLogin(token);
       setToken("");
     } catch (error) {
       setLoginError(errorMessage(error));
+      if (error instanceof SecurityApiClientError && error.status === 429) {
+        setLoginRateLimited(true);
+        setLoginRetryAt(Date.now() + (error.retryAfterMs ?? 60_000));
+      }
       setToken("");
     } finally {
       setSubmitting(false);
     }
   }
 
-  const title = gate === "checking" ? "Checking live service" : gate === "unconfigured" ? "Live access is not configured" : gate === "unavailable" ? "Live service unavailable" : "Sign in to live services";
+  const title = loginRateLimited
+    ? "Sign-in rate-limited"
+    : gate === "checking" ? "Checking live service"
+      : gate === "not_configured" ? "Live access is not configured"
+        : gate === "service_error" ? "Live service error"
+          : gate === "rate_limited" ? "Live access rate-limited"
+            : "Sign in to live services";
   const detail = gate === "checking"
     ? "Checking server-side session status. No wallet request is made."
-    : gate === "unconfigured"
+    : gate === "not_configured"
       ? "The server has not configured operator authentication. Example data is not substituted in live mode."
-      : gate === "unavailable"
+      : gate === "service_error"
         ? message ?? "The live service could not be reached. Example data is not substituted in live mode."
-        : "Use the operator access token to start a short-lived, HTTP-only session. The token is kept only in this form while signing in.";
+        : gate === "rate_limited"
+          ? message ?? "The live service is rate-limiting access checks. Wait before retrying."
+          : "Use the operator access token to start a short-lived, HTTP-only session. The token is kept only in this form while signing in.";
 
   return (
-    <>
-      <StatusBar items={STATUS} />
-      <main className="wrap wide notice-page" id="main" tabIndex={-1}>
-        <div className="rhead">
-          <h1>{title}</h1>
-          <p>{detail}</p>
-        </div>
-        {gate === "login" ? (
+    <AppNotice
+      title={title}
+      lead={detail}
+      busy={gate === "checking"}
+      tone={gate === "service_error" || gate === "rate_limited" || loginError ? "problem" : "info"}
+    >
+        {gate === "unauthenticated" ? (
           <Panel title="Live service access">
             <form onSubmit={submit}>
               <Field label="Operator access token" token="private" hint="Sent only to this site's same-origin session endpoint." htmlFor="qevra-live-token">
@@ -174,17 +150,23 @@ function LiveAccessGate({
                   onChange={(event) => setToken(event.target.value)}
                 />
               </Field>
-              <Button type="submit" disabled={!token || submitting}>
-                {submitting ? "Signing in…" : "Sign in"}
+              <Button type="submit" disabled={!token || submitting || (loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock)}>
+                {submitting ? "Signing in…" : loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock
+                  ? `Try again in ${Math.ceil((loginRetryAt - clock) / 1_000)}s`
+                  : "Sign in"}
               </Button>
               {loginError ? <p role="alert">{loginError}</p> : null}
             </form>
           </Panel>
+        ) : gate === "service_error" || gate === "rate_limited" ? (
+          <Panel title="Retry live access check">
+            <p>{message ?? detail}</p>
+            <Button type="button" onClick={onRetry}>Retry</Button>
+          </Panel>
         ) : (
-          <EmptyState title="No live data is shown.">{message ?? detail}</EmptyState>
+          <Panel title="No live data is shown.">{message ?? detail}</Panel>
         )}
-      </main>
-    </>
+    </AppNotice>
   );
 }
 
@@ -207,11 +189,28 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const walletRequestGuardRef = useRef(createWalletRequestGuard());
   const pollInFlight = useRef(false);
   const detailCache = useRef<Record<string, ResearchRunDetail>>({});
+  const sessionCheckId = useRef(0);
+
+  const checkSession = useCallback(async () => {
+    const requestId = ++sessionCheckId.current;
+    setGate("checking");
+    setGateMessage(undefined);
+    try {
+      const status = await getSecuritySessionStatus();
+      if (requestId !== sessionCheckId.current) return;
+      setGate(sessionStatusGate(status));
+    } catch (error) {
+      if (requestId !== sessionCheckId.current) return;
+      setGate(sessionErrorGate(error));
+      setGateMessage(errorMessage(error));
+    }
+  }, []);
 
   const refreshWallet = useCallback(async () => {
     const provider = providerRef.current;
     if (!provider) return;
     const requestId = walletRequestGuardRef.current.begin();
+    setWallet({ status: "loading", message: "Refreshing the wallet account, network, and read-only balance." });
     const value = await refreshReadOnlyWallet(provider);
     if (!walletRequestGuardRef.current.isCurrent(requestId) || providerRef.current !== provider) return;
     setWallet(value);
@@ -226,6 +225,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const connectWallet = useCallback(async () => {
+    if (wallet.status === "loading") return;
     if (providerRef.current && wallet.address) {
       disconnectWallet();
       return;
@@ -246,7 +246,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       unwatchRef.current?.();
       unwatchRef.current = watchReadOnlyWallet(provider, () => { void refreshWallet(); });
     }
-  }, [disconnectWallet, refreshWallet, wallet.address]);
+  }, [disconnectWallet, refreshWallet, wallet.address, wallet.status]);
 
   const loadLiveData = useCallback(async () => {
     if (pollInFlight.current || gate !== "authenticated") return;
@@ -260,12 +260,15 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       const unauthorized = [capabilityResult, listResult].some((result) => result.status === "rejected" && isUnauthorized(result.reason));
       if (unauthorized) {
         disconnectWallet();
-        setGate("login");
+        setGate("unauthenticated");
         setDataError("Your live session expired. Sign in again to continue reading the live API.");
         return;
       }
       if (capabilityResult.status === "fulfilled") setCapabilities(capabilityResult.value);
-      else setDataError(errorMessage(capabilityResult.reason));
+      else {
+        setCapabilities(undefined);
+        setDataError(errorMessage(capabilityResult.reason));
+      }
       if (listResult.status === "rejected") {
         setDataError(errorMessage(listResult.reason));
         return;
@@ -286,7 +289,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
         const results = await Promise.allSettled(batch.map((run) => getSecurityRun(run.id)));
         if (results.some((result) => result.status === "rejected" && isUnauthorized(result.reason))) {
           disconnectWallet();
-          setGate("login");
+          setGate("unauthenticated");
           setDataError("Your live session expired. Sign in again to continue reading the live API.");
           return;
         }
@@ -303,7 +306,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       if (isUnauthorized(error)) {
         disconnectWallet();
-        setGate("login");
+        setGate("unauthenticated");
         setDataError("Your live session expired. Sign in again to continue reading the live API.");
       } else {
         setDataError(errorMessage(error));
@@ -315,29 +318,40 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   }, [gate, disconnectWallet]);
 
   useEffect(() => {
-    let mounted = true;
+    const requestId = ++sessionCheckId.current;
+    let active = true;
     void getSecuritySessionStatus().then((status) => {
-      if (!mounted) return;
-      if (!status.configured) setGate("unconfigured");
-      else if (status.authenticated) setGate("authenticated");
-      else setGate("login");
+      if (!active || requestId !== sessionCheckId.current) return;
+      setGate(sessionStatusGate(status));
     }).catch((error: unknown) => {
-      if (!mounted) return;
-      setGate("unavailable");
+      if (!active || requestId !== sessionCheckId.current) return;
+      setGate(sessionErrorGate(error));
       setGateMessage(errorMessage(error));
     });
-    return () => { mounted = false; };
+    return () => {
+      active = false;
+      sessionCheckId.current += 1;
+    };
   }, []);
 
   useEffect(() => {
     if (gate !== "authenticated") return;
     const initialLoad = setTimeout(() => { void loadLiveData(); }, 0);
-    const interval = setInterval(() => { void loadLiveData(); }, POLL_INTERVAL_MS);
     return () => {
       clearTimeout(initialLoad);
-      clearInterval(interval);
     };
   }, [gate, loadLiveData]);
+
+  const hasActiveRuns = summaries?.some((run) => run.status === "queued" || run.status === "running") ?? false;
+  const waitForManualRetry = summaries === null && Boolean(dataError);
+  useEffect(() => {
+    if (gate !== "authenticated" || waitForManualRetry) return;
+    const interval = window.setInterval(
+      () => { void loadLiveData(); },
+      hasActiveRuns && !dataError ? ACTIVE_RUN_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS,
+    );
+    return () => window.clearInterval(interval);
+  }, [gate, hasActiveRuns, waitForManualRetry, dataError, loadLiveData]);
 
   useEffect(() => {
     if (gate !== "authenticated") return;
@@ -387,7 +401,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     void logoutFromSecurityService().catch(() => undefined).finally(() => {
       disconnectWallet();
-      setGate("login");
+      setGate("unauthenticated");
       setSummaries(null);
       setDetails({});
       detailCache.current = {};
@@ -416,7 +430,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       const cached = details[summary.id];
       const current = cached?.updatedAt === summary.updatedAt ? cached : undefined;
       const detailError = detailErrors[summary.id] ?? (cached && !current ? "The detailed run response is older than the latest run-list update." : undefined);
-      return detailToRun(summary, current, detailError);
+      return toLiveSwarmRun(summary, current, detailError);
     }) ?? [],
     [summaries, details, detailErrors],
   );
@@ -450,7 +464,20 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AppModelValue>(() => ({ model: { ...model, security: { ...model.security, runs: securityRuns } }, actions }), [model, actions, securityRuns]);
 
   if (gate !== "authenticated") {
-    return <LiveAccessGate gate={gate} message={gateMessage ?? dataError} onLogin={login} />;
+    return <LiveAccessGate gate={gate} message={gateMessage ?? dataError} onLogin={login} onRetry={() => { void checkSession(); }} />;
+  }
+
+  if (summaries === null && dataError) {
+    return (
+      <AppNotice title="Live service error" lead={dataError} tone="problem">
+        <Panel title="Retry live run history">
+          <p>No example runs were substituted. Retry the authenticated run-history request.</p>
+          <Button type="button" disabled={isRefreshing} onClick={() => { void loadLiveData(); }}>
+            {isRefreshing ? "Retrying…" : "Retry"}
+          </Button>
+        </Panel>
+      </AppNotice>
+    );
   }
 
   return <ModelContext.Provider value={value}>{children}</ModelContext.Provider>;

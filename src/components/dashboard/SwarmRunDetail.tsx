@@ -21,6 +21,13 @@ const TEST: Record<DeterministicTestSummary["status"], { label: string; tone: "o
   not_requested: { label: "Not requested", tone: "unk", material: "dotted" },
 };
 
+/** What a stopped run means for the visitor, by the service's own error code. The code itself is always shown too. */
+const ERROR_HELP: Readonly<Record<string, string>> = {
+  provider_rate_limited: "The model provider limited how many requests it would take. Wait a while, then start a new run.",
+  prior_stage_failed: "An earlier agent stopped, so this one never started.",
+};
+const ERROR_HELP_DEFAULT = "You can start a new run on the same topic. Nothing from this one is kept as a result.";
+
 const short = (hash: string): string => `${hash.slice(0, 12)}…`;
 /** A source link is followed only if it is a plain web address. */
 const safeHref = (url: string): string | undefined => (/^https?:\/\//i.test(url) ? url : undefined);
@@ -47,6 +54,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
       <div className="dm">
         <span>{run.id}</span>
         <span>{run.role}</span>
+        {live && run.liveSummary?.createdAt ? <span>Started {run.liveSummary.createdAt}</span> : null}
         {example ? <DemoChip>{run.exampleTag}</DemoChip> : null}
       </div>
 
@@ -65,6 +73,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
               </li>
             ))}
           </ul>
+          <p>{ERROR_HELP[errorCode ?? ""] ?? ERROR_HELP_DEFAULT}</p>
           <p>Nothing from a stopped run is shown as a result or as verified.</p>
         </div>
       ) : null}

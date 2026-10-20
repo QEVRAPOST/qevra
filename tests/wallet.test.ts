@@ -16,7 +16,7 @@ test("wallet reads address, testnet, balance, and block using only allowlisted R
   const provider: ReadOnlyEip1193Provider = {
     async request({ method }) {
       methods.push(method);
-      if (method === "eth_requestAccounts") return ["0x0000000000000000000000000000000000000001"];
+      if (method === "eth_requestAccounts" || method === "eth_accounts") return ["0x0000000000000000000000000000000000000001"];
       if (method === "eth_chainId") return "0xb626";
       if (method === "eth_getBlockByNumber") return { number: "0x10", hash: `0x${"a".repeat(64)}` };
       if (method === "eth_getBalance") return "0x16345785d8a0000";
@@ -31,7 +31,7 @@ test("wallet reads address, testnet, balance, and block using only allowlisted R
   assert.equal(state.balance?.blockNumber, "16");
   assert.equal(state.balance?.blockHash, `0x${"a".repeat(64)}`);
   assert.equal(state.balance?.provider, "connected_wallet_rpc");
-  assert.deepEqual(methods, ["eth_requestAccounts", "eth_chainId", "eth_getBlockByNumber", "eth_getBalance"]);
+  assert.deepEqual(methods, ["eth_requestAccounts", "eth_chainId", "eth_getBlockByNumber", "eth_getBalance", "eth_accounts", "eth_chainId"]);
   assert.equal(methods.some((method) => /sign|send|transaction|approve/i.test(method)), false);
 });
 
@@ -51,6 +51,37 @@ test("wallet connection rejection and RPC errors remain explicit and read-only",
   });
   assert.equal(rpcFailure.status, "rpc_unavailable");
   assert.equal(rpcFailure.message, "The wallet's read-only RPC request failed. No write request was sent.");
+});
+
+test("wallet read fails closed when address or network changes during a balance read", async () => {
+  for (const change of ["account", "network"] as const) {
+    let accountReads = 0;
+    let chainReads = 0;
+    const provider: ReadOnlyEip1193Provider = {
+      async request({ method }) {
+        if (method === "eth_requestAccounts") return ["0x0000000000000000000000000000000000000005"];
+        if (method === "eth_accounts") {
+          accountReads += 1;
+          return [change === "account" && accountReads >= 1
+            ? "0x0000000000000000000000000000000000000006"
+            : "0x0000000000000000000000000000000000000005"];
+        }
+        if (method === "eth_chainId") {
+          chainReads += 1;
+          return change === "network" && chainReads > 1 ? "0x1234" : "0xb626";
+        }
+        if (method === "eth_getBlockByNumber") return { number: "0x10", hash: `0x${"d".repeat(64)}` };
+        if (method === "eth_getBalance") return "0x16345785d8a0000";
+        throw new Error(`unexpected method: ${method}`);
+      },
+    };
+
+    const state = await connectReadOnlyWallet(provider);
+    assert.equal(state.status, "provider_error", `${change} changes during the read must not return a connected snapshot`);
+    assert.equal(state.address, undefined);
+    assert.equal(state.balance, undefined);
+    assert.match(state.message ?? "", /changed while reading/);
+  }
 });
 
 test("wallet reports unsupported networks without fetching balances or switching networks", async () => {
@@ -81,7 +112,7 @@ test("browser provider discovery does not request accounts until the user-trigge
   const injected = {
     async request({ method }: { method: string }) {
       methods.push(method);
-      if (method === "eth_requestAccounts") return ["0x0000000000000000000000000000000000000004"];
+      if (method === "eth_requestAccounts" || method === "eth_accounts") return ["0x0000000000000000000000000000000000000004"];
       if (method === "eth_chainId") return "0xb626";
       if (method === "eth_getBlockByNumber") return { number: "0x20", hash: `0x${"c".repeat(64)}` };
       if (method === "eth_getBalance") return "0x0";

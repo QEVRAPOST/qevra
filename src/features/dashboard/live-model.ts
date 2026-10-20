@@ -5,6 +5,7 @@ import type {
   NetworkId,
   NetworkRpcState,
   ReadOnlyWalletState,
+  ResearchRunDetail,
   ResearchRunSummary,
   SecurityResearchCapabilities,
   SetupStepView,
@@ -14,38 +15,62 @@ import type {
 import { NETWORKS } from "@/lib/config/networks";
 import { COVERAGE_ROWS } from "@/lib/content/status";
 import { brandizeDisplayStrings, brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
+import { liveRunBadge, summarizeAgentStatuses } from "@/lib/swarm-view";
 
 const READ_ONLY_NOTICE = brandizeProjectName("This view only reads public account/network data. QEVRA has no smart account, custody, signing, approvals, or swap execution.", PROJECT_NAME);
 
-function agentStatusSummary(run: ResearchRunSummary): string {
-  return run.agents.map((agent) => `${agent.role}: ${agent.status}`).join(" · ") || "Agent states not reported";
+function validationPath(path: Array<string | number>): string {
+  return path.length === 0 ? "<root>" : path.map((part) => typeof part === "number" ? `[${part}]` : part).join(".");
 }
 
-function toSwarmRun(run: ResearchRunSummary): SwarmRun {
-  const status = run.status === "completed"
-    ? { label: "Research completed", tone: "neutral" as const, material: "solid" as const }
-    : run.status === "failed" && run.errorCode === "provider_rate_limited"
-      ? { label: "Rate-limited", tone: "bad" as const, material: "solid" as const }
-      : run.status === "failed"
-        ? { label: "Research failed", tone: "bad" as const, material: "solid" as const }
-        : run.status === "running"
-          ? { label: "Research running", tone: "exp" as const, material: "outline" as const }
-          : { label: "Research queued", tone: "unk" as const, material: "dotted" as const };
-  const unavailableSource = run.availableSourceCount < run.sourceCount;
+function appendProviderDiagnostics(detail: ResearchRunDetail): ResearchRunDetail {
+  const messages = detail.agents.flatMap((agent) => {
+    if (agent.status !== "failed") return [];
+    const diagnostics = agent.providerReportedUsage?.outputDiagnostics;
+    if (!diagnostics) return [];
+    const issues = diagnostics.validationIssues?.map((issue) => `${validationPath(issue.path)} (${issue.code})`) ?? [];
+    const issueSummary = diagnostics.validationIssueCount !== undefined
+      ? `; ${diagnostics.validationIssueCount} schema issue${diagnostics.validationIssueCount === 1 ? "" : "s"}${issues.length > 0 ? `: ${issues.join(", ")}` : ""}`
+      : "";
+    return [`${agent.role} provider diagnostics: ${diagnostics.validationCategory ?? "response failure"}${diagnostics.finishReason ? `; finish reason ${diagnostics.finishReason}` : ""}${issueSummary}.`];
+  });
+  if (messages.length === 0) return detail;
+  return { ...detail, errorMessage: [detail.errorMessage, ...messages].filter(Boolean).join(" ") };
+}
+
+export function toLiveSwarmRun(summary: ResearchRunSummary, detail?: ResearchRunDetail, detailUnavailable?: string): SwarmRun {
+  const state = detail ?? summary;
+  const safeDetail = detail ? appendProviderDiagnostics(detail) : undefined;
+  const hasUnavailableSource = detail
+    ? detail.sources.some((source) => source.status === "unavailable")
+    : summary.availableSourceCount < summary.sourceCount;
+  const sourceText = detail?.sources.map((source) =>
+    `${source.status}: ${source.title} · ${source.url} · retrieved ${source.retrievedAt}${source.sha256 ? ` · SHA-256 ${source.sha256}` : ""}`,
+  ).join("\n") ?? "";
+  const findingText = detail?.findings.map((finding) =>
+    `${finding.modelAssessment}/${finding.evidenceStatus}: ${finding.claim}`,
+  ).join("\n") ?? "";
   return {
     origin: "live",
-    id: run.id,
+    id: summary.id,
     role: "Research · Analysis · Verification",
-    goal: run.topic,
-    status,
-    shows: `${run.findingCount} findings; ${run.availableSourceCount} of ${run.sourceCount} sources available.`,
-    how: `Current stage: ${run.currentStage}. ${agentStatusSummary(run)}.`,
+    goal: summary.topic,
+    status: liveRunBadge(state),
+    shows: detail?.summary ?? `${state.findingCount} findings; ${state.availableSourceCount} of ${state.sourceCount} sources available.`,
+    how: `Current stage: ${state.currentStage}. ${summarizeAgentStatuses(state.agents)}.`,
     notShown: "Model research is not an audit, an independent review, or proof that the system is safe.",
     limitation: "Source quotations are checked by exact text match; that check does not establish the semantic truth of a claim.",
-    evidence: "Open the run detail for source URLs, retrieval times, quotes, and limitations.",
-    unavailableSource,
-    humanReview: { recorded: false },
-    liveSummary: run,
+    evidence: detail
+      ? [sourceText, findingText].filter(Boolean).join("\n") || "No source or finding evidence was recorded."
+      : detailUnavailable ? "Full run detail is unavailable." : "Loading full source evidence and limitations.",
+    unavailableSource: hasUnavailableSource,
+    ...(detail?.status === "completed" && detail.findings.length === 0 ? { zeroFindings: true } : {}),
+    humanReview: safeDetail?.humanReview.status === "reviewed" && safeDetail.humanReview.reviewer && safeDetail.humanReview.reviewedAt
+      ? { recorded: true, by: safeDetail.humanReview.reviewer, at: safeDetail.humanReview.reviewedAt }
+      : { recorded: false },
+    liveSummary: summary,
+    ...(safeDetail ? { liveDetail: safeDetail } : {}),
+    ...(detailUnavailable ? { detailUnavailable } : {}),
   };
 }
 
@@ -137,20 +162,28 @@ function buildLiveSwap(): AppModel["swap"] {
   };
 }
 
-function buildLiveStatusBar(wallet: ReadOnlyWalletState, capabilities?: SecurityResearchCapabilities): StatusBarItem[] {
+function buildLiveStatusBar(wallet: ReadOnlyWalletState, capabilities?: SecurityResearchCapabilities, serviceError = false): StatusBarItem[] {
   const walletText = wallet.address
     ? `Wallet · ${wallet.networkName === "Robinhood Chain Testnet" ? "Testnet" : wallet.networkName === "Robinhood Chain" ? "Mainnet" : "Unknown"}`
     : `Wallet · ${wallet.status === "disconnected" ? "not connected" : wallet.status.replaceAll("_", " ")}`;
-  const swarmText = !capabilities
-    ? "Swarm · checking"
-    : capabilities.provider !== "available"
-      ? "AI research · unavailable"
-      : capabilities.worker !== "available"
-        ? "Worker · unavailable"
-        : "Swarm · available";
+  const swarmText = serviceError
+    ? "Live service · error"
+    : !capabilities
+      ? "Swarm · checking"
+      : capabilities.provider === "not_configured"
+        ? "AI provider · not configured"
+        : capabilities.provider === "unsupported"
+          ? "AI provider · unsupported"
+          : capabilities.provider === "unavailable"
+            ? "AI provider · unavailable"
+            : capabilities.persistence !== "available"
+              ? "Run history · unavailable"
+              : capabilities.worker !== "available"
+                ? "Research worker · unavailable"
+                : "Swarm · available";
   return [
     { id: "wallet-live", tone: wallet.status === "connected" ? "exp" : "unk", text: walletText },
-    { id: "swarm-live", tone: capabilities?.provider === "available" && capabilities.worker === "available" ? "exp" : "unk", text: swarmText },
+    { id: "swarm-live", tone: !serviceError && capabilities?.provider === "available" && capabilities.worker === "available" && capabilities.persistence === "available" ? "exp" : "unk", text: swarmText },
     { id: "custody-disabled", tone: "unk", text: "No account · swaps disabled" },
   ];
 }
@@ -200,7 +233,7 @@ export function buildLiveAppModel(input: {
   const rpc = input.networkRpc ?? { status: "loading" as const };
   const selectedChainId = NETWORKS.find((network) => network.id === selectedNetwork)?.chainId;
   const walletMismatch = wallet.address !== undefined && wallet.chainId !== undefined && wallet.chainId !== selectedChainId;
-  const liveRuns = runs?.map(toSwarmRun) ?? [];
+  const liveRuns = runs?.map((run) => toLiveSwarmRun(run)) ?? [];
   const securityStatus: AppModel["security"]["status"] = runs === null
     ? input.dataError ? "unavailable" : "loading"
     : liveRuns.length > 0 ? "ready" : "empty";
@@ -223,7 +256,7 @@ export function buildLiveAppModel(input: {
 
   return {
     mode: "live",
-    statusBar: buildLiveStatusBar(wallet, capabilities),
+    statusBar: buildLiveStatusBar(wallet, capabilities, Boolean(input.dataError)),
     coverage: buildLiveCoverage(wallet, capabilities, liveRuns.length),
     network: { selected: selectedNetwork, options: [...NETWORKS], rpc, walletMismatch },
     wallet: buildLiveWallet(wallet),
