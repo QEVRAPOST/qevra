@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { AddressGlyph } from "@/components/ui/AddressGlyph";
 import { Button } from "@/components/ui/Button";
 import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
@@ -19,14 +21,37 @@ const STATES: Record<ReadOnlyWalletStatus, { label: string; material: Material; 
   provider_error: { label: "Wallet error", material: "dotted", help: "Your wallet reported an error. Nothing was shared or changed." },
 };
 
-function short(address: string): string {
-  return address.length > 14 ? `${address.slice(0, 8)}…${address.slice(-6)}` : address;
+const CAN = ["See this public address", "See its public balance", "Read the network the app is on"];
+const CANNOT = ["Sign anything", "Send or approve spending", "Switch your wallet’s network", "Hold or move funds"];
+
+/** 0x1a2b…c3d4: enough to recognise an address, never the whole of it in a headline. */
+function middle(address: string): string {
+  return address.length > 14 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
+}
+
+function Copy({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="wl-copy"
+      onClick={() => {
+        void navigator.clipboard?.writeText(text).then(() => {
+          setDone(true);
+          window.setTimeout(() => setDone(false), 1600);
+        });
+      }}
+    >
+      {done ? "Copied" : "Copy address"}
+    </button>
+  );
 }
 
 /**
- * The wallet route's opening: one ring that says whether a wallet is connected, and what it can see. When nothing is connected
- * this is a plain invitation with the read-only boundary in three short lines. It is read-only: there is no signing here, and no way
- * to switch the wallet's network.
+ * The wallet route's opening: an identity, not a form. A ring pattern drawn from the address, the address with its middle folded away, the
+ * network and whether it matches the app, the public balance, and what this connection can and cannot do. When nothing is connected the same
+ * layout is an invitation, with the read-only boundary already visible. It is read-only: there is no signing here, and no way to switch the
+ * wallet's network.
  */
 export function WalletBand() {
   const { model, actions } = useAppModel();
@@ -37,66 +62,58 @@ export function WalletBand() {
   const info = STATES[status];
   const connected = live ? !!conn?.address : w.stage > 0;
   const net = model.network.options.find((n) => n.id === model.network.selected);
-  const address = live ? conn?.address : w.eoa.address?.label;
+  const address = live ? conn?.address : connected ? "simulated" : undefined;
+  const shown = live ? (address ? middle(address) : "") : "0xSIMU…LATED";
   const balance = live ? conn?.balance : undefined;
+  const exBalance = !live && w.eoa.assets[0] ? w.eoa.assets[0] : null;
   const busy = status === "loading";
-  const exBalance = !live && w.eoa.assets[0] ? `${w.eoa.assets[0].amount} ${w.eoa.assets[0].symbol}` : null;
+  const mismatch = live && model.network.walletMismatch;
+  const walletNet = live ? (conn?.networkName ?? `Chain ${conn?.chainId ?? "unknown"}`) : (net?.label ?? "Unavailable");
 
   return (
     <section className={`wl-band${connected ? " on" : ""}`} aria-labelledby="h-wl-band">
       <h2 id="h-wl-band" className="sr">Connection</h2>
-      <div className="wl-orb" aria-hidden="true">
-        <span className="wl-r3" />
-        <span className="wl-r2" />
-        <span className="wl-r1">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-            <rect x="3" y="6" width="18" height="13" rx="2" />
-            <path d="M3 10h18M16 14.5h2" />
-          </svg>
-        </span>
+      <div className="wl-id">
+        <AddressGlyph address={address} live={connected} />
       </div>
-      <div className="wl-body">
+
+      <div className="wl-main">
         <p className="wl-state">
           <StatusMaterial material={connected ? "outline" : "dotted"} />
           {live ? info.label : connected ? "Connected · simulated wallet" : "No wallet connected"}
           {!live && connected ? <SimTag /> : null}
         </p>
+
         {connected ? (
           <>
-            <p className="wl-address">{address ? short(address) : "No address"}</p>
-            <dl className="wl-facts">
-              <div>
-                <dt>Network</dt>
-                <dd>{live ? (conn?.networkName ?? `Chain ${conn?.chainId ?? "unknown"}`) : (net?.label ?? "Unavailable")}</dd>
-                <small>
-                  {live
-                    ? model.network.walletMismatch
-                      ? `Differs from the network the app reads (${net?.short ?? "selected"}). Your wallet was not changed.`
-                      : "Matches the network the app reads."
-                    : "Simulated: nothing is read."}
-                </small>
-              </div>
-              <div>
-                <dt>Public balance</dt>
-                <dd>{balance ? `${balance.amount} ${balance.symbol}` : (exBalance ?? "Not available")}</dd>
-                <small>{balance ? `Read at block ${balance.blockNumber}. A snapshot, not a live feed.` : live ? "Shown only after a successful read." : "Simulated value."}</small>
-              </div>
-            </dl>
+            <div className="wl-addr-row">
+              <p className="wl-address" title={live ? address : undefined}>{shown}</p>
+              {live && address ? <Copy text={address} /> : null}
+            </div>
+            <p className={`wl-net${mismatch ? " warn" : ""}`}>
+              <span className="wl-pip" aria-hidden="true" />
+              {walletNet}
+              {live && conn?.chainId !== undefined ? <span className="wl-chain">chain {conn.chainId}</span> : null}
+              <span className="wl-match">{live ? (mismatch ? `Differs from the network the app reads (${net?.short ?? "selected"}). Your wallet was not changed.` : "Matches the network the app reads") : "Simulated: nothing is read"}</span>
+            </p>
+            <div className="wl-bal">
+              <span className="wl-bal-n">{balance ? balance.amount : exBalance ? exBalance.amount : "Not available"}</span>
+              {balance || exBalance ? <span className="wl-bal-s">{balance ? balance.symbol : exBalance?.symbol}</span> : null}
+              <span className="wl-bal-m">{balance ? `Public balance · read at block ${balance.blockNumber}, a snapshot` : live ? "Shown only after a successful read" : "Simulated value"}</span>
+            </div>
           </>
         ) : (
           <>
             <h2 className="wl-h">Look at a wallet without handing it over.</h2>
-            <ul className="wl-rules">
-              <li>Reads the public address and balance you choose to show.</li>
-              <li>Never signs, sends or switches your network.</li>
-              <li>Disconnect any time.</li>
-            </ul>
+            <p className="wl-sub">Connect to see an address, its network and its public balance. The permissions are on the right, and they are all there is.</p>
           </>
         )}
+
         <p className="wl-help" role="status">
           {live && conn?.message ? `${conn.message} ` : ""}
-          {connected ? (live ? info.help : "") : live ? info.help : ""}
+          {live ? info.help : ""}
         </p>
+
         <div className="wl-act">
           {connected ? (
             live ? (
@@ -112,12 +129,39 @@ export function WalletBand() {
               </>
             ) : null
           ) : (
-            <Button variant="primary" onClick={() => actions.pressLedgerAction("connect")} disabled={busy}>
-              {busy ? "Waiting…" : live ? "Connect wallet, read-only" : "Connect a simulated wallet"}
-            </Button>
+            <button type="button" className="cta-connect" disabled={busy} onClick={() => actions.pressLedgerAction("connect")}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                <rect x="3" y="6" width="18" height="13" rx="2" />
+                <path d="M3 10h18M16 14.5h2" />
+              </svg>
+              <span>{busy ? "Waiting for your wallet…" : live ? "Connect wallet" : "Connect a simulated wallet"}</span>
+              <small>read-only</small>
+              <svg className="cta-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </button>
           )}
         </div>
       </div>
+
+      <aside className="wl-perm" aria-label="What this connection can and cannot do">
+        <div>
+          <h3>{connected ? "This connection can" : "Connecting lets the app"}</h3>
+          <ul className="can">
+            {CAN.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h3>It cannot</h3>
+          <ul className="cannot">
+            {CANNOT.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      </aside>
     </section>
   );
 }

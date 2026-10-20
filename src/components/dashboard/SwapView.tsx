@@ -17,27 +17,59 @@ import {
   type PreviewSlippage,
   type PreviewToken,
 } from "@/lib/demo/swap";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { useAppModel } from "./DemoAppProvider";
 import { IntentLockPanel } from "./IntentLockPanel";
 import { PageHead } from "./PageHead";
 
-/** pay token ··· router ··· receive token. The router is not configured, so the line breaks there: that is why there is no quote. */
-function Route({ pay, receive, edited }: { pay: string; receive: string; edited: number }) {
+/** A token's mark: a ring and the letter of its name. The two preview tokens differ by the ring, so they are never confused. */
+function Coin({ token }: { token: string }) {
+  return <span className={`coin ${token === "TKN-A" ? "a" : "b"}`} aria-hidden="true">{token.slice(-1)}</span>;
+}
+
+/**
+ * pay token → router → receive token. The router is the missing piece: the line from the token you pay stops at its dashed ring, and the
+ * line onward to the token you would receive is dotted. When you change the swap, a spark travels to the router and ripples there: it is
+ * feedback that the change reached the router slot, not a lookup, and it finds nothing because nothing is configured.
+ */
+function Route({ pay, receive, edited }: { pay: PreviewToken; receive: PreviewToken; edited: number }) {
+  const reduce = useMediaQuery("(prefers-reduced-motion: reduce)");
   return (
-    <figure className="sp-route" aria-label={`Route from ${pay} to ${receive}: no router is configured, so the route is not complete`}>
-      <svg viewBox="0 0 520 70" role="img" aria-hidden="true" focusable="false">
-        <path className="sp-r1" d="M70 35 H228" />
-        <path className="sp-r2" d="M292 35 H450" />
-        <circle className="sp-n" cx="46" cy="35" r="22" />
-        <circle className="sp-n" cx="474" cy="35" r="22" />
-        <rect className="sp-rt" x="228" y="14" width="64" height="42" rx="21" />
-        <path className="sp-x" d="M252 26 L268 44 M268 26 L252 44" />
-        {/* a pulse on the open end each time the visitor changes the swap: it is feedback, not a signal */}
-        <circle key={edited} className="sp-pulse" cx="228" cy="35" r="3" />
+    <figure className="sp-route">
+      <svg viewBox="0 0 560 150" role="img" aria-label={`Route from ${pay} to ${receive}. No router is configured, so the route is not complete.`} focusable="false">
+        <path id="sp-path" className="sp-r1" d="M106 62 H246" />
+        <path className="sp-r2" d="M314 62 H454" />
+        <g transform="translate(70 62)">
+          <circle className="sp-coin1" r="34" />
+          <circle className="sp-coin2" r="26" />
+          <text className="sp-letter" textAnchor="middle" dy="10">{pay.slice(-1)}</text>
+        </g>
+        <g transform="translate(490 62)">
+          <circle className="sp-coin1 dim" r="34" />
+          <circle className="sp-coin2 dim" r="26" />
+          <text className="sp-letter dim" textAnchor="middle" dy="10">{receive.slice(-1)}</text>
+        </g>
+        <g transform="translate(280 62)">
+          <circle className="sp-router" r="32" />
+          <circle className="sp-router-in" r="22" />
+          <path className="sp-slash" d="M-15 15 L15 -15" />
+          {!reduce ? <circle key={edited} className="sp-ripple" r="32" /> : null}
+        </g>
+        {!reduce && edited > 0 ? (
+          <circle key={`p${edited}`} className="sp-spark" r="4.5">
+            <animateMotion dur="0.8s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.2 1">
+              <mpath href="#sp-path" />
+            </animateMotion>
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.15;0.85;1" dur="0.85s" fill="freeze" />
+          </circle>
+        ) : null}
+        <text className="sp-t1" x="70" y="122" textAnchor="middle">{pay}</text>
+        <text className="sp-t2" x="70" y="140" textAnchor="middle">you pay</text>
+        <text className="sp-t1" x="280" y="122" textAnchor="middle">Router</text>
+        <text className="sp-t2 warn" x="280" y="140" textAnchor="middle">none configured</text>
+        <text className="sp-t1 dim" x="490" y="122" textAnchor="middle">{receive}</text>
+        <text className="sp-t2" x="490" y="140" textAnchor="middle">no quote</text>
       </svg>
-      <span className="sp-l1">{pay}</span>
-      <span className="sp-l2">Router not configured</span>
-      <span className="sp-l3">{receive}</span>
     </figure>
   );
 }
@@ -101,6 +133,7 @@ export function SwapView() {
               <label htmlFor="amt" id="amt-l">You pay</label>
               <Select value={pay} onValueChange={(v) => { setPay(v as PreviewToken); touch(); }} disabled={live}>
                 <SelectTrigger aria-label="Token you pay" className="sp-tok font-mono text-xs">
+                  <Coin token={pay} />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -139,7 +172,7 @@ export function SwapView() {
           <div className="sp-box">
             <div className="sp-top">
               <span id="rcv-l">You receive, at least</span>
-              <span className="sp-chip">{receive}</span>
+              <span className="sp-chip"><Coin token={receive} />{receive}</span>
             </div>
             <span className="sp-amt none" aria-labelledby="rcv-l">No quote</span>
             <small>No route is configured, so no amount can be quoted. None is made up.</small>

@@ -3,28 +3,12 @@
 import { useId, useState } from "react";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { defaultStage, pipelineAnnouncement, STAGE_META, STAGE_ORDER, STATUS_TEXT, type PipelineModel, type PipelineStage } from "@/lib/swarm-view";
-import type { Material, ResearchAgentRole, ResearchAgentStatus } from "@/types";
-
-/** A pipeline agent's status as a status circle: waiting and blocked are dotted, running and completed are outlined, failed is solid red. */
-const MATERIAL: Record<ResearchAgentStatus, Material> = {
-  pending: "dotted",
-  running: "outline",
-  completed: "outline",
-  failed: "solid",
-  blocked: "dotted",
-};
+import type { ResearchAgentRole } from "@/types";
+import { AGENT_MATERIAL as MATERIAL, OrbitCanvas } from "./OrbitCanvas";
 
 function time(iso: string | undefined): string {
   return iso ?? "not recorded";
 }
-
-/** The arc the three agents sit on. Sources and the human review are its two ends, drawn apart on purpose. */
-const SEGMENTS = [
-  "M110 230 C190 230 260 160 350 130",
-  "M350 130 C450 100 510 80 600 80",
-  "M600 80 C690 80 750 100 850 130",
-  "M850 130 C940 160 1010 230 1090 230",
-] as const;
 
 function Inspector({ stage, model, id }: { stage: PipelineStage; model: PipelineModel; id: string }) {
   const facts: Array<[string, React.ReactNode]> = [];
@@ -87,7 +71,7 @@ function Inspector({ stage, model, id }: { stage: PipelineStage; model: Pipeline
  *
  * `compact` drops the counts, the legend and the standing note (the overview shows the canvas alone).
  */
-export function SwarmPipeline({ model, compact = false, title, level = 2 }: { model: PipelineModel | null; compact?: boolean; title?: string; /** the heading level of the canvas title, so the page never skips one */ level?: 2 | 3 }) {
+export function SwarmPipeline({ model, compact = false, title, level = 2, actions }: { model: PipelineModel | null; compact?: boolean; title?: string; /** the heading level of the canvas title, so the page never skips one */ level?: 2 | 3; /** controls shown at the end of the header (a visitor-started illustration, a link to the run) */ actions?: React.ReactNode }) {
   const uid = useId();
   const [picked, setPicked] = useState<ResearchAgentRole | null>(null);
   const guide = model === null;
@@ -96,13 +80,9 @@ export function SwarmPipeline({ model, compact = false, title, level = 2 }: { mo
     : STAGE_ORDER.map((role) => ({ role, ...STAGE_META[role], status: "pending" as const, events: [] }));
   const sel = picked ?? (model ? defaultStage(model) : "research");
   const selected = stages.find((s) => s.role === sel) ?? stages[0];
-  const moves = !!model && (!model.example || !!model.illustration);
-  const running = (i: number) => moves && stages[i].status === "running";
   const detailId = `${uid}-detail`;
   const Heading = level === 2 ? "h2" : "h3";
   const hasInspector = !guide && !compact;
-  /* the signal that arrives at stage i travels on segment i (segment 0 is Sources → Research) */
-  const segState = (i: number): string => (i < 3 ? stages[i].status : "pending");
 
   return (
     <section
@@ -115,6 +95,7 @@ export function SwarmPipeline({ model, compact = false, title, level = 2 }: { mo
         <span className="pipe-tag">
           {model?.illustration ? "Illustration · no agent ran" : model?.example ? "Simulated · no agent ran" : guide ? "Reference, no run selected" : "From the run record"}
         </span>
+        {actions ? <span className="pipe-actions">{actions}</span> : null}
       </header>
       {model ? (
         <p className="sr" role="status">
@@ -122,79 +103,7 @@ export function SwarmPipeline({ model, compact = false, title, level = 2 }: { mo
         </p>
       ) : null}
 
-      <div className="pipe-track om">
-        <svg className="om-svg" viewBox="0 0 1200 330" aria-hidden="true" focusable="false">
-          <g className="om-rings">
-            <ellipse cx="600" cy="345" rx="585" ry="285" />
-            <ellipse cx="600" cy="345" rx="470" ry="225" />
-            <ellipse cx="600" cy="345" rx="350" ry="165" />
-          </g>
-          {SEGMENTS.map((d, i) => (
-            <g key={d} className={`om-seg s-${segState(i)}${i === 3 ? " out" : ""}`}>
-              <path className="om-line" d={d} />
-              {i < 3 && running(i) ? <path className="om-flow" d={d} /> : null}
-            </g>
-          ))}
-        </svg>
-
-        <div className="pipe-src om-src" role="group" aria-label="Sources">
-          <span className="om-sring" aria-hidden="true" />
-          <span className="ps-k">Sources</span>
-          <b>{model?.sources ? `${model.sources.available} of ${model.sources.total}` : model?.example ? "none read" : "approved"}</b>
-          <span className="ps-s">{model?.sources ? "available" : model?.example ? "simulated" : "public pages"}</span>
-        </div>
-
-        <ol className="pipe-nodes" aria-label="Agents, in the order they run">
-          {stages.map((stage, i) => (
-            <li key={stage.role} className={`pipe-li om-n${i + 1}`}>
-              {i > 0 ? <span className={`plink s-${stage.status}${running(i) ? " flow" : ""}`} aria-hidden="true" /> : null}
-              <button
-                type="button"
-                className={`pn s-${stage.status}`}
-                aria-pressed={hasInspector ? sel === stage.role : undefined}
-                aria-controls={hasInspector ? detailId : undefined}
-                disabled={guide}
-                onClick={() => setPicked(stage.role)}
-              >
-                <span className="om-ring" aria-hidden="true">
-                  <i className="om-halo" />
-                  <b>{i + 1}</b>
-                </span>
-                <span className="pn-body">
-                  <span className="pn-step">Step {i + 1}</span>
-                  <span className="pn-title">{stage.title}</span>
-                  <span className="pn-state">
-                    <StatusMaterial material={MATERIAL[stage.status]} />
-                    {guide ? "Waiting for a run" : STATUS_TEXT[stage.status]}
-                    {model?.example && stage.status === "running" ? " (simulated)" : ""}
-                  </span>
-                  <span className="pn-does">{stage.does}</span>
-                  {stage.status === "failed" || stage.status === "blocked" ? (
-                    <span className="pn-err">
-                      {stage.status === "failed" ? "Error" : "Did not run"}
-                      {stage.errorCode ? <>: <code>{stage.errorCode}</code></> : null}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ol>
-
-        <div className={`pipe-dock om-dock${model?.review.recorded ? " lit" : ""}`}>
-          <span className="pd-lamp" aria-hidden="true" />
-          <div>
-            <b>Human review</b>
-            <span>
-              {model?.review.recorded
-                ? `Recorded by ${model.review.by ?? "a reviewer"}${model.review.at ? `, ${model.review.at}` : ""}.`
-                : guide
-                  ? "A person decides. Nothing is approved without one."
-                  : "Not recorded. A finished run is not a review."}
-            </span>
-          </div>
-        </div>
-      </div>
+      <OrbitCanvas model={model} selected={hasInspector ? sel : null} onSelect={hasInspector ? setPicked : undefined} controls={detailId} />
 
       {!guide && !compact ? <Inspector key={selected.role} stage={selected} model={model} id={detailId} /> : null}
 

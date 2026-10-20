@@ -23,6 +23,13 @@ export const STAGE_META: Readonly<Record<ResearchAgentRole, { title: string; doe
   verification: { title: "Verification", does: "Checks each quote against the text that was fetched. It is not an audit." },
 };
 
+/** What an agent is doing while it runs, in the present tense. Only shown for an agent that really is running (or in a visitor-started illustration). */
+export const STAGE_DOING: Readonly<Record<ResearchAgentRole, string>> = {
+  research: "Reading the approved sources",
+  analysis: "Weighing the claims",
+  verification: "Checking each quote against its source",
+};
+
 export const STATUS_TEXT: Readonly<Record<ResearchAgentStatus, string>> = {
   pending: "Waiting",
   running: "Running",

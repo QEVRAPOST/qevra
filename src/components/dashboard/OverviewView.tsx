@@ -74,9 +74,21 @@ export function OverviewView() {
       </header>
 
       <div className="ov-stage sw-stage">
-        {ill.step === null ? (
-          <div className="ov-stage-ctl">
-            {lastRun ? (
+        <SwarmPipeline
+          model={canvas}
+          compact
+          title={lastRun && ill.step === null ? "Latest run" : "How a run works"}
+          actions={
+            ill.step !== null ? (
+              <>
+                <Button variant="ghost" size="small" onClick={ill.next} disabled={ill.step >= 4}>
+                  Next step
+                </Button>
+                <Button variant="ghost" size="small" onClick={ill.stop}>
+                  Stop
+                </Button>
+              </>
+            ) : lastRun ? (
               <Link className="ov-l" href={`/app/security?run=${encodeURIComponent(lastRun.id)}`}>
                 Open this run<span aria-hidden="true">→</span>
               </Link>
@@ -84,19 +96,9 @@ export function OverviewView() {
               <Button variant="ghost" size="small" onClick={ill.start}>
                 Trace a run
               </Button>
-            ) : null}
-          </div>
-        ) : (
-          <div className="ov-stage-ctl">
-            <Button variant="ghost" size="small" onClick={ill.next} disabled={ill.step >= 4}>
-              Next step
-            </Button>
-            <Button variant="ghost" size="small" onClick={ill.stop}>
-              Stop
-            </Button>
-          </div>
-        )}
-        <SwarmPipeline model={canvas} compact title={lastRun && ill.step === null ? "Latest run" : "How a run works"} />
+            ) : null
+          }
+        />
       </div>
 
       <div className="ov-cols">

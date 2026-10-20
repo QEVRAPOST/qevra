@@ -10,7 +10,8 @@ import { pipelineFor, runBadge } from "@/lib/swarm-view";
 import type { ActivityRow, SwarmRun } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
-import { MiniPipeline, SwarmPipeline } from "./SwarmPipeline";
+import { MiniPipeline } from "./SwarmPipeline";
+import { STATUS_TEXT } from "@/lib/swarm-view";
 
 type View = "runs" | "transactions";
 type RunFilter = "all" | "progress" | "completed" | "stopped";
@@ -33,6 +34,56 @@ function newestFirst(runs: SwarmRun[]): SwarmRun[] {
   return [...runs].sort((a, b) => Date.parse(b.liveSummary!.createdAt) - Date.parse(a.liveSummary!.createdAt));
 }
 
+/** One run, written out like a report: what was asked, what each agent did, what it found and what it cannot tell you. */
+function RunReport({ run }: { run: SwarmRun }) {
+  const model = pipelineFor(run);
+  const badge = runBadge(run);
+  const s = run.liveDetail ?? run.liveSummary;
+  const sim = !!run.exampleTag;
+  return (
+    <aside className="ac-detail ac-rep" key={run.id} aria-labelledby="ac-detail-h">
+      <p className="pg-kick">{sim ? "Run report · simulated" : "Run report"}</p>
+      <h2 id="ac-detail-h">{run.goal}</h2>
+      <div className="ac-m">
+        {sim ? <SimTag /> : null}
+        <Chip tone={badge.tone} material={badge.material}>{badge.label}</Chip>
+      </div>
+
+      <dl className="ac-facts">
+        <div><dt>Started</dt><dd>{s?.createdAt ?? "Simulated, no time"}</dd></div>
+        <div><dt>Sources read</dt><dd>{s ? `${s.availableSourceCount} of ${s.sourceCount} available` : "None: nothing ran"}</dd></div>
+        <div><dt>Findings</dt><dd>{s ? String(s.findingCount) : "None recorded"}</dd></div>
+        <div><dt>Human review</dt><dd>{run.humanReview.recorded ? `Recorded by ${run.humanReview.by}` : "Not recorded"}</dd></div>
+      </dl>
+
+      <h3 className="ov-h">What the agents did</h3>
+      <ol className="ac-agents">
+        {model?.stages.map((st, i) => (
+          <li key={st.role} className={`s-${st.status}`}>
+            <span className="ac-ag-n" aria-hidden="true">{i + 1}</span>
+            <span className="ac-ag-b">
+              <b>{st.title}</b>
+              <span>{st.does}</span>
+            </span>
+            <span className="ac-ag-o">
+              {STATUS_TEXT[st.status]}
+              {st.errorCode ? <code>{st.errorCode}</code> : null}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      <h3 className="ov-h">What this tells you, and what it does not</h3>
+      <p className="ac-sum">{run.shows}</p>
+      <p className="ac-sum dim">{run.notShown}</p>
+
+      <Link className="ov-l" href={`/app/security?run=${encodeURIComponent(run.id)}`}>
+        Open the evidence in Security Swarm<span aria-hidden="true">→</span>
+      </Link>
+    </aside>
+  );
+}
+
 function Runs() {
   const { model } = useAppModel();
   const sec = model.security;
@@ -43,26 +94,32 @@ function Runs() {
   const count = (g: RunFilter) => (g === "all" ? runs.length : runs.filter((r) => runGroup(r) === g).length);
   const shown = filter === "all" ? runs : runs.filter((r) => runGroup(r) === filter);
   const selected = shown.find((r) => r.id === pickedId) ?? shown[0];
-  const pipeline = selected ? pipelineFor(selected) : null;
-  const badge = selected ? runBadge(selected) : null;
+  const stats: Array<{ id: RunFilter; label: string }> = [
+    { id: "all", label: "All runs" },
+    { id: "progress", label: "In progress" },
+    { id: "completed", label: "Completed" },
+    { id: "stopped", label: "Stopped" },
+  ];
 
   return (
     <>
+      {!live && sec.status === "ready" ? (
+        <p className="ac-note">
+          <b>These runs are simulated.</b> They show how your history will look. When you start a real run in the <Link href="/app/security">Security Swarm</Link>, it is listed here with what it found and what it could not tell you.
+        </p>
+      ) : null}
       {sec.status === "ready" ? (
-        <ToggleGroup
-          label="Filter research runs"
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { value: "all", label: `All (${count("all")})` },
-            { value: "progress", label: `In progress (${count("progress")})`, disabled: count("progress") === 0 },
-            { value: "completed", label: `Completed (${count("completed")})`, disabled: count("completed") === 0 },
-            { value: "stopped", label: `Stopped (${count("stopped")})`, disabled: count("stopped") === 0 },
-          ]}
-        />
+        <div className="ac-stats" role="group" aria-label="Filter research runs">
+          {stats.map((st) => (
+            <button key={st.id} type="button" aria-pressed={filter === st.id} disabled={st.id !== "all" && count(st.id) === 0} onClick={() => setFilter(st.id)}>
+              <span className="ac-stat-n">{count(st.id)}</span>
+              <span className="ac-stat-l">{st.label}</span>
+            </button>
+          ))}
+        </div>
       ) : null}
       <div className="ac-body">
-        <ol className="ac-time" aria-label={live ? "Live research runs" : "Simulated research runs"} aria-busy={sec.status === "loading" || undefined}>
+        <ol className="ac-time" aria-label={live ? "Live research runs, newest first" : "Simulated research runs"} aria-busy={sec.status === "loading" || undefined}>
           {sec.status === "ready" &&
             shown.map((r) => {
               const b = runBadge(r);
@@ -76,6 +133,7 @@ function Runs() {
                     <span className="ac-m">
                       {r.exampleTag ? <SimTag /> : null}
                       <Chip tone={b.tone} material={b.material}>{b.label}</Chip>
+                      <MiniPipeline model={pipelineFor(r)} />
                     </span>
                   </button>
                 </li>
@@ -88,24 +146,9 @@ function Runs() {
             </EmptyState>
           )}
           {sec.status === "unavailable" && <EmptyState as="li" title="Run history unavailable.">{sec.unavailableMessage ?? "The run feed is not connected. No simulated runs are substituted, and this is not a statement that there are none."}</EmptyState>}
-          {sec.status === "ready" && shown.length === 0 ? <EmptyState as="li" title="No runs match this filter.">Choose All to see every run.</EmptyState> : null}
+          {sec.status === "ready" && shown.length === 0 ? <EmptyState as="li" title="No runs match this filter.">Choose All runs to see every one.</EmptyState> : null}
         </ol>
-        {sec.status === "ready" && selected && badge ? (
-          <aside className="ac-detail" key={selected.id} aria-labelledby="ac-detail-h">
-            <p className="pg-kick">{selected.liveSummary?.createdAt ? `Started ${selected.liveSummary.createdAt}` : "Simulated run"}</p>
-            <h2 id="ac-detail-h">{selected.goal}</h2>
-            <div className="ac-m">
-              {selected.exampleTag ? <SimTag /> : null}
-              <Chip tone={badge.tone} material={badge.material}>{badge.label}</Chip>
-              <MiniPipeline model={pipeline} />
-            </div>
-            <SwarmPipeline model={pipeline} compact title="Pipeline" level={3} />
-            <p className="ac-sum">{selected.shows}</p>
-            <Link className="ov-l" href={`/app/security?run=${encodeURIComponent(selected.id)}`}>
-              Open the evidence in Security Swarm<span aria-hidden="true">→</span>
-            </Link>
-          </aside>
-        ) : null}
+        {sec.status === "ready" && selected ? <RunReport run={selected} /> : null}
       </div>
     </>
   );
@@ -196,13 +239,13 @@ export function ActivityView() {
   const [view, setView] = useState<View>("runs");
   return (
     <section className="route ac" aria-labelledby="h-act">
-      <PageHead id="h-act" kicker="Activity · history" title="Activity" lede="Research runs the Swarm made, and transactions made from a wallet. They are different things, so they are shown apart." />
+      <PageHead id="h-act" kicker="Activity · history" title="Activity" lede="A log of what has already happened: research the Security Swarm has done, and transactions made from a wallet. It is a record of the past, newest first. It is not a plan or a roadmap." />
       <ToggleGroup
         label="Choose what to see"
         value={view}
         onChange={setView}
         options={[
-          { value: "runs", label: "Research runs" },
+          { value: "runs", label: "Research history" },
           { value: "transactions", label: "Transactions" },
         ]}
       />
