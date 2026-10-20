@@ -17,6 +17,7 @@ import { Field } from "@/components/ui/Field";
 import { Panel } from "@/components/ui/Panel";
 import { AppNotice } from "@/components/ui/AppNotice";
 import { ModelContext } from "@/components/dashboard/AppModelContext";
+import { WalletPickerDialog } from "@/components/dashboard/WalletPickerDialog";
 import {
   createSecurityRun,
   getSecurityCapabilities,
@@ -28,7 +29,7 @@ import {
   SecurityApiClientError,
 } from "@/features/security/client";
 import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, watchReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
-import { getInjectedReadOnlyProvider } from "@/features/wallet/browser";
+import { discoverInjectedReadOnlyWallets, type InjectedReadOnlyWalletChoice } from "@/features/wallet/browser";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { DEFAULT_NETWORK_ID, isNetworkAvailable } from "@/lib/config/networks";
 import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "./live-model";
@@ -211,6 +212,10 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const [gateMessage, setGateMessage] = useState<string>();
   const gateRef = useRef<GateState>("checking");
   const [wallet, setWallet] = useState<ReadOnlyWalletState>({ status: "disconnected" });
+  const [walletPickerOpen, setWalletPickerOpen] = useState(false);
+  const [walletChoices, setWalletChoices] = useState<InjectedReadOnlyWalletChoice[]>([]);
+  const [walletDiscoveryLoading, setWalletDiscoveryLoading] = useState(false);
+  const [walletDiscoveryError, setWalletDiscoveryError] = useState<string>();
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkId>(DEFAULT_NETWORK_ID);
   const [networkRpc, setNetworkRpc] = useState<NetworkRpcState>({ status: "not_requested" });
   const [networkRefreshNonce, setNetworkRefreshNonce] = useState(0);
@@ -224,6 +229,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const [actionMessage, setActionMessage] = useState<string>();
   const [dataError, setDataError] = useState<string>();
   const providerRef = useRef<ReadOnlyEip1193Provider | undefined>(undefined);
+  const walletDiscoveryId = useRef(0);
   const unwatchRef = useRef<(() => void) | undefined>(undefined);
   const walletRequestGuardRef = useRef(createWalletRequestGuard());
   const pollInFlight = useRef(false);
@@ -312,6 +318,31 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setWallet(value);
   }, []);
 
+  const closeWalletPicker = useCallback(() => {
+    walletDiscoveryId.current += 1;
+    setWalletPickerOpen(false);
+    setWalletDiscoveryLoading(false);
+  }, []);
+
+  const openWalletPicker = useCallback(async () => {
+    if (wallet.status === "loading" || wallet.address) return;
+    const requestId = ++walletDiscoveryId.current;
+    setWalletChoices([]);
+    setWalletDiscoveryError(undefined);
+    setWalletDiscoveryLoading(true);
+    setWalletPickerOpen(true);
+    try {
+      const choices = await discoverInjectedReadOnlyWallets();
+      if (requestId !== walletDiscoveryId.current) return;
+      setWalletChoices(choices);
+    } catch {
+      if (requestId !== walletDiscoveryId.current) return;
+      setWalletDiscoveryError("Wallet discovery could not be completed. Check your browser wallet extensions and try again.");
+    } finally {
+      if (requestId === walletDiscoveryId.current) setWalletDiscoveryLoading(false);
+    }
+  }, [wallet.address, wallet.status]);
+
   const disconnectWallet = useCallback(() => {
     walletRequestGuardRef.current.invalidate();
     unwatchRef.current?.();
@@ -320,29 +351,38 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setWallet(disconnectReadOnlyWallet());
   }, []);
 
-  const connectWallet = useCallback(async () => {
+  const connectWallet = useCallback(async (provider: ReadOnlyEip1193Provider) => {
     if (wallet.status === "loading") return;
-    if (providerRef.current && wallet.address) {
-      disconnectWallet();
-      return;
-    }
-    const provider = getInjectedReadOnlyProvider();
-    if (!provider) {
-      walletRequestGuardRef.current.invalidate();
-      setWallet({ status: "wallet_not_installed", message: "No EIP-1193 wallet provider is available." });
-      return;
-    }
+    if (wallet.address) return;
+    closeWalletPicker();
     const requestId = walletRequestGuardRef.current.begin();
     setWallet({ status: "loading", message: "Waiting for your wallet's account-access decision." });
+    unwatchRef.current?.();
+    unwatchRef.current = undefined;
     providerRef.current = provider;
     const state = await connectReadOnlyWallet(provider);
     if (!walletRequestGuardRef.current.isCurrent(requestId) || providerRef.current !== provider) return;
     setWallet(state);
     if (state.address) {
-      unwatchRef.current?.();
       unwatchRef.current = watchReadOnlyWallet(provider, () => { void refreshWallet(); });
+    } else {
+      providerRef.current = undefined;
     }
-  }, [disconnectWallet, refreshWallet, wallet.address, wallet.status]);
+  }, [closeWalletPicker, refreshWallet, wallet.address, wallet.status]);
+
+  const selectWallet = useCallback((id: string) => {
+    const choice = walletChoices.find((walletChoice) => walletChoice.id === id);
+    if (!choice || wallet.address || wallet.status === "loading") return;
+    void connectWallet(choice.provider);
+  }, [connectWallet, wallet.address, wallet.status, walletChoices]);
+
+  const pressWalletButton = useCallback(() => {
+    if (wallet.address) {
+      disconnectWallet();
+      return;
+    }
+    void openWalletPicker();
+  }, [disconnectWallet, openWalletPicker, wallet.address]);
 
   const protectRequest = useCallback(<T,>(request: Promise<T>, requestEpoch: number): Promise<T> => request.catch((error: unknown) => {
     if (isUnauthorized(error) && requestEpoch === accessEpoch.current) expireSession();
@@ -655,19 +695,19 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       },
     setAmount() { /* Swap input remains non-executable and disabled. */ },
     pressSwapButton() { /* No swap route or transaction method is configured. */ },
-    pressWalletButton() { void connectWallet(); },
+    pressWalletButton,
     refreshWallet: () => { void refreshWallet(); },
     refreshNetwork() {
       setNetworkRpc({ status: "loading" });
       setNetworkRefreshNonce((current) => current + 1);
     },
     pressLedgerAction(id) {
-      if (id === "connect") void connectWallet();
+      if (id === "connect") void openWalletPicker();
       else if (id === "disconnect") disconnectWallet();
     },
     createSecurityRun: startResearch,
     logout,
-  }), [connectWallet, disconnectWallet, refreshWallet, startResearch, logout]);
+  }), [pressWalletButton, openWalletPicker, disconnectWallet, refreshWallet, startResearch, logout]);
   const value = useMemo<AppModelValue>(() => ({ model: { ...model, security: { ...model.security, runs: securityRuns } }, actions }), [model, actions, securityRuns]);
   const access = useMemo<LiveResearchAccessValue>(() => ({
     gate,
@@ -684,7 +724,17 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <LiveResearchAccessContext.Provider value={access}>
-      <ModelContext.Provider value={value}>{children}</ModelContext.Provider>
+      <ModelContext.Provider value={value}>
+        {children}
+        <WalletPickerDialog
+          open={walletPickerOpen}
+          choices={walletChoices}
+          isDiscovering={walletDiscoveryLoading}
+          error={walletDiscoveryError}
+          onSelect={selectWallet}
+          onClose={closeWalletPicker}
+        />
+      </ModelContext.Provider>
     </LiveResearchAccessContext.Provider>
   );
 }

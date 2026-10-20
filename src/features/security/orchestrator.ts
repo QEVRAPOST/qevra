@@ -116,6 +116,61 @@ function sanitizeResearchOutput(output: ResearchAgentOutput, sources: Map<string
   };
 }
 
+function normalizeExplorerUrl(value: string): string | undefined {
+  try {
+    const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+    return `${url.hostname.toLowerCase()}${url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function explorerUrlIn(text: string): string | undefined {
+  const match = text.match(/(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:\/[a-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?/i);
+  if (!match) return undefined;
+  return normalizeExplorerUrl(match[0].replace(/[),.;]+$/, ""));
+}
+
+function explicitRobinhoodExplorerTable(
+  sourceText: string,
+): { detected: false } | { detected: true; mainnet?: string; testnet?: string } {
+  const text = sourceText.replace(/\s+/g, " ").trim();
+  const header = /\bNetwork Configuration\s+Property\s+Robinhood Chain\s+Robinhood Chain Testnet\b/i.test(text);
+  if (!header) return { detected: false };
+  const row = /\bBlock Explorer\s+(\S+)\s+(\S+)/i.exec(text);
+  if (!row) return { detected: true };
+  const mainnet = normalizeExplorerUrl(row[1]!);
+  const testnet = normalizeExplorerUrl(row[2]!);
+  return { detected: true, ...(mainnet ? { mainnet } : {}), ...(testnet ? { testnet } : {}) };
+}
+
+function hasExplicitNetworkExplorerAssociation(
+  claim: string,
+  evidence: VerificationAgentOutput["claimChecks"][number]["evidence"],
+  sources: Map<string, StoredSource>,
+): boolean {
+  if (!/\bexplorer\b/i.test(claim)) return true;
+  const claimedExplorer = explorerUrlIn(claim);
+  if (!claimedExplorer) return true;
+  const hasTestnet = /\btestnet\b/i.test(claim);
+  const hasMainnet = /\bmainnet\b/i.test(claim);
+  if (!hasTestnet && !hasMainnet) return true;
+  if (hasTestnet && hasMainnet) return false;
+  const network = hasTestnet ? "testnet" : "mainnet";
+
+  return evidence.some((item) => {
+    const sourceText = sources.get(item.sourceId)?.text;
+    if (!sourceText) return false;
+    const table = explicitRobinhoodExplorerTable(sourceText);
+    if (table.detected) return table[network] === claimedExplorer;
+    return sourceText
+      .split(/(?<=[.!?])\s+|\n+/)
+      .some((sentence) => /\bexplorer\b/i.test(sentence)
+        && new RegExp(`\\b${network}\\b`, "i").test(sentence)
+        && explorerUrlIn(sentence) === claimedExplorer);
+  });
+}
+
 function sanitizeVerificationOutput(
   output: VerificationAgentOutput,
   research: ResearchAgentOutput,
@@ -131,6 +186,7 @@ function sanitizeVerificationOutput(
   let invalidSourceCitation = false;
   let missingClaimCheck = false;
   let unsupportedAssessmentDowngraded = false;
+  let unsupportedExplorerAssociationDowngraded = false;
 
   for (const check of output.claimChecks) {
     if (!claimIds.has(check.claimId)) {
@@ -149,14 +205,20 @@ function sanitizeVerificationOutput(
       return matched;
     });
     const citationWasDropped = evidence.length !== check.evidence.length;
-    const shouldDowngrade = check.assessment !== "unclear" && evidence.length === 0;
+    const claim = research.claims.find((entry) => entry.id === check.claimId)?.claim ?? "";
+    const unsupportedExplorerAssociation = check.assessment === "supported"
+      && !hasExplicitNetworkExplorerAssociation(claim, evidence, sources);
+    const shouldDowngrade = (check.assessment !== "unclear" && evidence.length === 0) || unsupportedExplorerAssociation;
     if (shouldDowngrade) unsupportedAssessmentDowngraded = true;
+    if (unsupportedExplorerAssociation) unsupportedExplorerAssociationDowngraded = true;
     checks.set(check.claimId, {
       ...check,
       assessment: shouldDowngrade ? "unclear" : check.assessment,
       evidence,
       rationale: shouldDowngrade
-        ? "The assessment was changed to unclear because no exact quote from an available approved source remained."
+        ? unsupportedExplorerAssociation
+          ? "The exact quote is retained, but the approved source does not explicitly associate the cited explorer with the claimed network; this multi-part claim remains unclear."
+          : "The assessment was changed to unclear because no exact quote from an available approved source remained."
         : citationWasDropped
           ? "Only citations that exactly matched available approved source excerpts were retained."
           : check.rationale,
@@ -207,6 +269,7 @@ function sanitizeVerificationOutput(
     ...(missingClaimCheck ? ["Research claims without a Verification Agent check remain unclear and unverified."] : []),
     ...(invalidSourceCitation ? ["Citations that did not match an available allowlisted source quotation were discarded."] : []),
     ...(unsupportedAssessmentDowngraded ? ["Non-unclear assessments without an exact source quotation were downgraded to unclear."] : []),
+    ...(unsupportedExplorerAssociationDowngraded ? ["Claims with a network-to-explorer association remain unclear unless the cited approved source explicitly establishes that mapping."] : []),
     ...(invalidArtifactReference ? ["Checks referring to artifacts without a completed digest-backed test result were discarded."] : []),
     ...(duplicateArtifactReference ? ["Duplicate deterministic artifact checks were discarded."] : []),
     ...(missingArtifactCheck ? ["Completed deterministic artifacts without a Verification Agent check remain inconclusive."] : []),
@@ -214,7 +277,7 @@ function sanitizeVerificationOutput(
   ]);
   const normalized = {
     ...output,
-    summary: unknownClaimReference || duplicateClaimReference || missingClaimCheck || invalidSourceCitation || unsupportedAssessmentDowngraded || invalidArtifactReference || duplicateArtifactReference || missingArtifactCheck || excludedArtifactCount > 0
+    summary: unknownClaimReference || duplicateClaimReference || missingClaimCheck || invalidSourceCitation || unsupportedAssessmentDowngraded || unsupportedExplorerAssociationDowngraded || invalidArtifactReference || duplicateArtifactReference || missingArtifactCheck || excludedArtifactCount > 0
       ? "Verification references were normalized against Research claims, approved source quotations, and completed artifacts; see per-claim assessments and limitations."
       : output.summary,
     claimChecks,

@@ -783,6 +783,117 @@ test("pipeline filters unproven source, claim, and artifact references and keeps
   assert.ok(run.findings.every((finding) => finding.evidenceStatus === "not_verified" && finding.evidence.length === 0));
 });
 
+test("persisted Robinhood explorer claim stays unclear when the source maps that URL to Mainnet", async () => {
+  const robinhoodSourceText = "Network Configuration Property Robinhood Chain Robinhood Chain Testnet Chain ID 4663 46630 Currency Symbol ETH ETH Block Explorer robinhoodchain.blockscout.com explorer.testnet.chain.robinhood.com";
+  const robinhoodSource: StoredSource = {
+    id: "robinhood-chain-docs",
+    title: "Robinhood Chain developer documentation",
+    url: "https://docs.robinhood.com/chain/connecting/",
+    retrievedAt: "2026-10-20T20:12:16.000Z",
+    status: "available",
+    text: robinhoodSourceText,
+    excerpt: robinhoodSourceText,
+    sha256: createHash("sha256").update(robinhoodSourceText).digest("hex"),
+  };
+  const persistedClaim = {
+    id: "network-configuration",
+    claim: "The public testnet network for Robinhood Chain uses chain ID 46630, native gas token ETH, and is accessible via the block explorer robinhoodchain.blockscout.com.",
+    evidence: [{
+      sourceId: robinhoodSource.id,
+      quote: "Robinhood Chain Testnet Chain ID 4663 46630 Currency Symbol ETH ETH Block Explorer robinhoodchain.blockscout.com",
+    }],
+  };
+  const outputs = {
+    research: {
+      summary: "Robinhood Chain network configuration was reviewed.",
+      claims: [persistedClaim],
+      scopeLimitations: [],
+    },
+    analysis: analysisOutput,
+    verification: {
+      summary: "All claims are supported by the exact source quotation.",
+      claimChecks: [{
+        claimId: persistedClaim.id,
+        assessment: "supported" as const,
+        evidence: [persistedClaim.evidence[0]!],
+        rationale: "The source quotation contains the network and explorer names.",
+      }],
+      testArtifactChecks: [],
+      limitations: [],
+    },
+  };
+  const provider: ModelProvider = {
+    name: "persisted-robinhood-claim-offline-fixture",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      return { output: outputs[request.agent] as T };
+    },
+  };
+  const run = createQueuedRun("88888884-8888-4888-8888-888888888888", "robinhood-readonly-wallet", "Read-only evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [robinhoodSource],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  assert.equal(run.status, "completed");
+  assert.equal(run.verification?.claimChecks[0]?.assessment, "unclear");
+  assert.deepEqual(run.verification?.claimChecks[0]?.evidence, persistedClaim.evidence);
+  assert.match(run.verification?.claimChecks[0]?.rationale ?? "", /does not explicitly associate.*explorer.*claimed network/i);
+  assert.ok(run.verification?.limitations.some((item) => /network-to-explorer association/i.test(item)));
+  assert.equal(run.findings[0]?.modelAssessment, "unclear");
+  assert.equal(run.findings[0]?.evidenceStatus, "not_verified");
+});
+
+test("Verification accepts a chain-specific explorer mapping explicitly present in the approved source", async () => {
+  const robinhoodSourceText = "Network Configuration Property Robinhood Chain Robinhood Chain Testnet Chain ID 4663 46630 Currency Symbol ETH ETH Block Explorer robinhoodchain.blockscout.com explorer.testnet.chain.robinhood.com";
+  const robinhoodSource: StoredSource = {
+    id: "robinhood-chain-docs",
+    title: "Robinhood Chain developer documentation",
+    url: "https://docs.robinhood.com/chain/connecting/",
+    retrievedAt: "2026-10-20T20:12:16.000Z",
+    status: "available",
+    text: robinhoodSourceText,
+    excerpt: robinhoodSourceText,
+    sha256: createHash("sha256").update(robinhoodSourceText).digest("hex"),
+  };
+  const claim = {
+    id: "testnet-explorer",
+    claim: "Robinhood Chain Testnet uses explorer.testnet.chain.robinhood.com as its block explorer.",
+    evidence: [{
+      sourceId: robinhoodSource.id,
+      quote: "Robinhood Chain Testnet Chain ID 4663 46630 Currency Symbol ETH ETH Block Explorer robinhoodchain.blockscout.com explorer.testnet.chain.robinhood.com",
+    }],
+  };
+  const outputs = {
+    research: { summary: "The testnet explorer mapping is documented.", claims: [claim], scopeLimitations: [] },
+    analysis: analysisOutput,
+    verification: {
+      summary: "The chain-specific explorer mapping is supported.",
+      claimChecks: [{ claimId: claim.id, assessment: "supported" as const, evidence: [claim.evidence[0]!], rationale: "The source table explicitly maps the Testnet column to this explorer." }],
+      testArtifactChecks: [],
+      limitations: [],
+    },
+  };
+  const provider: ModelProvider = {
+    name: "explicit-robinhood-explorer-offline-fixture",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      return { output: outputs[request.agent] as T };
+    },
+  };
+  const run = createQueuedRun("88888885-8888-4888-8888-888888888888", "robinhood-readonly-wallet", "Read-only evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [robinhoodSource],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  assert.equal(run.status, "completed");
+  assert.equal(run.verification?.claimChecks[0]?.assessment, "supported");
+  assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
+});
+
 test("empty Research claims produce an honest empty findings report", async () => {
   const outputs = {
     research: { ...researchOutput, claims: [], scopeLimitations: ["The source did not support a claim for this question."] },

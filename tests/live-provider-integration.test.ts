@@ -21,7 +21,7 @@ test("public wallet UI renders while protected research UI remains behind the lo
   assert.doesNotMatch(markup, /Protected research content/);
 });
 
-test("wallet UI consumes live address, selected chain, mismatch, balance, and refresh actions", () => {
+test("wallet UI consumes live address, selected chain, mismatch, hides mismatched balance, and preserves refresh actions", () => {
   const markup = execFileSync(process.execPath, [
     "--import", "tsx", "--input-type=module", "--eval",
     'import { createElement } from "react"; import { renderToStaticMarkup } from "react-dom/server"; import { ModelContext } from "./src/components/dashboard/AppModelContext.tsx"; import { WalletView } from "./src/components/dashboard/WalletView.tsx"; import { buildLiveAppModel } from "./src/features/dashboard/live-model.ts"; const wallet = { status: "connected", address: "0x0000000000000000000000000000000000000001", chainId: 46630, networkName: "Robinhood Chain Testnet", isQevraTargetNetwork: true, balance: { symbol: "ETH", amount: "0.1", wei: "100000000000000000", blockNumber: "16", blockHash: `0x${"a".repeat(64)}`, provider: "connected_wallet_rpc", observedAt: "2026-10-20T00:00:00.000Z" } }; const model = buildLiveAppModel({ wallet, selectedNetwork: "mainnet", networkRpc: { status: "unavailable", errorCode: "rpc_unavailable", message: "Public RPC offline" }, runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false }); const value = { model, actions: { setNetwork() {}, setAmount() {}, pressSwapButton() {}, pressWalletButton() {}, pressLedgerAction() {}, refreshWallet() {}, createSecurityRun() {}, logout() {} } }; process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(WalletView))))',
@@ -30,8 +30,9 @@ test("wallet UI consumes live address, selected chain, mismatch, balance, and re
   assert.match(markup, /Robinhood Mainnet/);
   assert.match(markup, /0x0000…0001/);
   assert.match(markup, /chain 46630/);
-  assert.match(markup, /Differs from the network the app reads \(Mainnet\)/);
-  assert.match(markup, /0\.1/);
+  assert.match(markup, /manually select Robinhood Mainnet \(chain ID 4663\)/);
+  assert.match(markup, /Not available/);
+  assert.doesNotMatch(markup, /0\.1/);
   assert.match(markup, /Public RPC offline/);
   assert.match(markup, /Refresh balance/);
   assert.match(markup, /Disconnect/);
@@ -266,7 +267,7 @@ test("live wallet model exposes selected chain, mismatch, RPC loading, and RPC e
   const loading = build({ status: "loading" });
   assert.equal(loading.wallet.connection?.address, wallet.address);
   assert.equal(loading.wallet.connection?.chainId, 46_630);
-  assert.equal(loading.wallet.eoa.assets[0]?.amount, "0.1");
+  assert.deepEqual(loading.wallet.eoa.assets, []);
   assert.equal(loading.network.selected, "mainnet");
   assert.equal(loading.network.walletMismatch, true);
   assert.equal(loading.network.rpc.status, "loading");
