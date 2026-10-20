@@ -30,6 +30,27 @@ test("Overview routes a connected wallet CTA to the shared wallet state", () => 
   assert.doesNotMatch(markup, /Connect wallet/);
 });
 
+test("header label and Overview CTA derive from the same wallet model state", () => {
+  const connectedWallet = {
+    status: "connected" as const,
+    address: "0x0000000000000000000000000000000000000001" as const,
+    chainId: 46_630,
+    networkName: "Robinhood Chain Testnet" as const,
+  };
+  const common = { selectedNetwork: "testnet" as const, runs: null, accessState: "unauthenticated" as const, isRefreshing: false, isCreating: false };
+  const connectedModel = buildLiveAppModel({ ...common, wallet: connectedWallet });
+  const connectedOverview = renderOverview(connectedWallet);
+  assert.equal(connectedModel.wallet.walletButtonLabel, "Disconnect wallet");
+  assert.match(connectedOverview, /href="\/app\/wallet"[^>]*>View wallet/);
+  assert.doesNotMatch(connectedOverview, />Connect wallet</);
+
+  const disconnectedWallet = { status: "disconnected" as const };
+  const disconnectedModel = buildLiveAppModel({ ...common, wallet: disconnectedWallet });
+  const disconnectedOverview = renderOverview(disconnectedWallet);
+  assert.equal(disconnectedModel.wallet.walletButtonLabel, "Connect wallet");
+  assert.match(disconnectedOverview, />Connect wallet</);
+});
+
 test("Overview shows a pending wallet state instead of an enabled disconnected CTA", () => {
   const markup = renderOverview({ status: "loading", message: "Waiting for your wallet's account-access decision." });
 

@@ -124,17 +124,22 @@ export function reconcileResearchRunHistory(
   ]);
 }
 
-function buildLiveWallet(wallet: ReadOnlyWalletState): AppModel["wallet"] {
+function buildLiveWallet(wallet: ReadOnlyWalletState, walletMismatch: boolean, selectedNetwork: NetworkId): AppModel["wallet"] {
   const hasAddress = wallet.address !== undefined;
+  const network = NETWORKS.find((candidate) => candidate.id === selectedNetwork);
+  const visibleBalance = walletMismatch ? undefined : wallet.balance;
+  const mismatchMessage = walletMismatch
+    ? `Your wallet is on ${wallet.networkName ?? "an unknown network"} (chain ID ${wallet.chainId ?? "unknown"}); the app is set to ${network?.label ?? "the selected network"} (chain ID ${network?.chainId ?? "unknown"}). No balance is shown. To read this network, manually select ${network?.label ?? "the selected network"} (chain ID ${network?.chainId ?? "unknown"}) in your wallet. VEYRA will not switch it.`
+    : undefined;
   const facts = [
     { label: "Network", value: wallet.networkName ?? "Not connected" },
     ...(hasAddress ? [{ label: "Provider", value: wallet.providerName ?? "Injected EIP-1193 wallet provider" }] : []),
     ...(wallet.chainId !== undefined ? [{ label: "Chain ID", value: String(wallet.chainId) }] : []),
-    ...(wallet.balance ? [
-      { label: "Latest block", value: wallet.balance.blockNumber },
-      { label: "Block hash", value: wallet.balance.blockHash },
-      { label: "Observed at", value: wallet.balance.observedAt },
-      { label: "Read source", value: wallet.balance.provider },
+    ...(visibleBalance ? [
+      { label: "Latest block", value: visibleBalance.blockNumber },
+      { label: "Block hash", value: visibleBalance.blockHash },
+      { label: "Observed at", value: visibleBalance.observedAt },
+      { label: "Read source", value: visibleBalance.provider },
     ] : []),
     { label: `${PROJECT_NAME} authority`, value: "None claimed" },
   ];
@@ -160,12 +165,16 @@ function buildLiveWallet(wallet: ReadOnlyWalletState): AppModel["wallet"] {
       intro: hasAddress ? READ_ONLY_NOTICE : wallet.message ?? "No wallet is connected. Connect only when you choose.",
       ...(hasAddress ? { address: { label: wallet.address!, demo: false } } : {}),
       facts,
-      assets: wallet.balance ? [{ symbol: wallet.balance.symbol, amount: wallet.balance.amount }] : [],
-      ...(wallet.balance ? {} : { emptyAssets: hasAddress ? "Public native balance is unavailable." : "Connect to request public balance data." }),
+      assets: visibleBalance ? [{ symbol: visibleBalance.symbol, amount: visibleBalance.amount }] : [],
+      ...(visibleBalance ? {} : {
+        emptyAssets: hasAddress
+          ? mismatchMessage ?? "Public native balance is unavailable."
+          : "Connect to request public balance data.",
+      }),
       actions: hasAddress
         ? [{ id: "disconnect", label: "Disconnect", variant: "ghost" }]
         : [{ id: "connect", label: "Connect wallet", variant: "primary" }],
-      footnote: wallet.message,
+      footnote: mismatchMessage ?? wallet.message,
     },
     qevra: {
       kind: "qevra",
@@ -220,9 +229,12 @@ function buildLiveStatusBar(
   capabilities: SecurityResearchCapabilities | undefined,
   accessState: NonNullable<AppModel["security"]["accessState"]>,
   serviceError = false,
+  walletMismatch = false,
 ): StatusBarItem[] {
   const walletText = wallet.address
-    ? `Wallet · ${wallet.networkName === "Robinhood Chain Testnet" ? "Testnet" : wallet.networkName === "Robinhood Chain" ? "Mainnet" : "Unknown"}`
+    ? walletMismatch
+      ? "Wallet · network mismatch"
+      : `Wallet · ${wallet.networkName === "Robinhood Chain Testnet" ? "Testnet" : wallet.networkName === "Robinhood Chain" ? "Mainnet" : "Unknown"}`
     : `Wallet · ${wallet.status === "disconnected" ? "not connected" : wallet.status.replaceAll("_", " ")}`;
   const swarmText = accessState === "unauthenticated"
     ? "Swarm · sign in required"
@@ -258,6 +270,8 @@ function buildLiveStatusBar(
 
 function buildLiveCoverage(
   wallet: ReadOnlyWalletState,
+  walletMismatch: boolean,
+  selectedNetwork: NetworkId,
   capabilities: SecurityResearchCapabilities | undefined,
   accessState: NonNullable<AppModel["security"]["accessState"]>,
   runs: ResearchRunSummary[] | null,
@@ -266,13 +280,18 @@ function buildLiveCoverage(
   return COVERAGE_ROWS.map((sourceRow) => {
     const row = brandizeDisplayStrings(sourceRow, PROJECT_NAME);
     if (row.id === "wallet-connection") {
+      const selected = NETWORKS.find((network) => network.id === selectedNetwork);
       return {
         ...row,
         tone: wallet.address ? "neutral" : "unk",
         material: wallet.address ? "solid" : "dotted",
-        statusLabel: wallet.address ? "Connected · read-only" : wallet.status.replaceAll("_", " "),
+        statusLabel: wallet.address
+          ? walletMismatch ? "Connected · network mismatch" : "Connected · read-only"
+          : wallet.status.replaceAll("_", " "),
         note: wallet.address
-          ? `Public balance read from ${wallet.balance?.provider ?? "wallet RPC"}; observed at block ${wallet.balance?.blockNumber ?? "unavailable"}. No signature requested.`
+          ? walletMismatch
+            ? `Wallet network ${wallet.networkName ?? "unknown"} (chain ID ${wallet.chainId ?? "unknown"}) differs from selected ${selected?.label ?? "network"} (chain ID ${selected?.chainId ?? "unknown"}). No balance is shown. Manually select ${selected?.label ?? "the selected network"} (chain ID ${selected?.chainId ?? "unknown"}) in your wallet to match; VEYRA will not switch it.`
+            : `Public balance read from ${wallet.balance?.provider ?? "wallet RPC"}; observed at block ${wallet.balance?.blockNumber ?? "unavailable"}. No signature requested.`
           : wallet.message ?? "No wallet connection was requested.",
       };
     }
@@ -359,10 +378,10 @@ export function buildLiveAppModel(input: {
 
   return {
     mode: "live",
-    statusBar: buildLiveStatusBar(wallet, capabilities, accessState, Boolean(input.dataError)),
-    coverage: buildLiveCoverage(wallet, capabilities, accessState, runs, input.dataError),
+    statusBar: buildLiveStatusBar(wallet, capabilities, accessState, Boolean(input.dataError), walletMismatch),
+    coverage: buildLiveCoverage(wallet, walletMismatch, selectedNetwork, capabilities, accessState, runs, input.dataError),
     network: { selected: selectedNetwork, options: [...NETWORKS], rpc, walletMismatch },
-    wallet: buildLiveWallet(wallet),
+    wallet: buildLiveWallet(wallet, walletMismatch, selectedNetwork),
     swap: buildLiveSwap(),
     activity,
     security,

@@ -53,7 +53,7 @@ test("network explorer shows separate Testnet and Mainnet reads and the honest e
   assert.match(markup, /Robinhood Mainnet/);
   assert.match(markup, /98765/);
   assert.match(markup, /https:\/\/explorer\.testnet\.chain\.robinhood\.com/);
-  assert.match(markup, /No verified VEYRA contract deployments on this network\./);
+  assert.match(markup, /No verified VEYRA deployments\./);
 });
 
 test("network explorer renders a controlled verified entry without merging wallet addresses", () => {

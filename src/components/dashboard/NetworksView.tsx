@@ -22,6 +22,21 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
   const [previewRetry, setPreviewRetry] = useState(0);
   const selected = model.network.options.find((network) => network.id === model.network.selected);
   const deployments = getVerifiedVeyraDeployments(model.network.selected, deploymentRecords ?? VEYRA_DEPLOYMENTS);
+  const wallet = model.mode === "live" ? model.wallet.connection : undefined;
+  const walletConnection = model.mode !== "live"
+    ? "Preview only"
+    : wallet?.status === "loading"
+      ? wallet.message?.startsWith("Refreshing") ? "Refreshing wallet" : "Connecting"
+      : wallet?.address
+        ? model.network.walletMismatch
+          ? "Connected · network mismatch"
+          : wallet.status === "connected" ? "Connected · read-only" : "Connected · read unavailable"
+        : wallet?.status === "disconnected" || !wallet
+          ? "Not connected"
+          : wallet.status.replaceAll("_", " ");
+  const walletNetwork = wallet?.networkName === "Unsupported network"
+    ? "Unknown / unsupported (name unavailable from this wallet read)"
+    : wallet?.networkName ?? "Unavailable";
 
   useEffect(() => {
     if (model.mode !== "demo") return;
@@ -103,6 +118,17 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
           <dl className="kv">
             <div><dt>Network</dt><dd>{selected?.label ?? "Unavailable"}</dd></div>
             <div><dt>Configured chain ID</dt><dd>{selected?.chainId ?? "Unavailable"}</dd></div>
+            <div><dt>Wallet connection</dt><dd>{walletConnection}</dd></div>
+            {wallet?.address ? (
+              <>
+                <div><dt>Wallet provider</dt><dd>{wallet.providerName ?? "Injected EIP-1193 wallet provider"}</dd></div>
+                <div><dt>Wallet network</dt><dd>{walletNetwork}</dd></div>
+                <div><dt>Wallet chain ID</dt><dd>{wallet.chainId ?? "Unavailable"}</dd></div>
+                <div><dt>Wallet/app network</dt><dd>{model.network.walletMismatch
+                  ? `Mismatch · manually select ${selected?.label ?? "the selected network"} (chain ID ${selected?.chainId ?? "unknown"}) in your wallet. VEYRA will not switch it.`
+                  : "Match"}</dd></div>
+              </>
+            ) : null}
             <div><dt>RPC connectivity</dt><dd>{rpc.status === "available" ? "Available" : rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable"}</dd></div>
             <div><dt>Observed chain ID</dt><dd>{rpc.chainId ?? (rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable")}</dd></div>
             <div><dt>Latest block</dt><dd>{rpc.latestBlock ?? (rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable")}</dd></div>
@@ -122,7 +148,7 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
           <p className="ne-separation">This registry is separate from connected public wallet addresses.</p>
           {deployments.length === 0 ? (
             <div className="empty ne-empty">
-              <b>No verified {PROJECT_NAME} contract deployments on this network.</b>
+              <b>No verified {PROJECT_NAME} deployments.</b>
               <p>Phase 0B remains SECURITY NO-GO. Research harnesses are not production custody contracts. Only approved deployment records validated for this chain appear here.</p>
             </div>
           ) : (

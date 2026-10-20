@@ -23,7 +23,7 @@ const STATES: Record<ReadOnlyWalletStatus, { label: string; material: Material; 
   provider_error: { label: "Wallet error", material: "dotted", help: "Your wallet reported an error. Nothing was shared or changed." },
 };
 
-const CAN = ["See this public address", "See its public balance", "Read the network the app is on"];
+const CAN = ["See this public address", "See its public balance when networks match", "Read the network the app is on"];
 const CANNOT = ["Sign anything", "Send or approve spending", "Switch your wallet’s network", "Hold or move funds"];
 
 /** 0x1a2b…c3d4: enough to recognise an address, never the whole of it in a headline. */
@@ -52,10 +52,10 @@ export function WalletBand() {
   const net = model.network.options.find((n) => n.id === model.network.selected);
   const address = live ? conn?.address : connected ? "simulated" : undefined;
   const shown = live ? (address ? middle(address) : "") : "0xSIMU…LATED";
-  const balance = live ? conn?.balance : undefined;
-  const exBalance = !live && w.eoa.assets[0] ? w.eoa.assets[0] : null;
   const busy = status === "loading";
   const mismatch = live && model.network.walletMismatch;
+  const balance = live && !mismatch ? conn?.balance : undefined;
+  const exBalance = !live && w.eoa.assets[0] ? w.eoa.assets[0] : null;
   const walletNet = live ? (conn?.networkName ?? `Chain ${conn?.chainId ?? "unknown"}`) : (net?.label ?? "Unavailable");
   const walletNetwork = live ? NETWORKS.find((network) => network.chainId === conn?.chainId) : undefined;
   const addressExplorerUrl = address && walletNetwork ? getExplorerAddressUrl(walletNetwork.id, address) : undefined;
@@ -92,7 +92,9 @@ export function WalletBand() {
               <span className="wl-pip" aria-hidden="true" />
               {walletNet}
               {live && conn?.chainId !== undefined ? <span className="wl-chain">chain {conn.chainId}</span> : null}
-              <span className="wl-match">{live ? (mismatch ? `Differs from the network the app reads (${net?.short ?? "selected"}). Your wallet was not changed.` : "Matches the network the app reads") : "Simulated: nothing is read"}</span>
+              <span className="wl-match">{live ? (mismatch
+                ? `Differs from ${net?.label ?? "the selected network"} (chain ID ${net?.chainId ?? "unknown"}). In your wallet, manually select ${net?.label ?? "the selected network"} (chain ID ${net?.chainId ?? "unknown"}) to match. VEYRA will not switch networks.`
+                : "Matches the network the app reads") : "Simulated: nothing is read"}</span>
             </p>
             <div className="wl-bal">
               <span className="wl-bal-n">{balance ? balance.amount : exBalance ? exBalance.amount : "Not available"}</span>
@@ -122,7 +124,12 @@ export function WalletBand() {
 
         <p className="wl-help" role="status">
           {live && conn?.message ? `${conn.message} ` : ""}
-          {live ? walletRefreshing ? "This read does not request account permission or change the wallet network." : info.help : ""}
+          {live ? walletRefreshing
+            ? "This read does not request account permission or change the wallet network."
+            : mismatch
+              ? "The native balance is hidden until the wallet chain and selected app network match."
+              : info.help
+            : ""}
         </p>
 
         <div className="wl-act">

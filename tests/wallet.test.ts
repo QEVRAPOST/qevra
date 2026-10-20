@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { copyTextToClipboard } from "@/features/wallet/clipboard";
 import { getInjectedReadOnlyProvider } from "@/features/wallet/browser";
-import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
+import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, watchReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
 
 test("local disconnect invalidates a pending wallet read", () => {
   const guard = createWalletRequestGuard();
@@ -166,6 +166,37 @@ test("disconnect is local and sends no request to the wallet", () => {
     status: "disconnected",
     message: "Wallet disconnected from this view. No wallet request was sent.",
   });
+});
+
+test("account, chain, and disconnect events trigger refresh and are removed on cleanup", () => {
+  const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+  let requests = 0;
+  const provider: ReadOnlyEip1193Provider = {
+    async request() { requests += 1; return undefined; },
+    on(event, listener) {
+      const eventListeners = listeners.get(event) ?? new Set();
+      eventListeners.add(listener);
+      listeners.set(event, eventListeners);
+    },
+    removeListener(event, listener) {
+      listeners.get(event)?.delete(listener);
+    },
+  };
+  let refreshes = 0;
+  const stopWatching = watchReadOnlyWallet(provider, () => { refreshes += 1; });
+
+  for (const event of ["accountsChanged", "chainChanged", "disconnect"] as const) {
+    listeners.get(event)?.forEach((listener) => listener());
+  }
+  assert.equal(refreshes, 3);
+  assert.equal(requests, 0, "provider events schedule a fresh read without asking for account permission");
+
+  stopWatching();
+  for (const event of ["accountsChanged", "chainChanged", "disconnect"] as const) {
+    listeners.get(event)?.forEach((listener) => listener());
+    assert.equal(listeners.get(event)?.size, 0);
+  }
+  assert.equal(refreshes, 3);
 });
 
 test("browser provider discovery does not request accounts until the user-triggered connect function runs", async () => {

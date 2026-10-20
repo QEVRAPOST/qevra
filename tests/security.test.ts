@@ -131,11 +131,18 @@ function mockProvider(failAgent?: string): ModelProvider {
   return {
     name: "mock",
     async completeJson<T>(request: StructuredModelRequest<T>) {
-      const input = request.input as { research?: unknown; analysis?: unknown };
+      const input = request.input as {
+        research?: unknown;
+        researchClaims?: unknown[];
+        analysis?: unknown;
+        analysisAssessments?: { risks?: unknown[]; unknowns?: unknown[] };
+        approvedSources?: Array<{ id: string; text?: string }>;
+      };
       if (request.agent === "analysis") assert.ok(input.research, "Analysis must receive the Research structured output");
       if (request.agent === "verification") {
-        assert.ok(input.research, "Verification must receive the Research structured output");
-        assert.ok(input.analysis, "Verification must receive the Analysis structured output");
+        assert.ok(input.researchClaims, "Verification must receive the validated Research claims");
+        assert.ok(input.analysisAssessments, "Verification must receive compact Analysis assessments");
+        assert.ok(input.approvedSources?.length, "Verification must receive the cited approved source text");
       }
       if (request.agent === failAgent) throw new ModelProviderError("provider_timeout", "private detail must not escape", true);
       const output = request.agent === "research"
@@ -279,7 +286,7 @@ test("bounded model excerpts preserve full persisted source provenance and exact
   assert.equal(run.sources[0]?.text, fullSourceText);
   assert.equal(run.sources[0]?.sha256, fullSource.sha256);
   assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
-  assert.equal(observedSourceInputs.length, 3);
+  assert.equal(observedSourceInputs.length, 2, "only Research and Analysis receive the general source-input collection");
   assert.equal(observedSourceInputs[0]?.text, fullSourceText.slice(0, 100));
   assert.equal(observedSourceInputs[0]?.textIsExcerpt, true);
   assert.equal(observedSourceInputs[0]?.sha256, fullSource.sha256);

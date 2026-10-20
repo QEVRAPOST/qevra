@@ -19,6 +19,7 @@ export function WalletView() {
   const w = model.wallet;
   const rpc = model.network.rpc;
   const net = model.network.options.find((n) => n.id === model.network.selected);
+  const connection = w.connection;
   const connected = live ? !!w.connection?.address : w.stage > 0;
 
   return (
@@ -39,12 +40,18 @@ export function WalletView() {
             <div><dt>Expected chain ID</dt><dd>{net?.chainId ?? "Unavailable"}</dd></div>
             {live ? (
               <>
-                {w.connection?.address ? <div><dt>Wallet provider</dt><dd>{w.connection.providerName ?? "Injected EIP-1193 wallet provider"}</dd></div> : null}
-                <div><dt>RPC chain ID</dt><dd>{rpc.chainId ?? (rpc.status === "loading" ? "Checking" : "Unavailable")}</dd></div>
+                {connection?.address ? (
+                  <>
+                    <div><dt>Wallet provider</dt><dd>{connection.providerName ?? "Injected EIP-1193 wallet provider"}</dd></div>
+                    <div><dt>Wallet network</dt><dd>{connection.networkName === "Unsupported network" ? "Unknown / unsupported (network name unavailable from this wallet read)" : connection.networkName ?? "Unavailable"}</dd></div>
+                    <div><dt>Wallet chain ID</dt><dd>{connection.chainId ?? "Unavailable"}</dd></div>
+                  </>
+                ) : null}
+                <div><dt>Public RPC chain ID</dt><dd>{rpc.chainId ?? (rpc.status === "loading" ? "Checking" : "Unavailable")}</dd></div>
                 <div><dt>Latest block</dt><dd>{rpc.latestBlock ?? "Unavailable"}</dd></div>
                 {rpc.observedAt ? <div><dt>Observed at</dt><dd>{rpc.observedAt}</dd></div> : null}
-                {w.connection?.balance ? <div><dt>Wallet read block</dt><dd>{w.connection.balance.blockNumber}</dd></div> : null}
-                {w.connection?.balance?.observedAt ? <div><dt>Last successful wallet read</dt><dd><time dateTime={w.connection.balance.observedAt}>{w.connection.balance.observedAt}</time></dd></div> : null}
+                {!model.network.walletMismatch && connection?.balance ? <div><dt>Wallet read block</dt><dd>{connection.balance.blockNumber}</dd></div> : null}
+                {!model.network.walletMismatch && connection?.balance?.observedAt ? <div><dt>Last successful wallet read</dt><dd><time dateTime={connection.balance.observedAt}>{connection.balance.observedAt}</time></dd></div> : null}
               </>
             ) : (
               <div><dt>Public RPC</dt><dd>Not queried in the preview</dd></div>
