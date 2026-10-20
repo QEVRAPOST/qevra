@@ -61,6 +61,9 @@ export function WalletBand() {
   const status: ReadOnlyWalletStatus = live ? (conn?.status ?? "disconnected") : w.stage === 0 ? "disconnected" : "connected";
   const info = STATES[status];
   const connected = live ? !!conn?.address : w.stage > 0;
+  const walletReadFailed = live && status === "rpc_unavailable";
+  const walletRefreshing = live && status === "loading" && conn?.message?.startsWith("Refreshing");
+  const canRecoverWallet = walletReadFailed || walletRefreshing;
   const net = model.network.options.find((n) => n.id === model.network.selected);
   const address = live ? conn?.address : connected ? "simulated" : undefined;
   const shown = live ? (address ? middle(address) : "") : "0xSIMU…LATED";
@@ -71,7 +74,7 @@ export function WalletBand() {
   const walletNet = live ? (conn?.networkName ?? `Chain ${conn?.chainId ?? "unknown"}`) : (net?.label ?? "Unavailable");
 
   return (
-    <section className={`wl-band${connected ? " on" : ""}`} aria-labelledby="h-wl-band">
+    <section className={`wl-band${connected || canRecoverWallet ? " on" : ""}`} aria-labelledby="h-wl-band">
       <h2 id="h-wl-band" className="sr">Connection</h2>
       <div className="wl-id">
         <AddressGlyph address={address} live={connected} />
@@ -80,7 +83,7 @@ export function WalletBand() {
       <div className="wl-main">
         <p className="wl-state">
           <StatusMaterial material={connected ? "outline" : "dotted"} />
-          {live ? info.label : connected ? "Connected · simulated wallet" : "No wallet connected"}
+          {live ? (walletRefreshing ? "Refreshing wallet" : info.label) : connected ? "Connected · simulated wallet" : "No wallet connected"}
           {!live && connected ? <SimTag /> : null}
         </p>
 
@@ -102,6 +105,16 @@ export function WalletBand() {
               <span className="wl-bal-m">{balance ? `Public balance · read at block ${balance.blockNumber}, a snapshot` : live ? "Shown only after a successful read" : "Simulated value"}</span>
             </div>
           </>
+        ) : walletReadFailed ? (
+          <>
+            <h2 className="wl-h">The wallet read did not finish.</h2>
+            <p className="wl-sub">Address and balance stay hidden until a fresh, consistent read succeeds.</p>
+          </>
+        ) : walletRefreshing ? (
+          <>
+            <h2 className="wl-h">Refreshing wallet details.</h2>
+            <p className="wl-sub">Reading the current account, network and public balance. No wallet permission prompt is being requested.</p>
+          </>
         ) : (
           <>
             <h2 className="wl-h">Look at a wallet without handing it over.</h2>
@@ -111,16 +124,16 @@ export function WalletBand() {
 
         <p className="wl-help" role="status">
           {live && conn?.message ? `${conn.message} ` : ""}
-          {live ? info.help : ""}
+          {live ? walletRefreshing ? "This read does not request account permission or change the wallet network." : info.help : ""}
         </p>
 
         <div className="wl-act">
-          {connected ? (
+          {connected || canRecoverWallet ? (
             live ? (
               <>
                 {actions.refreshWallet ? (
-                  <Button variant="ghost" onClick={actions.refreshWallet}>
-                    Refresh balance
+                  <Button variant="ghost" onClick={actions.refreshWallet} disabled={walletRefreshing}>
+                    {walletRefreshing ? "Refreshing wallet…" : walletReadFailed ? "Retry wallet read" : "Refresh balance"}
                   </Button>
                 ) : null}
                 <Button variant="ghost" onClick={() => actions.pressLedgerAction("disconnect")}>
@@ -146,7 +159,7 @@ export function WalletBand() {
 
       <aside className="wl-perm" aria-label="What this connection can and cannot do">
         <div>
-          <h3>{connected ? "This connection can" : "Connecting lets the app"}</h3>
+          <h3>{connected || canRecoverWallet ? "This connection can" : "Connecting lets the app"}</h3>
           <ul className="can">
             {CAN.map((t) => (
               <li key={t}>{t}</li>

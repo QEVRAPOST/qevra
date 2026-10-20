@@ -271,7 +271,7 @@ test("bounded model excerpts preserve full persisted source provenance and exact
     fetchSources: async () => [fullSource],
     runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
     persist: async () => undefined,
-    maxSourceTextChars: 40,
+    maxSourceTextChars: 100,
   });
 
   assert.equal(run.status, "completed");
@@ -279,7 +279,7 @@ test("bounded model excerpts preserve full persisted source provenance and exact
   assert.equal(run.sources[0]?.sha256, fullSource.sha256);
   assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
   assert.equal(observedSourceInputs.length, 3);
-  assert.equal(observedSourceInputs[0]?.text, fullSourceText.slice(0, 40));
+  assert.equal(observedSourceInputs[0]?.text, fullSourceText.slice(0, 100));
   assert.equal(observedSourceInputs[0]?.textIsExcerpt, true);
   assert.equal(observedSourceInputs[0]?.sha256, fullSource.sha256);
 });
@@ -330,7 +330,7 @@ test("bounded Groq profile completes three structured stages with full provenanc
       });
     },
   });
-  const run = createQueuedRun("88888889-8888-4888-8888-888888888888", "robinhood-readonly-wallet", "Read-only evidence question");
+   const run = createQueuedRun("88888889-8888-4888-8888-888888888888", "mldsa-key-registration", "FIPS evidence question");
   await processResearchRun(run, {
     provider,
     fetchSources: async () => [fullSource],

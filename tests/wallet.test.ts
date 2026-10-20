@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { getInjectedReadOnlyProvider } from "@/features/wallet/browser";
-import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
+import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
 
 test("local disconnect invalidates a pending wallet read", () => {
   const guard = createWalletRequestGuard();
@@ -33,6 +33,35 @@ test("wallet reads address, testnet, balance, and block using only allowlisted R
   assert.equal(state.balance?.provider, "connected_wallet_rpc");
   assert.deepEqual(methods, ["eth_requestAccounts", "eth_chainId", "eth_getBlockByNumber", "eth_getBalance", "eth_accounts", "eth_chainId"]);
   assert.equal(methods.some((method) => /sign|send|transaction|approve/i.test(method)), false);
+});
+
+test("wallet refresh reads Robinhood Mainnet without requesting account permission again", async () => {
+  const methods: string[] = [];
+  const provider: ReadOnlyEip1193Provider = {
+    async request({ method }) {
+      methods.push(method);
+      if (method === "eth_accounts") return ["0x0000000000000000000000000000000000000007"];
+      if (method === "eth_chainId") return "0x1237";
+      if (method === "eth_getBlockByNumber") return { number: "0x2a", hash: `0x${"e".repeat(64)}` };
+      if (method === "eth_getBalance") return "0x0";
+      throw new Error(`unexpected method: ${method}`);
+    },
+  };
+
+  const state = await refreshReadOnlyWallet(provider);
+  assert.equal(state.status, "connected");
+  assert.equal(state.networkName, "Robinhood Chain");
+  assert.equal(state.chainId, 4_663);
+  assert.equal(state.balance?.amount, "0");
+  assert.equal(state.balance?.blockNumber, "42");
+  assert.equal(methods.includes("eth_requestAccounts"), false);
+  assert.deepEqual(methods, ["eth_accounts", "eth_chainId", "eth_getBlockByNumber", "eth_getBalance", "eth_accounts", "eth_chainId"]);
+});
+
+test("wallet connection reports a missing injected provider without making a request", async () => {
+  const state = await connectReadOnlyWallet();
+  assert.equal(state.status, "wallet_not_installed");
+  assert.match(state.message ?? "", /No EIP-1193 wallet provider/);
 });
 
 test("wallet connection rejection and RPC errors remain explicit and read-only", async () => {

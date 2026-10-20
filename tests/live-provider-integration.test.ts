@@ -37,6 +37,31 @@ test("wallet UI consumes live address, selected chain, mismatch, balance, and re
   assert.match(markup, /Disconnect/);
 });
 
+test("wallet RPC failures keep a no-prompt retry and local disconnect without showing stale snapshots", () => {
+  const markup = execFileSync(process.execPath, [
+    "--import", "tsx", "--input-type=module", "--eval",
+    'import { createElement } from "react"; import { renderToStaticMarkup } from "react-dom/server"; import { ModelContext } from "./src/components/dashboard/AppModelContext.tsx"; import { WalletView } from "./src/components/dashboard/WalletView.tsx"; import { buildLiveAppModel } from "./src/features/dashboard/live-model.ts"; const model = buildLiveAppModel({ wallet: { status: "rpc_unavailable", message: "Wallet RPC HTTP 429: retry later." }, selectedNetwork: "testnet", networkRpc: { status: "loading" }, runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false }); const value = { model, actions: { setNetwork() {}, setAmount() {}, pressSwapButton() {}, pressWalletButton() {}, pressLedgerAction() {}, refreshWallet() {}, createSecurityRun() {}, logout() {} } }; process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(WalletView))))',
+  ], { cwd: process.cwd(), encoding: "utf8" });
+
+  assert.match(markup, /RPC unavailable/);
+  assert.match(markup, /Wallet RPC HTTP 429: retry later/);
+  assert.match(markup, /Retry wallet read/);
+  assert.match(markup, /Disconnect/);
+  assert.doesNotMatch(markup, /Connect wallet/);
+  assert.doesNotMatch(markup, /0\.1|0x0000…0001/);
+});
+
+test("wallet refresh loading state explains that it is reading without another permission prompt", () => {
+  const markup = execFileSync(process.execPath, [
+    "--import", "tsx", "--input-type=module", "--eval",
+    'import { createElement } from "react"; import { renderToStaticMarkup } from "react-dom/server"; import { ModelContext } from "./src/components/dashboard/AppModelContext.tsx"; import { WalletView } from "./src/components/dashboard/WalletView.tsx"; import { buildLiveAppModel } from "./src/features/dashboard/live-model.ts"; const model = buildLiveAppModel({ wallet: { status: "loading", message: "Refreshing the wallet account, network, and read-only balance." }, selectedNetwork: "testnet", networkRpc: { status: "loading" }, runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false }); const value = { model, actions: { setNetwork() {}, setAmount() {}, pressSwapButton() {}, pressWalletButton() {}, pressLedgerAction() {}, refreshWallet() {}, createSecurityRun() {}, logout() {} } }; process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(WalletView))))',
+  ], { cwd: process.cwd(), encoding: "utf8" });
+
+  assert.match(markup, /Refreshing wallet details/);
+  assert.match(markup, /No wallet permission prompt/);
+  assert.match(markup, /Disconnect/);
+});
+
 test("protected research requests stay closed until the operator session is authenticated", async () => {
   const state = await liveUiState() as { canUseProtectedResearch?: (gate: string) => boolean };
 

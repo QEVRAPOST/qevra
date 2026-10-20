@@ -11,7 +11,7 @@ export type RobinhoodRpcErrorCode =
   | "rpc_chain_id_mismatch";
 
 export class RobinhoodRpcError extends Error {
-  constructor(readonly code: RobinhoodRpcErrorCode, message: string) {
+  constructor(readonly code: RobinhoodRpcErrorCode, message: string, readonly observedChainId?: number) {
     super(message);
     this.name = "RobinhoodRpcError";
   }
@@ -85,7 +85,7 @@ export async function readRobinhoodNetwork(
   }
   const chainId = Number(chainIdResult);
   if (chainId !== network.chainId) {
-    throw new RobinhoodRpcError("rpc_chain_id_mismatch", "The public Robinhood RPC chain ID did not match the selected network.");
+    throw new RobinhoodRpcError("rpc_chain_id_mismatch", "The public Robinhood RPC chain ID did not match the selected network.", chainId);
   }
 
   const blockResult = parseQuantity(await requestRpcResult(network.rpcUrl, 2, "eth_blockNumber", fetchImpl));

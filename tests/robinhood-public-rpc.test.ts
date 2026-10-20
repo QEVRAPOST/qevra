@@ -28,7 +28,7 @@ test("public RPC rejects a response from the wrong chain before reading its bloc
       calls += 1;
       return rpcResponse(1, "0x1");
     }),
-    (error: unknown) => error instanceof RobinhoodRpcError && error.code === "rpc_chain_id_mismatch",
+    (error: unknown) => error instanceof RobinhoodRpcError && error.code === "rpc_chain_id_mismatch" && error.observedChainId === 1,
   );
   assert.equal(calls, 1);
 });

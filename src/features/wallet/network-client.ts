@@ -19,6 +19,16 @@ const PUBLIC_ERROR_MESSAGES: Record<string, string> = {
   rpc_chain_id_mismatch: "The public RPC chain ID did not match the selected network.",
 };
 
+function publicHttpErrorMessage(responseStatus: number, upstreamMessage: unknown): string {
+  const upstreamStatus = typeof upstreamMessage === "string"
+    ? /^The public Robinhood RPC returned HTTP (403|429)\.$/.exec(upstreamMessage)?.[1]
+    : undefined;
+  const status = upstreamStatus ? Number(upstreamStatus) : responseStatus;
+  if (status === 403) return "The public RPC denied this read (HTTP 403).";
+  if (status === 429) return "The public RPC is rate-limiting reads (HTTP 429). Wait before retrying.";
+  return PUBLIC_ERROR_MESSAGES.rpc_http_error!;
+}
+
 function isSnapshot(value: unknown, expectedNetwork: NetworkId): value is RobinhoodNetworkSnapshot {
   if (!value || typeof value !== "object") return false;
   const snapshot = value as Partial<RobinhoodNetworkSnapshot>;
@@ -50,14 +60,19 @@ export async function getRobinhoodNetworkStatus(
   }
 
   if (!response.ok) {
-    let code = "rpc_unavailable";
+    let code = response.status === 403 || response.status === 429 ? "rpc_http_error" : "rpc_unavailable";
+    let upstreamMessage: unknown;
     try {
-      const body = await response.json() as { error?: { code?: unknown } };
+      const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
       if (typeof body.error?.code === "string" && PUBLIC_ERROR_MESSAGES[body.error.code]) code = body.error.code;
+      upstreamMessage = body.error?.message;
     } catch {
       // The public UI reports a fixed message; response bodies are untrusted.
     }
-    throw new NetworkStatusClientError(code, response.status, PUBLIC_ERROR_MESSAGES[code]!);
+    const message = code === "rpc_http_error"
+      ? publicHttpErrorMessage(response.status, upstreamMessage)
+      : PUBLIC_ERROR_MESSAGES[code]!;
+    throw new NetworkStatusClientError(code, response.status, message);
   }
 
   let body: unknown;

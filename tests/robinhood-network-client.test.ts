@@ -34,3 +34,25 @@ test("network client preserves sanitized unavailable errors", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("network client distinguishes upstream HTTP 403 and 429 while keeping errors sanitized", async () => {
+  const originalFetch = globalThis.fetch;
+  const cases = [
+    { code: 403, message: "The public Robinhood RPC returned HTTP 403.", expected: /denied.*403/i },
+    { code: 429, message: "The public Robinhood RPC returned HTTP 429.", expected: /rate.limit.*429/i },
+  ];
+  try {
+    for (const item of cases) {
+      globalThis.fetch = async () => Response.json({ error: { code: "rpc_http_error", message: item.message } }, { status: 502 });
+      await assert.rejects(
+        getRobinhoodNetworkStatus("testnet"),
+        (error: unknown) => error instanceof NetworkStatusClientError
+          && error.code === "rpc_http_error"
+          && error.status === 502
+          && item.expected.test(error.message),
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
