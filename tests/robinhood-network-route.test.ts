@@ -45,3 +45,61 @@ test("network route rejects unlisted networks without making an RPC request", as
     globalThis.fetch = originalFetch;
   }
 });
+
+test("network route reads a validated watch-only address and returns its public balance snapshot", async () => {
+  const originalFetch = globalThis.fetch;
+  const address = "0x0000000000000000000000000000000000000001";
+  const methods: Array<{ method: string; params: unknown[] }> = [];
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { id: number; method: string; params: unknown[] };
+    methods.push({ method: body.method, params: body.params });
+    const result = body.method === "eth_chainId" ? "0xb626"
+      : body.method === "eth_getBalance" ? "0x2386f26fc10000"
+        : "0x2a";
+    return Response.json({ jsonrpc: "2.0", id: body.id, result });
+  };
+  try {
+    const response = await GET(new Request(`http://localhost/api/network/testnet?address=${address}`), {
+      params: Promise.resolve({ networkId: "testnet" }),
+    });
+    const body = await response.json() as {
+      networkId: string; chainId: number; address: string; balanceWei: string; observedBlock: string; observedAt: string;
+    };
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(body, {
+      networkId: "testnet",
+      chainId: 46_630,
+      address,
+      balanceWei: "10000000000000000",
+      observedBlock: "42",
+      observedAt: body.observedAt,
+    });
+    assert.deepEqual(methods, [
+      { method: "eth_chainId", params: [] },
+      { method: "eth_getBalance", params: [address, "latest"] },
+      { method: "eth_blockNumber", params: [] },
+    ]);
+    assert.match(body.observedAt, /^\d{4}-\d\d-\d\dT/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("network route rejects malformed inspected addresses without making an RPC request", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return Response.json({});
+  };
+  try {
+    const response = await GET(new Request("http://localhost/api/network/testnet?address=not-an-address"), {
+      params: Promise.resolve({ networkId: "testnet" }),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

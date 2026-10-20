@@ -6,6 +6,7 @@ import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
 import { Button, buttonVariants } from "@/components/ui/Button";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { getExplorerAddressUrl } from "@/lib/config/networks";
+import { PublicAddressInspector } from "@/components/dashboard/PublicAddressInspector";
 import { getVerifiedVeyraDeployments, VEYRA_DEPLOYMENTS, type VerifiedVeyraDeployment } from "@/lib/config/veyra-deployments";
 import { PROJECT_NAME } from "@/lib/project-brand";
 import type { NetworkId, NetworkRpcState } from "@/types/network";
@@ -86,7 +87,7 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
         id="h-networks"
         kicker="Networks · public reads"
         title="Networks and contracts"
-        lede="Check the selected Robinhood Chain network against its public RPC, then inspect VEYRA deployment records kept separately from public wallet addresses. These views do not require Security Swarm sign-in."
+        lede="Read Robinhood Chain status, inspect public addresses without connecting a wallet, and review verified VEYRA deployment records. Public reads do not require Security Swarm sign-in."
       />
 
       <div className="ne-links">
@@ -94,72 +95,89 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
         <Link className={buttonVariants({ variant: "ghost", size: "small" })} href="/app/protocol">View status</Link>
       </div>
 
-      <section className="ne-picker" aria-labelledby="h-ne-picker">
-        <h2 id="h-ne-picker" className="ov-h">Select public network</h2>
-        <div role="group" aria-label="Select public network" className="ne-picker-actions">
-          {model.network.options.map((network) => (
-            <Button
-              key={network.id}
-              type="button"
-              variant={network.id === model.network.selected ? "primary" : "ghost"}
-              aria-pressed={network.id === model.network.selected}
-              disabled={!network.available}
-              onClick={() => actions.setNetwork(network.id)}
-            >
-              {network.label} · {network.chainId}
-            </Button>
-          ))}
-        </div>
-      </section>
+      <div className="ne-sections">
+        <section className="ne-section" aria-labelledby="h-ne-network">
+          <header className="ne-section-head">
+            <div className="ne-section-title">
+              <p className="ne-section-index">01 · NETWORK STATUS</p>
+              <h2 id="h-ne-network" className="ov-h">Public network status</h2>
+            </div>
+            <div role="group" aria-label="Select public network" className="ne-picker-actions ne-network-picker">
+              {model.network.options.map((network) => (
+                <Button
+                  key={network.id}
+                  type="button"
+                  variant={network.id === model.network.selected ? "primary" : "ghost"}
+                  aria-pressed={network.id === model.network.selected}
+                  disabled={!network.available}
+                  onClick={() => actions.setNetwork(network.id)}
+                >
+                  {network.label} · {network.chainId}
+                </Button>
+              ))}
+            </div>
+          </header>
 
-      <div className="ne-grid">
-        <section className="ne-panel" aria-labelledby="h-ne-network">
-          <h2 id="h-ne-network" className="ov-h">Public network status</h2>
-          <dl className="kv">
-            <div><dt>Network</dt><dd>{selected?.label ?? "Unavailable"}</dd></div>
-            <div><dt>Configured chain ID</dt><dd>{selected?.chainId ?? "Unavailable"}</dd></div>
+          <dl className="kv ne-status-facts">
+            <div><dt>Selected network</dt><dd>{selected?.label ?? "Unavailable"}</dd></div>
+            <div><dt>Expected chain ID</dt><dd>{selected?.chainId ?? "Unavailable"}</dd></div>
+            <div><dt>Observed chain ID</dt><dd>{rpc.chainId ?? (rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable")}</dd></div>
+            <div><dt>RPC connectivity</dt><dd>{rpc.status === "available" ? "Available" : rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable"}</dd></div>
+            <div><dt>Latest block</dt><dd>{rpc.latestBlock ?? (rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable")}</dd></div>
             <div><dt>Wallet connection</dt><dd>{walletConnection}</dd></div>
             {wallet?.address ? (
               <>
                 <div><dt>Wallet provider</dt><dd>{wallet.providerName ?? "Injected EIP-1193 wallet provider"}</dd></div>
                 <div><dt>Wallet network</dt><dd>{walletNetwork}</dd></div>
                 <div><dt>Wallet chain ID</dt><dd>{wallet.chainId ?? "Unavailable"}</dd></div>
-                <div><dt>Wallet/app network</dt><dd>{model.network.walletMismatch
-                  ? `Mismatch · manually select ${selected?.label ?? "the selected network"} (chain ID ${selected?.chainId ?? "unknown"}) in your wallet. VEYRA will not switch it.`
-                  : "Match"}</dd></div>
+                <div><dt>Wallet/app network</dt><dd>{model.network.walletMismatch ? "Mismatch" : "Match"}</dd></div>
               </>
             ) : null}
-            <div><dt>RPC connectivity</dt><dd>{rpc.status === "available" ? "Available" : rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable"}</dd></div>
-            <div><dt>Observed chain ID</dt><dd>{rpc.chainId ?? (rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable")}</dd></div>
-            <div><dt>Latest block</dt><dd>{rpc.latestBlock ?? (rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable")}</dd></div>
             {rpc.observedAt ? <div><dt>Observed at</dt><dd><time dateTime={rpc.observedAt}>{rpc.observedAt}</time></dd></div> : null}
             <div><dt>Native token</dt><dd>ETH</dd></div>
-            <div><dt>Block explorer</dt><dd>{selected ? <a href={selected.explorerUrl} target="_blank" rel="noopener noreferrer">Open {selected.short} explorer</a> : "Unavailable"}</dd></div>
           </dl>
+
+          {wallet?.address && model.network.walletMismatch ? (
+            <p className="ne-warning" role="status">
+              {wallet.providerName ?? "Your wallet"} is on {walletNetwork} (chain ID {wallet.chainId ?? "unavailable"}). Manually select {selected?.label ?? "the selected network"} (chain ID {selected?.chainId ?? "unknown"}) in your wallet to match. VEYRA will not switch it.
+            </p>
+          ) : null}
           {rpc.message ? <p className="ne-error" role="status">{rpc.message}</p> : null}
-          <Button type="button" variant="ghost" size="small" onClick={refreshPublicRpc} disabled={rpc.status === "loading"}>
-            {rpc.status === "unavailable" ? "Retry public RPC" : rpc.status === "loading" ? "Reading public RPC…" : "Refresh public RPC"}
-          </Button>
-          <p className="ne-readonly">This view reads public chain data only. It does not connect to a wallet, sign, submit, or change a network.</p>
+
+          <div className="ne-section-actions">
+            <Button type="button" variant="ghost" size="small" onClick={refreshPublicRpc} disabled={rpc.status === "loading"}>
+              {rpc.status === "unavailable" ? "Retry public RPC" : rpc.status === "loading" ? "Reading public RPC…" : "Refresh public RPC"}
+            </Button>
+            {selected ? <a className="wl-copy" href={selected.explorerUrl} target="_blank" rel="noopener noreferrer">Open {selected.short} explorer</a> : null}
+            <p className="ne-readonly">Public data only. No wallet permission, signing, or network changes.</p>
+          </div>
         </section>
 
-        <section className="ne-panel" aria-labelledby="h-ne-contracts">
-          <h2 id="h-ne-contracts" className="ov-h">{PROJECT_NAME} contract registry</h2>
-          <p className="ne-separation">This registry is separate from connected public wallet addresses.</p>
+        <PublicAddressInspector />
+
+        <section className="ne-section ne-registry" aria-labelledby="h-ne-contracts">
+          <header className="ne-section-head ne-registry-head">
+            <div className="ne-section-title">
+              <p className="ne-section-index">03 · CONTRACT REGISTRY</p>
+              <h2 id="h-ne-contracts" className="ov-h">{PROJECT_NAME} deployments</h2>
+            </div>
+            <p className="ne-registry-caption">Verified records only</p>
+          </header>
           {deployments.length === 0 ? (
-            <div className="empty ne-empty">
-              <b>No verified {PROJECT_NAME} deployments.</b>
-              <p>Phase 0B remains SECURITY NO-GO. Research harnesses are not production custody contracts. Only approved deployment records validated for this chain appear here.</p>
+            <div className="ne-registry-empty">
+              <strong>No verified {PROJECT_NAME} deployments.</strong>
+              <p>Phase 0B remains SECURITY NO-GO. Deployment and custody are disabled.</p>
             </div>
           ) : (
             <ul className="ne-contracts">
               {deployments.map((deployment) => {
                 const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
+                const deploymentNetwork = model.network.options.find((network) => network.id === deployment.networkId);
                 return (
                   <li key={`${deployment.networkId}:${deployment.address}`} className="ne-contract">
                     <h3>{deployment.name}</h3>
                     <dl className="kv">
-                      <div><dt>Network</dt><dd>{selected?.label}</dd></div>
+                      <div><dt>Network</dt><dd>{deploymentNetwork?.label ?? deployment.networkId}</dd></div>
                       <div><dt>Chain ID</dt><dd>{deployment.chainId}</dd></div>
                       <div><dt>Contract address</dt><dd><code>{deployment.address}</code></dd></div>
                       <div><dt>Deployment status</dt><dd>Verified deployment</dd></div>

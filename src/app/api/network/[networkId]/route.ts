@@ -1,5 +1,5 @@
 import { NETWORKS } from "@/lib/config/networks";
-import { readRobinhoodNetwork, RobinhoodRpcError } from "@/features/wallet/public-rpc";
+import { readRobinhoodNetwork, readRobinhoodPublicAddress, RobinhoodRpcError } from "@/features/wallet/public-rpc";
 import type { NetworkId } from "@/types/network";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -9,7 +9,7 @@ function publicError(code: string, message: string, status: number): Response {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ networkId: string }> },
 ): Promise<Response> {
   const { networkId } = await context.params;
@@ -17,11 +17,20 @@ export async function GET(
     return publicError("network_not_available", "This network is not enabled for public reads.", 404);
   }
 
+  const addresses = new URL(request.url).searchParams.getAll("address");
+  if (addresses.length > 1) {
+    return publicError("invalid_address", "Provide exactly one EVM address to inspect.", 400);
+  }
+  const address = addresses[0];
+
   try {
-    const snapshot = await readRobinhoodNetwork(networkId as NetworkId);
+    const snapshot = address === undefined
+      ? await readRobinhoodNetwork(networkId as NetworkId)
+      : await readRobinhoodPublicAddress(networkId as NetworkId, address);
     return Response.json(snapshot, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof RobinhoodRpcError) {
+      if (error.code === "invalid_address") return publicError(error.code, error.message, 400);
       const status = error.code === "rpc_timeout" || error.code === "rpc_unavailable" ? 503 : 502;
       return publicError(error.code, error.message, status);
     }

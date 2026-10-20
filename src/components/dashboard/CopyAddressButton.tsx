@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { copyTextToClipboard } from "@/features/wallet/clipboard";
 
-export function CopyAddressButton({ address }: { address: string }) {
+export function CopyAddressButton({ address, label = "Copy address" }: { address: string; label?: string }) {
   const [status, setStatus] = useState<"idle" | "copied" | "unavailable">("idle");
 
   async function copyAddress() {
@@ -14,7 +14,7 @@ export function CopyAddressButton({ address }: { address: string }) {
 
   return (
     <button type="button" className="wl-copy" onClick={() => { void copyAddress(); }} aria-live="polite">
-      {status === "copied" ? "Copied" : status === "unavailable" ? "Copy unavailable" : "Copy address"}
+      {status === "copied" ? "Copied" : status === "unavailable" ? "Copy unavailable" : label}
     </button>
   );
 }
