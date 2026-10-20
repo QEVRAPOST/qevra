@@ -31,6 +31,16 @@ const ERROR_HELP: Readonly<Record<string, string>> = {
 const ERROR_HELP_DEFAULT = "You can start a new run on the same topic. Nothing from this one is kept as a result.";
 
 const short = (hash: string): string => `${hash.slice(0, 12)}…`;
+
+/** A hash shown short. Press it (or tap, where there is no hover) to see all of it, wrapped. */
+function Hash({ value }: { value: string }) {
+  const [full, setFull] = useState(false);
+  return (
+    <button type="button" className="hash" aria-expanded={full} title={full ? "Show less" : "Show the whole value"} onClick={() => setFull((f) => !f)}>
+      <code>{full ? value : short(value)}</code>
+    </button>
+  );
+}
 /** A source link is followed only if it is a plain web address. */
 const safeHref = (url: string): string | undefined => (/^https?:\/\//i.test(url) ? url : undefined);
 
@@ -217,9 +227,10 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
                   </Chip>
                   <span className="st">
                     {s.status === "available" && safeHref(s.url) ? <a href={safeHref(s.url)} target="_blank" rel="noopener noreferrer">{s.title}</a> : s.title}
+                    <span className="sm url">{s.url}</span>
                     <span className="sm">
                       retrieved {s.retrievedAt}
-                      {s.sha256 ? <> · SHA-256 <code title={s.sha256}>{short(s.sha256)}</code></> : null}
+                      {s.sha256 ? <> · SHA-256 <Hash value={s.sha256} /></> : null}
                       {s.errorCode ? <> · <code>{s.errorCode}</code></> : null}
                     </span>
                   </span>
@@ -241,7 +252,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
                       {t.name}
                       <span className="sm">
                         {t.exitCode !== undefined ? <>exit {t.exitCode}</> : null}
-                        {t.artifactSha256 ? <>{t.exitCode !== undefined ? " · " : ""}SHA-256 <code title={t.artifactSha256}>{short(t.artifactSha256)}</code></> : null}
+                        {t.artifactSha256 ? <>{t.exitCode !== undefined ? " · " : ""}SHA-256 <Hash value={t.artifactSha256} /></> : null}
                       </span>
                     </span>
                   </li>

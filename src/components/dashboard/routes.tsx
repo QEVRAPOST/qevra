@@ -22,7 +22,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     key: "overview",
     href: "/app",
     label: "Overview",
-    short: "Start",
+    short: "Overview",
     nav: "Overview",
     kind: "Start here",
     icon: (

@@ -1,0 +1,490 @@
+/*
+ * Mobile: the landing menu, the app's bottom bar and its "More" sheet, and the small-screen fixes for the landing and every route.
+ * Desktop (1025px and up) is unchanged by anything in this file unless it says so.
+ */
+
+/* an overlay is open: the page behind it stays where it is */
+html.overlay-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* ---------- the burger: two bars that become a cross ---------- */
+.menu-btn {
+  display: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color var(--t), background-color var(--t);
+}
+.menu-btn:hover {
+  border-color: var(--fg-2);
+}
+.menu-btn:active {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.burger {
+  position: relative;
+  width: 20px;
+  height: 14px;
+  display: block;
+}
+.burger i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 1px;
+  transition:
+    transform 320ms var(--ease),
+    top 320ms var(--ease);
+}
+.burger i:first-child {
+  top: 2px;
+}
+.burger i:last-child {
+  top: 11px;
+}
+.burger[data-open] i:first-child {
+  top: 6.25px;
+  transform: rotate(45deg);
+}
+.burger[data-open] i:last-child {
+  top: 6.25px;
+  transform: rotate(-45deg);
+}
+.lnav-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------- the landing menu ---------- */
+.lmenu {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+}
+.lmenu-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 260ms var(--ease);
+}
+.lmenu-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  max-height: 100svh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line-2);
+  padding: env(safe-area-inset-top, 0px) max(var(--gutter), env(safe-area-inset-right, 0px)) max(22px, env(safe-area-inset-bottom, 0px)) max(var(--gutter), env(safe-area-inset-left, 0px));
+  transform: translateY(-14px);
+  opacity: 0;
+  transition:
+    transform 320ms var(--ease),
+    opacity 220ms var(--ease);
+}
+.lmenu.is-open .lmenu-scrim {
+  opacity: 1;
+}
+.lmenu.is-open .lmenu-sheet {
+  transform: none;
+  opacity: 1;
+}
+.lmenu-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--nav-h);
+}
+.lmenu-bar .menu-btn {
+  display: grid;
+}
+.lmenu-links {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+.lmenu-links li {
+  border-bottom: 1px solid var(--line);
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 300ms var(--ease) calc(80ms + var(--i, 0) * 50ms),
+    transform 360ms var(--ease) calc(80ms + var(--i, 0) * 50ms);
+}
+.lmenu.is-open .lmenu-links li,
+.lmenu.is-open .lmenu-cta {
+  opacity: 1;
+  transform: none;
+}
+.lmenu-links a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  color: var(--fg);
+  text-decoration: none;
+  font: 400 32px/1.1 var(--f-display);
+  letter-spacing: -0.005em;
+}
+.lmenu-links a svg {
+  color: var(--muted);
+  transition: transform 260ms var(--ease), color var(--t);
+}
+.lmenu-links a:hover svg,
+.lmenu-links a:focus-visible svg {
+  color: var(--fg);
+  transform: translateX(4px);
+}
+.lmenu-links a[aria-current="location"] {
+  color: var(--exp);
+}
+.lmenu-links a[aria-current="location"]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-right: -6px;
+  border-radius: 50%;
+  background: var(--exp);
+  order: -1;
+}
+.lmenu-links a[aria-current="location"] span {
+  margin-right: auto;
+}
+.lmenu-cta {
+  display: grid;
+  gap: 10px;
+  padding-top: 18px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 300ms var(--ease) 230ms,
+    transform 360ms var(--ease) 230ms;
+}
+.lmenu-launch {
+  width: 100%;
+  min-height: 56px;
+  justify-content: space-between;
+  font-size: 17px;
+}
+.lmenu-cta p {
+  font: 400 12px/1.5 var(--f-mono);
+  color: var(--muted);
+}
+
+/* the menu is for phones and tablets */
+@media (max-width: 1024px) {
+  .lnav .menu-btn {
+    display: grid;
+  }
+  .lnav .lnav-tools {
+    gap: 8px;
+  }
+}
+@media (min-width: 1025px) {
+  .lmenu {
+    display: none;
+  }
+}
+@media (max-width: 399px) {
+  .lnav .lnav-tools > .btn {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lmenu-scrim,
+  .lmenu-sheet,
+  .lmenu-links li,
+  .lmenu-cta {
+    transition: none;
+  }
+}
+
+/* ---------- the app's bottom bar and its More sheet ---------- */
+.tabbar a,
+.tabbar button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 56px;
+  padding: 0 2px;
+  border: 0;
+  border-top: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 400 11.5px/1.1 var(--f-ui);
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--t), background-color var(--t);
+}
+.tabbar a:active,
+.tabbar button:active {
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+.tabbar a[aria-current="page"],
+.tabbar button[data-active] {
+  color: var(--fg);
+  background: transparent;
+  border-top-color: var(--exp);
+}
+.tabbar svg {
+  transition: transform 260ms var(--ease);
+}
+.tabbar a[aria-current="page"] svg,
+.tabbar button[data-active] svg {
+  transform: translateY(-1px) scale(1.06);
+}
+.msheet {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+.msheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  opacity: 0;
+  transition: opacity 240ms var(--ease);
+}
+.msheet-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px max(var(--gutter), env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(var(--gutter), env(safe-area-inset-left, 0px));
+  background: var(--bg-2);
+  border-top: 1px solid var(--line-2);
+  transform: translateY(24px);
+  opacity: 0;
+  transition:
+    transform 320ms var(--ease),
+    opacity 220ms var(--ease);
+}
+.msheet.is-open .msheet-scrim {
+  opacity: 1;
+}
+.msheet.is-open .msheet-panel {
+  transform: none;
+  opacity: 1;
+}
+.msheet-grip {
+  justify-self: center;
+  width: 40px;
+  height: 3px;
+  margin-bottom: 8px;
+  border-radius: 2px;
+  background: var(--line-ctl);
+}
+.msheet-panel ul {
+  display: grid;
+}
+.msheet-panel li a,
+.msheet-home {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 60px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.msheet-panel li a:active,
+.msheet-home:active {
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+.msheet-panel li a[aria-current="page"] {
+  box-shadow: inset 2px 0 0 var(--exp);
+  padding-left: 12px;
+}
+.msheet-t {
+  flex: 1;
+  display: grid;
+  gap: 1px;
+  font: 400 24px/1.1 var(--f-display);
+}
+.msheet-t small {
+  font: 400 11.5px var(--f-mono);
+  color: var(--muted);
+}
+.msheet-panel li a > svg:last-child {
+  color: var(--muted);
+}
+.msheet-home {
+  border-bottom: 0;
+  color: var(--fg-2);
+  font: 400 14px var(--f-ui);
+}
+@media (min-width: 1100px) {
+  .msheet {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msheet-scrim,
+  .msheet-panel,
+  .tabbar svg {
+    transition: none;
+  }
+}
+
+/* ---------- touch targets: a finger needs 44px ---------- */
+@media (pointer: coarse), (max-width: 1024px) {
+  .lnav .wordmark,
+  .apptop .wordmark {
+    min-height: 44px;
+  }
+  .htab {
+    min-height: 44px;
+  }
+  .hrot .hrot-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .hrot .hrot-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+@media (pointer: coarse), (max-width: 760px) {
+  .wsmain [data-slot="button"],
+  .wsmain a.btn,
+  .wsmain [data-slot="select-trigger"],
+  .wsmain [data-slot="toggle-group-item"],
+  .mm-btn,
+  .wl-copy,
+  .cta-connect,
+  .sw-about summary,
+  .ov-l {
+    min-height: 44px;
+  }
+  .ov-l {
+    padding: 0 2px;
+  }
+}
+
+/* ---------- very narrow screens (320px): nothing is allowed to be wider than the screen ---------- */
+@media (max-width: 359px) {
+  .htab {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    white-space: normal;
+    line-height: 1.15;
+    text-align: center;
+  }
+  .htabs-row {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+/* the overview lists on a phone: the name, the state and the link; the sentence is on the Status page */
+@media (max-width: 640px) {
+  .ov-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 12px 0;
+  }
+  .ov-list .ov-k {
+    grid-column: 1 / -1;
+  }
+  .ov-list .ov-d {
+    display: none;
+  }
+}
+
+/* 320px: the rotate buttons are a little smaller so they never sit over a label in the scene */
+@media (max-width: 359px) {
+  .hrot {
+    gap: 2px;
+  }
+  .hrot .hrot-btn {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* a hash or a source address that is long: shown short, a tap shows all of it, wrapped */
+.hash {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.hash[aria-expanded="true"] {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  text-decoration: none;
+  color: var(--fg-2);
+}
+.sm.url {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Focusing something in a sticky header must not scroll the page. The page's scroll padding keeps content clear of the header (and, on a
+ * phone, of the pinned figure), which is right for content and wrong for the header itself: the browser would "reveal" a control that is
+ * already on screen by scrolling away. While focus is inside a header the padding is off.
+ */
+html:has(.lnav :focus),
+html:has(.apptop :focus),
+html:has(.tabbar :focus) {
+  scroll-padding-top: 0 !important;
+  scroll-padding-bottom: 0 !important;
+}
+
+/* the wallet on a phone: the pattern sits beside the state, the call to action is one line */
+@media (max-width: 700px) {
+  .wl-band {
+    padding: 22px 0;
+    gap: 16px;
+  }
+  .cta-connect small {
+    display: none;
+  }
+  .cta-connect {
+    padding: 0 16px;
+    font-size: 15.5px;
+  }
+  .wl-id svg {
+    width: 96px;
+    height: 96px;
+  }
+  .wl-address {
+    font-size: 30px;
+  }
+}

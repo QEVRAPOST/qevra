@@ -105,7 +105,7 @@ export function WalletBand() {
         ) : (
           <>
             <h2 className="wl-h">Look at a wallet without handing it over.</h2>
-            <p className="wl-sub">Connect to see an address, its network and its public balance. The permissions are on the right, and they are all there is.</p>
+            <p className="wl-sub">Connect to see an address, its network and its public balance. What that allows is listed with it, and that is all there is.</p>
           </>
         )}
 

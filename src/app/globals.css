@@ -16,6 +16,7 @@
 @import "../styles/dashboard.css";
 @import "../styles/product.css";
 @import "../styles/workspace.css";
+@import "../styles/mobile.css";
 
 /* shadcn/ui: scan the components for utilities, and map its semantic colours onto the Aperture tokens (tokens.css) */
 @source "../components";

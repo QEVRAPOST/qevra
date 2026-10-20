@@ -137,7 +137,7 @@
 /* six tabs on a phone */
 @media (max-width: 1024px) {
   .tabbar {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
   .tabbar a {
     font-size: 11px;
