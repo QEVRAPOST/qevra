@@ -32,7 +32,7 @@ function renderWithLiveModel(Component: ComponentType): string {
   return renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(Component)));
 }
 
-test("Security entry keeps the introduction short and contains one operator token form", () => {
+test("Security entry leads with wallet sign-in and keeps the separate operator form secondary", () => {
   const gate = createElement(LiveAccessGate, {
     gate: "unauthenticated",
     onLogin: async () => {},
@@ -42,7 +42,10 @@ test("Security entry keeps the introduction short and contains one operator toke
 
   assert.match(markup, /Security Swarm/);
   assert.match(markup, /research workspace/i);
-  assert.match(markup, /Operator Access/);
+  assert.match(markup, /Research Access/);
+  assert.match(markup, /Sign in to Research/);
+  assert.match(markup, /EIP-191/);
+  assert.match(markup, /Operator administration/);
   assert.doesNotMatch(markup, /How Security Swarm Works|Research → Analysis → Verification|orbit/i);
   assert.match(markup, /configured operator access token/i);
   assert.match(markup, /Run ID is not an authentication token/i);
@@ -51,7 +54,7 @@ test("Security entry keeps the introduction short and contains one operator toke
   assert.match(markup, /Show operator access token/);
 });
 
-test("Security renders its workspace only for an authenticated operator fixture", () => {
+test("Security renders its workspace only for an authenticated session fixture", () => {
   const authenticated = renderToStaticMarkup(createElement(SecurityResearchAccess, {
     gate: "authenticated",
     onLogin: async () => {},
@@ -69,7 +72,7 @@ test("Security renders its workspace only for an authenticated operator fixture"
   assert.doesNotMatch(signedOut, /Protected persisted research workspace/);
 });
 
-test("operator sign-in reports friendly invalid-token and expired-session messages", () => {
+test("operator administration sign-in reports friendly invalid-token and expired-session messages", () => {
   assert.equal(
     operatorAccessErrorMessage(new SecurityApiClientError(401, "invalid_access_token", "The access token is invalid.")),
     "That operator access token was not accepted. Check the configured token and try again.",
@@ -90,9 +93,9 @@ test("Activity sends signed-out research users to Security Swarm without another
     gate: "unauthenticated",
   }, createElement("div", null, "Protected saved runs")));
 
-  assert.match(markup, /same operator session/i);
+  assert.match(markup, /same wallet or operator session/i);
   assert.match(markup, /href="\/app\/security"/);
-  assert.match(markup, /Operator Access in Security Swarm/);
+  assert.match(markup, /Research sign-in in Security Swarm/);
   assert.doesNotMatch(markup, /<form|type="password"|Protected saved runs/);
 });
 
@@ -160,7 +163,7 @@ test("Activity distinguishes authenticated persisted research from unavailable l
 
   assert.match(markup, /Research History/);
   assert.match(markup, /persisted Security Swarm runs/i);
-  assert.match(markup, /operator sign-in/i);
+  assert.match(markup, /wallet or operator research session/i);
   assert.match(markup, /Transactions.*unavailable/i);
   assert.match(markup, /transaction-history integration/i);
 });

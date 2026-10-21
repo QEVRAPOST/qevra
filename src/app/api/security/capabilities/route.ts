@@ -5,6 +5,7 @@ import { getModelProvider } from "@/features/security/provider";
 import { describeProviderState } from "@/features/security/provider-capabilities";
 import { getResearchStore, StoreNotConfiguredError } from "@/features/security/store";
 import { approvedSources } from "@/features/security/topics";
+import { hasWalletAuthConfiguration, USER_SESSION_COOKIE, verifyUserSessionCookie } from "@/features/security/wallet-auth";
 import { getProjectName } from "@/lib/project-brand";
 import type { SecurityResearchCapabilities } from "@/types/integrations";
 
@@ -12,7 +13,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const sessionKey = verifySessionCookie(readCookie(request, "qevra_session"));
+  const operatorSession = verifySessionCookie(readCookie(request, "qevra_session"));
+  const userSession = verifyUserSessionCookie(readCookie(request, USER_SESSION_COOKIE));
+  const sessionKey = operatorSession ?? userSession?.sessionKey;
   if (!sessionKey) {
     return apiError(401, "authentication_required", `A valid ${getProjectName()} session is required.`);
   }
@@ -20,7 +23,7 @@ export async function GET(request: Request) {
   const provider = getModelProvider();
   const capabilities: SecurityResearchCapabilities = {
     ...describeProviderState(provider),
-    authentication: hasSessionConfiguration() ? "available" : "not_configured",
+    authentication: hasSessionConfiguration() || hasWalletAuthConfiguration() ? "available" : "not_configured",
     persistence: process.env.DATABASE_URL ? "available" : "not_configured",
     worker: "unavailable",
     deterministicExperiments: isExperimentSandboxConfigured() ? "available" : "not_configured",

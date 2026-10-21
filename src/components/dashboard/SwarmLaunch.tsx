@@ -28,6 +28,7 @@ interface LaunchProps {
   canStart: boolean;
   isCreating: boolean;
   blocker: string | null;
+  capabilitiesUnavailable?: boolean;
   /** example mode: the illustrative walkthrough. `step` is null when it is not running. */
   step: number | null;
   onIllustrate: () => void;
@@ -39,9 +40,11 @@ interface LaunchProps {
  * Step one and two of a run: choose a topic, then start it. In live mode the button queues a real run, and only when the
  * service says it can. In example mode there is no run to start; the visitor can instead watch an illustration of one.
  */
-export function SwarmLaunch({ live, capabilities, topicId, onTopic, onStart, canStart, isCreating, blocker, step, onIllustrate, onNext, onStop }: LaunchProps) {
+export function SwarmLaunch({ live, capabilities, topicId, onTopic, onStart, canStart, isCreating, blocker, capabilitiesUnavailable = false, step, onIllustrate, onNext, onStop }: LaunchProps) {
   const uid = useId();
-  const providerStatus = !capabilities
+  const providerStatus = capabilitiesUnavailable
+    ? "Not exposed to wallet sessions"
+    : !capabilities
     ? "Checking"
     : capabilities.unavailableReason === "ai_billing_not_approved"
       ? "Billing approval required"
@@ -61,9 +64,9 @@ export function SwarmLaunch({ live, capabilities, topicId, onTopic, onStart, can
       {live ? (
         <dl className="kv sw-launch-availability" aria-label="Research service availability">
           <div><dt>Provider</dt><dd>{providerStatus}</dd></div>
-          <div><dt>Worker</dt><dd>{capabilities?.worker ?? "Checking"}</dd></div>
-          <div><dt>Persistence</dt><dd>{capabilities?.persistence ?? "Checking"}</dd></div>
-          <div><dt>Approved sources</dt><dd>{capabilities?.sourceCount ?? "Checking"}</dd></div>
+          <div><dt>Worker</dt><dd>{capabilitiesUnavailable ? "Not exposed to wallet sessions" : capabilities?.worker ?? "Checking"}</dd></div>
+          <div><dt>Persistence</dt><dd>{capabilitiesUnavailable ? "Saved report API available" : capabilities?.persistence ?? "Checking"}</dd></div>
+          <div><dt>Approved sources</dt><dd>{capabilitiesUnavailable ? "Not exposed to wallet sessions" : capabilities?.sourceCount ?? "Checking"}</dd></div>
         </dl>
       ) : null}
       <div className="sw-go">

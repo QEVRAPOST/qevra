@@ -3322,6 +3322,100 @@
 .operator-access-gate {
   min-width: 0;
 }
+.wallet-research-access {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--line-2);
+}
+.wallet-research-access h3 {
+  margin: 0;
+  font: 400 clamp(20px, 2vw, 25px)/1.15 var(--f-display);
+  letter-spacing: -0.01em;
+}
+.wallet-research-access > p:not(.operator-access-kicker),
+.wallet-research-identity > p {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.wallet-research-identity {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.wallet-research-identity .kv {
+  margin: 0;
+}
+.wallet-research-identity code {
+  overflow-wrap: anywhere;
+}
+.wallet-sign-in-challenge {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.wallet-sign-in-challenge details {
+  min-width: 0;
+}
+.wallet-sign-in-challenge summary,
+.operator-admin-access summary {
+  cursor: pointer;
+  color: var(--fg);
+  font: 500 13px/1.5 var(--f-sans);
+}
+.wallet-sign-in-challenge pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 10px 0 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  color: var(--fg-2);
+  font: 400 11px/1.55 var(--f-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.wallet-sign-in-challenge > p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.wallet-sign-in-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.operator-admin-access {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.operator-admin-access > p {
+  max-width: 72ch;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.operator-admin-access .operator-access-form {
+  margin-top: 12px;
+}
+.sw-access-identity {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-2);
+  font-size: 12px;
+}
+.sw-access-identity code {
+  overflow-wrap: anywhere;
+  color: var(--fg);
+  font-family: var(--f-mono);
+}
 .operator-access-form {
   display: flex;
   flex-wrap: wrap;
@@ -3445,6 +3539,9 @@
     gap: 14px;
   }
   .operator-access-form > .btn {
+    width: 100%;
+  }
+  .wallet-sign-in-actions > .btn {
     width: 100%;
   }
   .ac-context section + section {

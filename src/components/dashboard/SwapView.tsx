@@ -119,6 +119,12 @@ export function SwapView() {
         <span>Select tokens, enter an amount, review the route and slippage, inspect Intent Lock, then execute only when a supported real integration provides a reviewed route and quote.</span>
       </p>
 
+      {live ? (
+        <p className="sp-preview-note" role="status">
+          <b>Quote integration status.</b> No verified token pair is configured in this screen, so the illustrative TKN-A and TKN-B values are not sent to the quote API. The API currently reports no verified route; no price, output amount, or execution readiness is shown.
+        </p>
+      ) : null}
+
       <ol className="sw-trail sp-trail" aria-label="The steps of a swap">
         {steps.map((st, i) => (
           <li key={st.name} className={i < step ? "done" : i === step ? "cur" : i >= 2 ? "block" : ""} aria-current={i === step ? "step" : undefined}>

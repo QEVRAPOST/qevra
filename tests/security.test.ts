@@ -414,24 +414,39 @@ test("session signatures expire, reject tampering, and compare access tokens", (
   assert.equal(verifySessionCookie(session.value, env, 1_800_000_000_000), undefined);
 });
 
-test("wallet user sessions cannot authenticate against operator capability administration", async () => {
+test("wallet user sessions can read research capabilities without an operator session", async () => {
   const previousOperatorSecret = process.env.QEVRA_SESSION_SECRET;
+  const previousAccessToken = process.env.QEVRA_ACCESS_TOKEN;
   const previousUserSecret = process.env.VEYRA_USER_SESSION_SECRET;
-  process.env.QEVRA_SESSION_SECRET = "operator-session-secret-012345678901";
+  const previousAuthOrigin = process.env.VEYRA_AUTH_ORIGIN;
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  delete process.env.QEVRA_SESSION_SECRET;
+  delete process.env.QEVRA_ACCESS_TOKEN;
   process.env.VEYRA_USER_SESSION_SECRET = "separate-user-session-secret-012345678901";
+  process.env.VEYRA_AUTH_ORIGIN = "https://veyra.example";
+  delete process.env.DATABASE_URL;
   try {
     const userSession = createUserSession("0x0000000000000000000000000000000000000001");
     assert.ok(userSession);
     const response = await getSecurityCapabilities(new Request("https://veyra.example/api/security/capabilities", {
       headers: { cookie: `${USER_SESSION_COOKIE}=${encodeURIComponent(userSession.value)}` },
     }));
-    assert.equal(response.status, 401);
-    assert.equal((await response.json()).error.code, "authentication_required");
+    assert.equal(response.status, 200);
+    const capabilities = await response.json();
+    assert.equal(capabilities.authentication, "available");
+    assert.equal(capabilities.persistence, "not_configured");
+    assert.equal(capabilities.worker, "unavailable");
   } finally {
     if (previousOperatorSecret === undefined) delete process.env.QEVRA_SESSION_SECRET;
     else process.env.QEVRA_SESSION_SECRET = previousOperatorSecret;
+    if (previousAccessToken === undefined) delete process.env.QEVRA_ACCESS_TOKEN;
+    else process.env.QEVRA_ACCESS_TOKEN = previousAccessToken;
     if (previousUserSecret === undefined) delete process.env.VEYRA_USER_SESSION_SECRET;
     else process.env.VEYRA_USER_SESSION_SECRET = previousUserSecret;
+    if (previousAuthOrigin === undefined) delete process.env.VEYRA_AUTH_ORIGIN;
+    else process.env.VEYRA_AUTH_ORIGIN = previousAuthOrigin;
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
   }
 });
 

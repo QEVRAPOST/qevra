@@ -226,9 +226,12 @@ export function LiveAccessGate({
   const selected = NETWORKS.find((network) => network.id === selectedNetwork);
   const walletMatchesSelected = Boolean(wallet.address && selected && wallet.chainId === selected.chainId);
   const walletHasAccount = Boolean(wallet.address);
+  const challengeMatchesCurrent = Boolean(signInChallenge && wallet.address && selected
+    && signInChallenge.message.toLowerCase().includes(wallet.address.toLowerCase())
+    && signInChallenge.message.includes(`Chain ID: ${selected.chainId}`));
 
   return (
-    <section className="operator-access-gate" aria-busy={gate === "checking" || undefined}>
+    <section className="operator-access-gate" aria-busy={gate === "checking" || signInBusy || submitting || undefined}>
       {message ? <p className="operator-access-message" role="status">{message}</p> : null}
       <section className="wallet-research-access" aria-labelledby="wallet-research-access-heading">
         <p className="operator-access-kicker">Wallet-owned research</p>
@@ -259,9 +262,10 @@ export function LiveAccessGate({
                   <summary>Review the one-time sign-in message</summary>
                   <pre>{signInChallenge.message}</pre>
                 </details>
-                <p>This message expires at {signInChallenge.expiresAt}. Only approve it if the origin, account, and chain match this page. No transaction or token approval is requested.</p>
+                <p>This message expires at {signInChallenge.expiresAt}. Your wallet may label it personal_sign; it is an EIP-191 login message only. Approve it only if the origin, account, and chain match this page. No transaction or token approval is requested.</p>
+                {!challengeMatchesCurrent ? <p role="status">This message belongs to another account or network. Cancel it and request a new message for the current wallet state.</p> : null}
                 <div className="wallet-sign-in-actions">
-                  <Button type="button" variant="primary" disabled={signInBusy || !walletMatchesSelected} onClick={() => { void onApproveWalletSignIn(); }}>
+                  <Button type="button" variant="primary" disabled={signInBusy || !walletMatchesSelected || !challengeMatchesCurrent} onClick={() => { void onApproveWalletSignIn(); }}>
                     {signInBusy ? "Waiting for wallet approval…" : "Approve EIP-191 sign-in message"}
                   </Button>
                   <Button type="button" variant="ghost" disabled={signInBusy} onClick={onCancelWalletSignIn}>Cancel</Button>
@@ -319,7 +323,7 @@ export function LiveAccessGate({
             </span>
             <small id="qevra-live-token-hint">Enter the configured operator access token. It is sent only to the same-origin administrator sign-in endpoint.</small>
           </div>
-          <Button type="submit" disabled={!token || submitting || (loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock)}>
+          <Button type="submit" disabled={!token || !operatorAuthConfigured || submitting || (loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock)}>
             {submitting ? "Signing in…" : loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock
               ? `Try again in ${Math.ceil((loginRetryAt - clock) / 1_000)}s`
               : "Sign in as operator"}
@@ -393,6 +397,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const expireSession = useCallback((message = "Your research session expired. Sign in again to continue using saved runs and research.") => {
+    const expiredMethod = authenticationMethodRef.current;
     accessEpoch.current += 1;
     pollRequestId.current += 1;
     pollInFlight.current = false;
@@ -438,6 +443,8 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setPreferredRunId(cleared.preferredRunId as string | undefined);
     setDataError(cleared.dataError as string | undefined);
     setActionMessage(cleared.actionMessage as string | undefined);
+    if (expiredMethod === "wallet") void logoutWalletSession().catch(() => undefined);
+    else if (expiredMethod === "operator") void logoutFromSecurityService().catch(() => undefined);
   }, [updateGate, updateHistory]);
 
   const checkSession = useCallback(async () => {
@@ -498,7 +505,6 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     if (authenticationMethodRef.current === "wallet" && sessionAddress
       && (!value.address || value.address.toLowerCase() !== sessionAddress.toLowerCase())) {
       setSignInChallenge(undefined);
-      void logoutWalletSession().catch(() => undefined);
       expireSession("The connected wallet account changed. The wallet-owned research session was cleared; sign in again with the authorized account.");
     }
   }, [expireSession]);
@@ -628,18 +634,31 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       setSignInError(`Manually select ${NETWORKS.find((network) => network.id === selectedNetwork)?.label ?? "the selected network"} (chain ID ${expectedChainId}) in your wallet, then request a new sign-in message.`);
       return;
     }
+    if (!challenge.message.toLowerCase().includes(wallet.address.toLowerCase()) || !challenge.message.includes(`Chain ID: ${expectedChainId}`)) {
+      setSignInChallenge(undefined);
+      setSignInError("This sign-in message belongs to another account or network. Request a new message for the current wallet state.");
+      return;
+    }
     setSignInBusy(true);
     setSignInError(undefined);
     try {
+      const contextMatches = async () => {
+        const [accounts, chainValue] = await Promise.all([
+          provider.request({ method: "eth_accounts" }),
+          provider.request({ method: "eth_chainId" }),
+        ]);
+        const currentAddress = Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : undefined;
+        const currentChainId = typeof chainValue === "string" && /^0x[0-9a-f]+$/i.test(chainValue) ? Number.parseInt(chainValue, 16) : undefined;
+        return providerRef.current === provider && currentAddress?.toLowerCase() === wallet.address!.toLowerCase()
+          && currentChainId === expectedChainId && selectedNetworkRef.current === selectedNetwork;
+      };
+      if (!(await contextMatches())) {
+        setSignInChallenge(undefined);
+        setSignInError("The wallet account or network changed. No sign-in message was requested; refresh the wallet and start again.");
+        return;
+      }
       const signature = await signWalletAuthenticationMessage(provider, wallet.address, challenge.message);
-      const [accounts, chainValue] = await Promise.all([
-        provider.request({ method: "eth_accounts" }),
-        provider.request({ method: "eth_chainId" }),
-      ]);
-      const currentAddress = Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : undefined;
-      const currentChainId = typeof chainValue === "string" && /^0x[0-9a-f]+$/i.test(chainValue) ? Number.parseInt(chainValue, 16) : undefined;
-      if (providerRef.current !== provider || currentAddress?.toLowerCase() !== wallet.address.toLowerCase()
-        || currentChainId !== expectedChainId || selectedNetworkRef.current !== selectedNetwork) {
+      if (!(await contextMatches())) {
         throw new Error("wallet_auth_context_changed");
       }
       const session = await completeWalletAuthChallenge({ address: wallet.address, nonce: challenge.nonce, signature });
@@ -993,17 +1012,25 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       capabilities,
       runs: history.runs,
       accessState: gate,
-      accessMessage: gateMessage ?? capabilityMessage,
+      authenticationMethod,
+      authenticatedAddress,
+      accessMessage: gateMessage,
+      capabilitiesMessage: capabilityMessage,
       preferredRunId,
       dataError: history.historyError ?? dataError,
       isRefreshing,
       isCreating,
       actionMessage,
       hasMoreRuns: Boolean(history.nextCursor),
-    }), [wallet, selectedNetwork, networkRpc, capabilities, history, gate, gateMessage, capabilityMessage, preferredRunId, dataError, isRefreshing, isCreating, actionMessage]);
+    }), [wallet, selectedNetwork, networkRpc, capabilities, history, gate, authenticationMethod, authenticatedAddress, gateMessage, capabilityMessage, preferredRunId, dataError, isRefreshing, isCreating, actionMessage]);
   const actions = useMemo<AppActions>(() => ({
       setNetwork(id) {
         if (!isNetworkAvailable(id)) return;
+        if (selectedNetworkRef.current !== id && signInChallenge) {
+          setSignInChallenge(undefined);
+          setSignInError("The selected network changed. Request a new sign-in message for the current network.");
+        }
+        selectedNetworkRef.current = id;
         setSelectedNetwork(id);
         setNetworkRpc({ status: "loading" });
       },
@@ -1021,7 +1048,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     },
     createSecurityRun: startResearch,
     logout,
-  }), [pressWalletButton, openWalletPicker, disconnectWallet, refreshWallet, startResearch, logout]);
+  }), [pressWalletButton, openWalletPicker, disconnectWallet, refreshWallet, startResearch, logout, signInChallenge]);
   const value = useMemo<AppModelValue>(() => ({ model: { ...model, security: { ...model.security, runs: securityRuns } }, actions }), [model, actions, securityRuns]);
   const access = useMemo<LiveResearchAccessValue>(() => ({
     gate,

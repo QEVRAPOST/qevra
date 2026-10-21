@@ -230,6 +230,7 @@ function buildLiveStatusBar(
   accessState: NonNullable<AppModel["security"]["accessState"]>,
   serviceError = false,
   walletMismatch = false,
+  capabilitiesUnavailable = false,
 ): StatusBarItem[] {
   const walletText = wallet.address
     ? walletMismatch
@@ -246,6 +247,8 @@ function buildLiveStatusBar(
           ? "Swarm · access rate-limited"
           : accessState === "service_error"
             ? "Swarm · access unavailable"
+          : capabilitiesUnavailable
+            ? "Research availability · not exposed to wallet sessions"
             : serviceError
     ? "Live service · error"
     : !capabilities
@@ -276,6 +279,7 @@ function buildLiveCoverage(
   accessState: NonNullable<AppModel["security"]["accessState"]>,
   runs: ResearchRunSummary[] | null,
   historyError?: string,
+  capabilitiesMessage?: string,
 ): CoverageRow[] {
   return COVERAGE_ROWS.map((sourceRow) => {
     const row = brandizeDisplayStrings(sourceRow, PROJECT_NAME);
@@ -316,9 +320,11 @@ function buildLiveCoverage(
           ? `${runCount} loaded record${runCount === 1 ? "" : "s"}`
           : runs === null ? historyError ? "History unavailable" : "Checking history" : "No live runs recorded"),
         note: signedOutLabel
-          ? "Research history and run creation require an operator session. Public wallet and network reads remain available."
+          ? "Research history and run creation require a wallet research sign-in or the separate operator administration session. Public wallet and network reads remain available."
           : runs === null
             ? historyError ?? "Checking the authenticated Security Research API."
+            : capabilitiesMessage
+              ? capabilitiesMessage
             : capabilities?.provider === "available"
             ? "Loaded run history comes from the authenticated Security Research API. Additional records may be available. Agent completion is not a passed security test."
             : "Live run history is read from the API; new AI research is unavailable until a provider is configured and billing is approved.",
@@ -335,7 +341,10 @@ export function buildLiveAppModel(input: {
   capabilities?: SecurityResearchCapabilities;
   runs: ResearchRunSummary[] | null;
   accessState?: NonNullable<AppModel["security"]["accessState"]>;
+  authenticationMethod?: "wallet" | "operator";
+  authenticatedAddress?: `0x${string}`;
   accessMessage?: string;
+  capabilitiesMessage?: string;
   preferredRunId?: string;
   dataError?: string;
   hasMoreRuns?: boolean;
@@ -350,7 +359,7 @@ export function buildLiveAppModel(input: {
   const selectedChainId = NETWORKS.find((network) => network.id === selectedNetwork)?.chainId;
   const walletMismatch = wallet.address !== undefined && wallet.chainId !== undefined && wallet.chainId !== selectedChainId;
   const liveRuns = runs?.map((run) => toLiveSwarmRun(run)) ?? [];
-  const unavailableMessage = input.accessMessage ?? input.dataError;
+  const unavailableMessage = input.accessMessage ?? input.capabilitiesMessage ?? input.dataError;
   const securityStatus: AppModel["security"]["status"] = accessState !== "authenticated"
     ? "unavailable"
     : runs === null
@@ -359,6 +368,8 @@ export function buildLiveAppModel(input: {
   const security: AppModel["security"] = {
     origin: "live",
     accessState,
+    ...(input.authenticationMethod ? { authenticationMethod: input.authenticationMethod } : {}),
+    ...(input.authenticatedAddress ? { authenticatedAddress: input.authenticatedAddress } : {}),
     status: securityStatus,
     runs: liveRuns,
     ...(input.preferredRunId ? { preferredRunId: input.preferredRunId } : {}),
@@ -378,8 +389,8 @@ export function buildLiveAppModel(input: {
 
   return {
     mode: "live",
-    statusBar: buildLiveStatusBar(wallet, capabilities, accessState, Boolean(input.dataError), walletMismatch),
-    coverage: buildLiveCoverage(wallet, walletMismatch, selectedNetwork, capabilities, accessState, runs, input.dataError),
+    statusBar: buildLiveStatusBar(wallet, capabilities, accessState, Boolean(input.dataError), walletMismatch, input.authenticationMethod === "wallet" && !capabilities),
+    coverage: buildLiveCoverage(wallet, walletMismatch, selectedNetwork, capabilities, accessState, runs, input.dataError, input.capabilitiesMessage),
     network: { selected: selectedNetwork, options: [...NETWORKS], rpc, walletMismatch },
     wallet: buildLiveWallet(wallet, walletMismatch, selectedNetwork),
     swap: buildLiveSwap(),

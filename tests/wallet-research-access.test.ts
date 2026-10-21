@@ -12,7 +12,7 @@ test("research access leads with explicit wallet sign-in and keeps operator admi
   }));
   assert.match(markup, /Sign in to Research/);
   assert.match(markup, /EIP-191/i);
-  assert.match(markup, /wallet connection remains read-only/i);
+  assert.match(markup, /wallet connection.*remain read-only/i);
   assert.match(markup, /Operator administration/);
   assert.match(markup, /configured operator access token/i);
   assert.match(markup, /Run ID is not an authentication token/i);
@@ -31,7 +31,7 @@ test("wallet challenge approval is shown as a distinct user action", () => {
     selectedNetwork: "testnet",
     signInChallenge: {
       nonce: "a".repeat(32),
-      message: "Sign in to VEYRA. This request will not approve tokens or authorize transactions.",
+      message: "Login to this-site wants you to sign in with your Ethereum account:\n0x0000000000000000000000000000000000000001\n\nSign in to VEYRA. This request will not approve tokens or authorize transactions.\n\nChain ID: 46630",
       expiresAt: "2026-10-21T12:00:00.000Z",
     },
     onLogin: async () => {},

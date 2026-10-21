@@ -81,7 +81,12 @@ function SecurityResearchView() {
   const selected = sec.runs.find((r) => r.id === selectedId) ?? (live && wanted ? undefined : sec.runs[0]);
   const illustrating = step !== null;
   const pipeline = illustrating ? illustrationModel(step) : selected ? pipelineFor(selected) : null;
-  const blocker = live ? startBlocker(sec.capabilities) : null;
+  const capabilitiesUnavailable = live && researchAccess?.authenticationMethod === "wallet" && !sec.capabilities;
+  const blocker = live
+    ? capabilitiesUnavailable
+      ? "New runs are disabled because wallet sessions cannot read provider, worker, and billing availability. Saved reports remain available."
+      : startBlocker(sec.capabilities)
+    : null;
   const canStart = live && blocker === null;
   const phase = journeyPhase(pipeline, illustrating ? undefined : selected, canStart);
 
@@ -114,6 +119,7 @@ function SecurityResearchView() {
             canStart={canStart}
             isCreating={!!sec.isCreating}
             blocker={blocker}
+            capabilitiesUnavailable={capabilitiesUnavailable}
             step={step}
             onIllustrate={ill.start}
             onNext={ill.next}
@@ -142,8 +148,10 @@ function SecurityResearchView() {
               )}
               {sec.status === "empty" && (
                 <EmptyState as="li" title="No runs recorded yet.">
-                  {live
-                    ? "Choose a topic and start the first run. It appears here with its evidence and its limits. This is not a statement that the system is safe."
+                  {live && capabilitiesUnavailable
+                    ? "No wallet-owned runs are recorded yet. The service has not exposed its provider, worker, and billing availability to wallet sessions, so new runs remain disabled."
+                    : live
+                      ? "Choose a topic and start the first run. It appears here with its evidence and its limits. This is not a statement that the system is safe."
                     : "This is not a statement that the system is safe. When a run is recorded, it appears here with its evidence and its limits."}
                 </EmptyState>
               )}

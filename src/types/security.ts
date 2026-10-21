@@ -40,6 +40,8 @@ export interface SecurityView {
   origin: "demo" | "live";
   /** Operator access is independent from public wallet and network reads. */
   accessState?: "checking" | "not_configured" | "unauthenticated" | "authenticated" | "service_error" | "rate_limited";
+  authenticationMethod?: "wallet" | "operator";
+  authenticatedAddress?: `0x${string}`;
   /** "unavailable" means the run feed is not connected, which says nothing about whether the system is safe */
   status: "loading" | "ready" | "empty" | "unavailable";
   runs: SwarmRun[];
