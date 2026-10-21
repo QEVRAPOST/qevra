@@ -40,6 +40,6 @@ contract VeyraRouterRegistry is VeyraAccessManaged {
         if (!policy.enabled) revert RouterNotEnabled(router);
         bytes32 observed = router.codehash;
         if (observed != policy.codeHash) revert RouterCodeHashChanged(router, policy.codeHash, observed);
-        return (true, policy.codeHash);
+        return (policy.enabled, policy.codeHash);
     }
 }

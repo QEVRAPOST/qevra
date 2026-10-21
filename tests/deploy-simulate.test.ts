@@ -4,7 +4,7 @@ import { parseDeploymentArgs, simulateDeployment } from "../scripts/deploy-simul
 
 const jsonRpc = (id: number, result: string) => Response.json({ jsonrpc: "2.0", id, result });
 
-test("simulates a read-only Testnet preflight using the configured chain and RPC", async () => {
+test("prints a read-only Testnet preflight using the configured chain and RPC", async () => {
   const calls: Array<{ url: string; method: string }> = [];
   const result = await simulateDeployment("testnet", {
     projectName: "VEYRA",
@@ -19,26 +19,31 @@ test("simulates a read-only Testnet preflight using the configured chain and RPC
   assert.equal(result.exitCode, 0);
   assert.doesNotMatch(result.output, /Y E V R A|YEVRA/);
   assert.ok(result.output.split("\n").some((line) => line.includes("#   # ##### #   # ####   ###")));
-  assert.match(result.output, /READ-ONLY DEPLOYMENT READINESS/);
+  assert.match(result.output, /READ-ONLY NETWORK AND DEPLOYMENT STATUS/);
   assert.match(result.output, /ROBINHOOD TESTNET/);
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+46630/);
   assert.match(result.output, /01\s+\/\s+LIVE NETWORK VALIDATION/);
   assert.match(result.output, /RPC CONNECTIVITY\s+│\s+AVAILABLE/);
   assert.match(result.output, /LATEST BLOCK\s+│\s+42/);
-  assert.match(result.output, /No verified deployment address/);
-  assert.match(result.output, /02\s+\/\s+SMART ACCOUNT DEPLOYMENT READINESS/);
-  assert.match(result.output, /03\s+\/\s+THREE CORE PRODUCT PILLARS/);
-  assert.match(result.output, /Research Agent succeeded in a prior live attempt/i);
-  assert.match(result.output, /THREE-AGENT RUN\s+│\s+UNVERIFIED/i);
-  assert.match(result.output, /04\s+\/\s+SECURITY AND EXECUTION GATES/);
-  assert.match(result.output, /PHASE 0B GATE\s+│\s+BLOCKED/i);
+  assert.match(result.output, /10-CONTRACT ARCHITECTURE/);
+  assert.match(result.output, /VeyraResearchEvidenceAnchor/);
+  assert.match(result.output, /0x10A47a16A6A903574Ed4058B67750073cC992632/);
+  assert.match(result.output, /0xb512a881c0bfa01d33786a6726c40db9b31f64f2598f02022f10a752e0b2ebae/);
+  assert.match(result.output, /02\s+\/\s+ROBINHOOD TESTNET 10-CONTRACT ARCHITECTURE REGISTRY/);
+  assert.match(result.output, /06\s+\/\s+THREE CORE PRODUCT PILLARS/);
+  assert.match(result.output, /HISTORICAL THREE-AGENT REPORT\s+│\s+COMPLETED/i);
+  assert.match(result.output, /NEW RESEARCH RUNS\s+│\s+READINESS CHECK REQUIRED/i);
+  assert.match(result.output, /07\s+\/\s+FINAL READINESS SUMMARY/);
+  assert.match(result.output, /ML-DSA security remains NO-GO/i);
   assert.match(result.output, /BROADCAST\s+│\s+DISABLED/);
-  assert.match(result.output, /READ ONLY — NO TRANSACTIONS SIGNED OR BROADCAST/);
+  assert.match(result.output, /NO PRIVATE KEY LOADED · NO SIGNATURE REQUESTED · NO TRANSACTION BROADCAST/);
   assert.deepEqual(calls, [
     { url: "https://rpc.testnet.chain.robinhood.com", method: "eth_chainId" },
     { url: "https://rpc.testnet.chain.robinhood.com", method: "eth_blockNumber" },
+    { url: "https://rpc.testnet.chain.robinhood.com", method: "eth_getTransactionReceipt" },
   ]);
-  assert.doesNotMatch(result.output, /0x[a-f\d]{40}|0x[a-f\d]{64}|gas estimate/i);
+  assert.doesNotMatch(result.output, /awaits explicit owner authorization|awaiting authorization/i);
+  assert.doesNotMatch(result.output, /gas estimate/i);
 });
 
 test("simulates Mainnet with the configured chain and RPC", async () => {
@@ -66,7 +71,8 @@ test("keeps the simulation blocked and reports 403 and 429 RPC responses without
     assert.match(result.output, /ACCESS FAILURE/);
     assert.match(result.output, new RegExp(`HTTP ${status}`));
     assert.match(result.output, /BROADCAST\s+│\s+DISABLED/);
-    assert.doesNotMatch(result.output, /secret response body|0x[a-f\d]{40,}/i);
+    assert.doesNotMatch(result.output, /secret response body/i);
+    assert.match(result.output, /0x10A47a16A6A903574Ed4058B67750073cC992632/);
   }
 });
 
@@ -129,6 +135,75 @@ test("showcase respects narrow terminal widths and plain output has no ANSI esca
   });
   assert.doesNotMatch(result.output, /\u001b\[/);
   assert.ok(result.output.split("\n").every((line) => line.length <= 44), "each line should fit the selected terminal width");
+});
+
+test("renders each architecture slot separately from the Testnet and Mainnet Evidence Anchor records", async () => {
+  const result = await simulateDeployment("testnet", {
+    color: false,
+    columns: 100,
+    fetchImpl: async (_url, init) => {
+      const request = JSON.parse(String(init?.body)) as { id: number; method: string };
+      return jsonRpc(request.id, request.method === "eth_chainId" ? "0xb626" : "0x2a");
+    },
+  });
+  const names = [
+    "VeyraKeyRegistrationValidator",
+    "VeyraKeyRegistry",
+    "VeyraRecoveryPolicy",
+    "VeyraAccount",
+    "VeyraAccountFactory",
+    "VeyraTokenPolicyRegistry",
+    "VeyraRouterRegistry",
+    "VeyraSwapIntentGuard",
+    "VeyraSwapExecutor",
+    "VeyraResearchAttestationRegistry",
+  ];
+
+  assert.match(result.output, /TESTNET 10-CONTRACT ARCHITECTURE REGISTRY/);
+  assert.match(result.output, /MAINNET 10-CONTRACT ARCHITECTURE REGISTRY/);
+  for (const name of names) assert.ok(result.output.includes(name), `${name} should be shown`);
+  assert.match(result.output, /STANDALONE TESTNET EVIDENCE ANCHOR/);
+  assert.match(result.output, /STANDALONE MAINNET EVIDENCE ANCHOR/);
+  assert.match(result.output, /NOT DEPLOYED/);
+  assert.match(result.output, /This is a read-only status display; no transaction is simulated\./i);
+  assert.doesNotMatch(result.output, /awaits explicit owner authorization|awaiting authorization/i);
+});
+
+test("emits real validation steps in a fixed order without delays", async () => {
+  const events: Array<{ label: string; state: string }> = [];
+  const run = simulateDeployment as unknown as (
+    network: "testnet",
+    options: Record<string, unknown>,
+  ) => Promise<{ exitCode: number; output: string }>;
+  const result = await run("testnet", {
+    color: false,
+    fetchImpl: async (_url: unknown, init: { body?: unknown }) => {
+      const request = JSON.parse(String(init.body)) as { id: number; method: string };
+      return jsonRpc(request.id, request.method === "eth_chainId" ? "0xb626" : "0x2a");
+    },
+    onProgress: (event: { label: string; state: string }) => events.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(events.filter((event) => event.state === "complete").map((event) => event.label), [
+    "Robinhood RPC chain ID",
+    "Latest block",
+    "Inspect Testnet and Mainnet registries",
+    "Verify Testnet Evidence Anchor",
+  ]);
+});
+
+test("animates only interactive terminals that allow color and cursor updates", async () => {
+  const terminalApi = await import("../scripts/deploy-simulate");
+  const api = terminalApi as unknown as {
+    shouldAnimateTerminal?: (isTTY: boolean, env: Record<string, string | undefined>) => boolean;
+  };
+
+  assert.equal(typeof api.shouldAnimateTerminal, "function");
+  assert.equal(api.shouldAnimateTerminal!(false, { TERM: "xterm" }), false);
+  assert.equal(api.shouldAnimateTerminal!(true, { TERM: "dumb" }), false);
+  assert.equal(api.shouldAnimateTerminal!(true, { TERM: "xterm", NO_COLOR: "1" }), false);
+  assert.equal(api.shouldAnimateTerminal!(true, { TERM: "xterm" }), true);
 });
 
 test("uses VEYRA rather than a stale project name when branding falls back", async () => {

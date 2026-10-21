@@ -23,11 +23,11 @@ authorization, custody, funding, recovery, deposits, and withdrawals.
 | 3 | `VeyraRecoveryPolicy` | Encodes a reviewed threshold recovery transition without a unilateral EOA bypass; depends on #2 and a product-approved recovery model. | Not implemented; no tests. | **Blocked:** key-loss, guardian, threshold, and delay policies remain undecided. | No / No |
 | 4 | `VeyraAccount` | Non-upgradeable account with ML-DSA-authorized, bounded execution; depends on #1–#3 and #8. | Not implemented; no tests. | **Hard NO-GO:** verifier registration vulnerability and custody policy remain unresolved. | No / No |
 | 5 | `VeyraAccountFactory` | Deterministically creates accounts without initializer front-running or retained factory authority; depends on #2 and #4. | Not implemented; no tests. | **Blocked:** account initialization and deployment authority are not reviewed. | No / No |
-| 6 | `VeyraTokenPolicyRegistry` | Names tokens, decimals, transfer semantics, and permitted asset behavior for a swap; consumed by #8 and #9. | Not implemented; no tests. | **Blocked:** no verified Robinhood token allowlist or route exists. | No / No |
-| 7 | `VeyraRouterRegistry` | Pins supported router addresses and runtime-code hashes by chain; consumed by #8 and #9. | Not implemented; no tests. | **Blocked:** no compatible, independently verified Robinhood router has been established. | No / No |
-| 8 | `VeyraSwapIntentGuard` | Compares user-reviewed chain, tokens, amount, recipient, router, slippage, minimum output, calldata, and deadline against executable parameters; depends on #6 and #7. | Not implemented; no tests. | **Blocked:** no verified quote/execution route is configured. | No / No |
-| 9 | `VeyraSwapExecutor` | Executes only an exact intent accepted by #8 and constrained by #6/#7; never holds assets beyond an atomic call. | Not implemented; no tests. | **Blocked:** no route or execution integration; signing and swap execution remain disabled. | No / No |
-| 10 | `VeyraResearchAttestationRegistry` | Optionally anchors a completed Research→Analysis→Verification report digest and evidence-manifest digest; stores no report text and requires a defined attestor policy. | Not implemented; no tests. | **Blocked:** public attestation authority, privacy, and on-chain usefulness need approval; the existing Swarm remains off-chain. | No / No |
+| 6 | `VeyraTokenPolicyRegistry` | Owner-managed token allowlist pins runtime code hash and decimals; accepts only explicitly marked exact-transfer semantics. | Implemented; 2 focused tests. | **Blocked:** no independently reviewed Robinhood token allowlist or transfer-semantics review. Admin entries are assertions, not proofs. | No / No |
+| 7 | `VeyraRouterRegistry` | Owner-managed allowlist pins exact router runtime code hash; consumed by #8/#9. | Implemented; 2 focused tests. | **Blocked:** no compatible, independently verified Robinhood router established. A code hash alone does not establish safe router behavior. | No / No |
+| 8 | `VeyraSwapIntentGuard` | Consumes account-originated nonces; checks chain, tokens, router, deadline, quote/minimum output and slippage; locks an exact intent for same-block executor consumption. | Implemented; tested in 5 shared guard/executor integration cases. | **Blocked:** no verified route or quote source; an account must itself authenticate the lock call. | No / No |
+| 9 | `VeyraSwapExecutor` | Uses a typed exact-swap interface; input is held only during the atomic call, allowance is reset, output and zero residue are checked. | Implemented; tested in 5 shared guard/executor integration cases, including replay rejection. | **Blocked:** no verified route or audited Robinhood integration. Test mocks do not establish live-router safety. | No / No |
+| 10 | `VeyraResearchAttestationRegistry` | Role-gated digest-only run attestations; stores publisher and timestamp, never report text. An attestation records publication, not truth or review. | Implemented; 2 focused tests. | **Blocked:** public attestor authority, privacy, and on-chain usefulness need approval; the existing Swarm remains off-chain. | No / No |
 
 The ten-name target is an architecture boundary, not a requirement to create
 placeholder contracts. The current `QevraAuthorizationHarness` is a separate
@@ -84,10 +84,40 @@ of the nine proposed roles other than the optional research-attestation role is:
 | `VeyraSwapIntentGuard` | **Blocked; no deployment** | There is no approved route or complete user-intent validation policy. |
 | `VeyraSwapExecutor` | **Hard NO-GO; no deployment** | Signing and swap execution remain disabled; no verified route exists. |
 
-`VeyraResearchAttestationRegistry` (proposed slot 10) is also **blocked and not
-implemented**: public attestor authority, privacy policy, and on-chain
-usefulness have not been approved. The narrower Evidence Anchor is not a
-substitute for that contract or a protocol-wide approval.
+`VeyraResearchAttestationRegistry` (slot 10) now has a tested digest-only
+implementation, but remains **blocked from deployment/use** until public
+attestor authority, privacy policy, and on-chain usefulness are approved. The
+narrower Evidence Anchor is not a substitute for that contract or a
+protocol-wide approval.
+
+## Ten-contract implementation milestone
+
+Source implementations now exist for slots 6–10, with focused local Foundry
+tests. Slots 1–5 remain intentionally unimplemented because they define the
+key-registration, recovery, and custody trust boundary; names-only or
+mock-backed contracts do not resolve the Phase 0B security proof. The Phase 0
+harness is not any of those production implementations.
+
+The Testnet-only `DeployVeyraArchitecture.s.sol` sequence deploys slots 6–9 in
+dependency order (token registry, router registry, intent guard, executor, then
+one-time executor binding). It is chain- and deployer-pinned, and starts with
+empty token/router registries. It does not deploy the attestation registry
+because its attestor policy remains unapproved. Simulation return addresses are
+not deployment records. After owner authorization, only a successful receipt,
+matching runtime code, owner/role checks, and compiler-artifact verification may
+populate architecture deployment records. Blockscout source publication is
+tracked separately.
+
+Current non-broadcast Testnet simulation estimates 4,008,318 gas and maximum
+fee-per-gas 0.020000001 gwei, for an execution-fee estimate of
+0.000080166364008318 ETH. It includes four contract creations and one
+executor-binding transaction. This is not a guaranteed all-in cap; any separate
+Robinhood L1 data-fee surcharge must be included in the final live estimate.
+The live Testnet chain ID was 46630 and the approved deployer balance observed
+for preflight was 0.009996942930000000 ETH. No architecture contract was
+broadcast; only the standalone Evidence Anchor in its separate manifest field
+is deployed. The same sources compile with the Mainnet profile, but Mainnet
+manifests remain address-empty and no Mainnet broadcast is provided.
 
 ## Current Foundry tests
 

@@ -18,7 +18,7 @@ contract VeyraTokenPolicyRegistry is VeyraAccessManaged {
     error InvalidToken(address token);
     error InvalidDecimals(uint8 decimals);
     error TokenMetadataUnavailable(address token);
-    error TokenDecimalsMismatch(address token, uint8 expected, uint8 observed);
+    error TokenDecimalsMismatch(address token, uint8 expected, uint256 observed);
     error UnsupportedTransferSemantics();
     error TokenCodeHashChanged(address token, bytes32 expected, bytes32 observed);
     error TokenNotEnabled(address token);
@@ -35,9 +35,7 @@ contract VeyraTokenPolicyRegistry is VeyraAccessManaged {
         (bool success, bytes memory result) = token.staticcall(abi.encodeWithSignature("decimals()"));
         if (!success || result.length != 32) revert TokenMetadataUnavailable(token);
         uint256 observed = abi.decode(result, (uint256));
-        if (observed > type(uint8).max || uint8(observed) != decimals_) {
-            revert TokenDecimalsMismatch(token, decimals_, observed > type(uint8).max ? type(uint8).max : uint8(observed));
-        }
+        if (observed != decimals_) revert TokenDecimalsMismatch(token, decimals_, observed);
 
         bytes32 codeHash = token.codehash;
         _policies[token] = TokenPolicy({decimals: decimals_, exactTransfer: true, enabled: true, codeHash: codeHash});
@@ -60,6 +58,6 @@ contract VeyraTokenPolicyRegistry is VeyraAccessManaged {
         if (!policy.enabled) revert TokenNotEnabled(token);
         bytes32 observed = token.codehash;
         if (observed != policy.codeHash) revert TokenCodeHashChanged(token, policy.codeHash, observed);
-        return (true, policy.decimals, policy.exactTransfer, policy.codeHash);
+        return (policy.enabled, policy.decimals, policy.exactTransfer, policy.codeHash);
     }
 }

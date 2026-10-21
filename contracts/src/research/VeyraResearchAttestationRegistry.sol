@@ -13,7 +13,7 @@ contract VeyraResearchAttestationRegistry is VeyraAccessManaged {
         bytes32 manifestDigest;
         bytes32 runId;
         address attestor;
-        uint64 attestedAt;
+        uint256 attestedAt;
         bool exists;
     }
 
@@ -30,7 +30,7 @@ contract VeyraResearchAttestationRegistry is VeyraAccessManaged {
         bytes32 indexed runId,
         bytes32 manifestDigest,
         address attestor,
-        uint64 attestedAt
+        uint256 attestedAt
     );
 
     constructor(address initialAttestor) {
@@ -44,7 +44,7 @@ contract VeyraResearchAttestationRegistry is VeyraAccessManaged {
         if (attestationForRun[runId] != bytes32(0)) revert DuplicateRun(runId);
 
         id = keccak256(abi.encode(block.chainid, address(this), msg.sender, reportDigest, manifestDigest, runId));
-        uint64 now_ = uint64(block.timestamp);
+        uint256 now_ = block.timestamp;
         _attestations[id] = Attestation({
             reportDigest: reportDigest,
             manifestDigest: manifestDigest,

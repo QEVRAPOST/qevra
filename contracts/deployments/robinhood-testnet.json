@@ -48,35 +48,35 @@
       "slot": 6,
       "solidityName": "VeyraTokenPolicyRegistry",
       "readiness": "blocked",
-      "reason": "No verified Robinhood token allowlist or transfer-semantics review exists.",
+      "reason": "Implementation and tests exist, but no independently reviewed Robinhood token allowlist or transfer-semantics review exists.",
       "address": ""
     },
     {
       "slot": 7,
       "solidityName": "VeyraRouterRegistry",
       "readiness": "blocked",
-      "reason": "No compatible Robinhood router address and runtime-code hash are independently verified.",
+      "reason": "Implementation and tests exist, but no compatible Robinhood router address and runtime-code hash are independently verified.",
       "address": ""
     },
     {
       "slot": 8,
       "solidityName": "VeyraSwapIntentGuard",
       "readiness": "blocked",
-      "reason": "No approved route or complete user-intent validation policy exists.",
+      "reason": "Implementation and tests exist, but no verified Robinhood route/quote source is configured and no secure account caller is available.",
       "address": ""
     },
     {
       "slot": 9,
       "solidityName": "VeyraSwapExecutor",
       "readiness": "hard_no_go",
-      "reason": "Signing and swap execution remain disabled; no verified route exists.",
+      "reason": "Implementation and tests exist, but no verified Robinhood route or independently reviewed execution integration exists; swaps remain disabled.",
       "address": ""
     },
     {
       "slot": 10,
       "solidityName": "VeyraResearchAttestationRegistry",
       "readiness": "blocked",
-      "reason": "Public attestor authority, privacy policy, and on-chain usefulness have not been approved.",
+      "reason": "Digest-only implementation and tests exist, but public attestor authority, privacy policy, and on-chain usefulness have not been approved.",
       "address": ""
     }
   ],

@@ -58,7 +58,11 @@ contract VeyraArchitectureRegistryTest {
         RegistryRouterMock router = new RegistryRouterMock();
         bytes32 runtimeHash = address(router).codehash;
 
-        vm.expectRevert(abi.encodeWithSelector(VeyraRouterRegistry.RuntimeCodeHashMismatch.selector, bytes32(uint256(1)), runtimeHash));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VeyraRouterRegistry.RuntimeCodeHashMismatch.selector, bytes32(uint256(1)), runtimeHash
+            )
+        );
         registry.setRouter(address(router), bytes32(uint256(1)));
 
         registry.setRouter(address(router), runtimeHash);
@@ -101,7 +105,9 @@ contract VeyraArchitectureRegistryTest {
         bytes32 digest = keccak256("digest");
         bytes32 runId = keccak256("run");
 
-        vm.expectRevert(abi.encodeWithSelector(VeyraResearchAttestationRegistry.UnauthorizedAttestor.selector, NON_OWNER));
+        vm.expectRevert(
+            abi.encodeWithSelector(VeyraResearchAttestationRegistry.UnauthorizedAttestor.selector, NON_OWNER)
+        );
         vm.prank(NON_OWNER);
         registry.attest(digest, digest, runId);
 
