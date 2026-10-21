@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
 import { getExplorerAddressUrl } from "@/lib/config/networks";
-import { getVerifiedVeyraDeployments, VEYRA_DEPLOYMENTS } from "@/lib/config/veyra-deployments";
+import { getVerifiedVeyraDeployments } from "@/lib/config/veyra-deployments";
 
 test("network explorer address links are derived from the selected wallet chain configuration", () => {
   assert.equal(
@@ -15,10 +15,9 @@ test("network explorer address links are derived from the selected wallet chain 
   assert.equal(getExplorerAddressUrl("mainnet", "not-an-address"), undefined);
 });
 
-test("verified VEYRA deployments remain empty until there is a trusted deployment record", () => {
-  assert.deepEqual(VEYRA_DEPLOYMENTS, []);
-  assert.deepEqual(getVerifiedVeyraDeployments("testnet"), []);
-  assert.deepEqual(getVerifiedVeyraDeployments("mainnet"), []);
+test("the registry helper does not invent deployment records", () => {
+  assert.deepEqual(getVerifiedVeyraDeployments("testnet", []), []);
+  assert.deepEqual(getVerifiedVeyraDeployments("mainnet", []), []);
 });
 
 test("registry entries are shown only for a valid address on the selected configured chain", () => {

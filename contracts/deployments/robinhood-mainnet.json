@@ -7,5 +7,92 @@
   "explorerBaseUrl": "https://robinhoodchain.blockscout.com",
   "deploymentStatus": "no_verified_deployments",
   "sourceVerification": "not_applicable",
-  "contracts": []
+  "contracts": [],
+  "architectureSlots": [
+    {
+      "slot": 1,
+      "solidityName": "VeyraKeyRegistrationValidator",
+      "readiness": "blocked",
+      "reason": "The ML-DSA key-registration forgery is not closed by an independently reviewed proof.",
+      "address": ""
+    },
+    {
+      "slot": 2,
+      "solidityName": "VeyraKeyRegistry",
+      "readiness": "blocked",
+      "reason": "Depends on a reviewed VeyraKeyRegistrationValidator, which is not implemented.",
+      "address": ""
+    },
+    {
+      "slot": 3,
+      "solidityName": "VeyraRecoveryPolicy",
+      "readiness": "blocked",
+      "reason": "Guardian, threshold, delay, and recovery behavior remain undecided.",
+      "address": ""
+    },
+    {
+      "slot": 4,
+      "solidityName": "VeyraAccount",
+      "readiness": "hard_no_go",
+      "reason": "Phase 0B authorization, custody, recovery, deposits, and withdrawals remain disabled.",
+      "address": ""
+    },
+    {
+      "slot": 5,
+      "solidityName": "VeyraAccountFactory",
+      "readiness": "blocked",
+      "reason": "Account initialization, front-running resistance, and factory authority are not reviewed.",
+      "address": ""
+    },
+    {
+      "slot": 6,
+      "solidityName": "VeyraTokenPolicyRegistry",
+      "readiness": "blocked",
+      "reason": "No verified Robinhood token allowlist or transfer-semantics review exists.",
+      "address": ""
+    },
+    {
+      "slot": 7,
+      "solidityName": "VeyraRouterRegistry",
+      "readiness": "blocked",
+      "reason": "No compatible Robinhood router address and runtime-code hash are independently verified.",
+      "address": ""
+    },
+    {
+      "slot": 8,
+      "solidityName": "VeyraSwapIntentGuard",
+      "readiness": "blocked",
+      "reason": "No approved route or complete user-intent validation policy exists.",
+      "address": ""
+    },
+    {
+      "slot": 9,
+      "solidityName": "VeyraSwapExecutor",
+      "readiness": "hard_no_go",
+      "reason": "Signing and swap execution remain disabled; no verified route exists.",
+      "address": ""
+    },
+    {
+      "slot": 10,
+      "solidityName": "VeyraResearchAttestationRegistry",
+      "readiness": "blocked",
+      "reason": "Public attestor authority, privacy policy, and on-chain usefulness have not been approved.",
+      "address": ""
+    }
+  ],
+  "standaloneResearchEvidenceAnchor": {
+    "solidityName": "VeyraResearchEvidenceAnchor",
+    "purpose": "Testnet-only hash anchor; it does not attest to truth or implement architecture slot 10.",
+    "networkId": "mainnet",
+    "chainId": 4663,
+    "readiness": "disabled",
+    "deploymentStatus": "not_deployed",
+    "address": ""
+  },
+  "preflight": {
+    "readOnly": true,
+    "broadcastEnabled": false,
+    "accountEnvironmentVariable": "VEYRA_MAINNET_ACCOUNT",
+    "rejectsTestnetAccountReuse": true
+  }
 }

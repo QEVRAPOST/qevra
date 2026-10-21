@@ -38,7 +38,7 @@ export interface SwarmRun {
 
 export interface SecurityView {
   origin: "demo" | "live";
-  /** Operator access is independent from public wallet and network reads. */
+  /** Research authentication is independent from public wallet and network reads. */
   accessState?: "checking" | "not_configured" | "unauthenticated" | "authenticated" | "service_error" | "rate_limited";
   authenticationMethod?: "wallet" | "operator";
   authenticatedAddress?: `0x${string}`;

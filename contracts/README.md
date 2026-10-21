@@ -35,6 +35,55 @@ research artifact and is excluded from the ten proposed VEYRA identities. Its
 Foundry tests use a behavior-only mock verifier and do not validate ML-DSA
 cryptography or production safety.
 
+## Standalone research evidence anchor
+
+`VeyraResearchEvidenceAnchor` is a separate hash-only Testnet utility. It is not
+one of the ten proposed contracts and does not implement the broader proposed
+`VeyraResearchAttestationRegistry` role. The anchor records a nonzero report
+hash and run-identifier hash once each, with the immutable deployer as its only
+publisher, a timestamp, and a public read API. It stores no report text, user
+secret, signature, audit verdict, or research conclusion. An event proves only
+that those hashes were published; it does not prove that a finding is true,
+correct, reviewed, or safe.
+
+The owner cannot be changed, records cannot be edited or removed, and there is
+no payable method, receive/fallback handler, asset-transfer method, arbitrary
+call, account authorization, or ML-DSA dependency. Ordinary ETH transfers
+revert. As with any contract, forced native-currency or unsolicited token
+transfers cannot be prevented; this contract has no method to recover or move
+such assets. Do not send assets to it. Only publish hashes of research material
+that is safe to identify publicly; hashes of private or low-entropy values can
+still disclose information through guessing.
+
+The anchor's Testnet deployment is gated on the owner's approval of the final
+gas estimate. Until an actual receipt and runtime-code hash are verified,
+`contracts/deployments/robinhood-testnet.json` keeps `contracts: []` and every
+slot/candidate address is empty. The Mainnet profile has no anchor deployment
+script and is read-only preflight tooling only.
+
+## Proposed-contract readiness
+
+The ten-slot manifests preserve the proposed roles and keep their addresses
+empty. The standalone Evidence Anchor is tracked separately. Current readiness
+of the nine proposed roles other than the optional research-attestation role is:
+
+| Proposed contract | Readiness | Blocking condition |
+|---|---|---|
+| `VeyraKeyRegistrationValidator` | **Blocked; no deployment** | The ML-DSA key-registration forgery is not closed by an independently reviewed proof. |
+| `VeyraKeyRegistry` | **Blocked; no deployment** | It depends on a reviewed `VeyraKeyRegistrationValidator`, which does not exist. |
+| `VeyraRecoveryPolicy` | **Blocked; no deployment** | Guardian, threshold, delay, and recovery behavior remain undecided. |
+| `VeyraAccount` | **Hard NO-GO; no deployment** | Phase 0B authorization, custody, recovery, deposits, and withdrawals remain disabled. |
+| `VeyraAccountFactory` | **Blocked; no deployment** | Account initialization, front-running resistance, and factory authority are not reviewed. |
+| `VeyraTokenPolicyRegistry` | **Blocked; no deployment** | There is no verified Robinhood token allowlist or transfer-semantics review. |
+| `VeyraRouterRegistry` | **Blocked; no deployment** | No compatible Robinhood router address and runtime-code hash have been independently verified. |
+| `VeyraSwapIntentGuard` | **Blocked; no deployment** | There is no approved route or complete user-intent validation policy. |
+| `VeyraSwapExecutor` | **Hard NO-GO; no deployment** | Signing and swap execution remain disabled; no verified route exists. |
+
+`VeyraResearchAttestationRegistry` (proposed slot 10) is also **blocked and not
+implemented**: public attestor authority, privacy policy, and on-chain
+usefulness have not been approved. The narrower Evidence Anchor is not a
+substitute for that contract or a protocol-wide approval.
+
 ## Current Foundry tests
 
 The maintained test suite is in `test/`, matching `foundry.toml`. The legacy
@@ -59,34 +108,58 @@ bun scripts/robinhood.ts deploy preflight testnet <PUBLIC_DEPLOYER_ADDRESS>
 bun scripts/robinhood.ts deploy preflight mainnet <PUBLIC_DEPLOYER_ADDRESS>
 ```
 
-The Testnet encrypted account alias is `veyra-testnet`. Mainnet requires a
-different caller-configured `VEYRA_MAINNET_ACCOUNT`; the preflight rejects reuse
-of the Testnet alias. Never pass a raw private key or password. After a future
-contract has passed its security gate and the owner has approved the exact
-contract list and budget, the signing command must use `--account`:
+The Mainnet configuration is separate (`chain_id = 4663`, RPC alias
+`robinhood_mainnet`, Mainnet explorer, and `robinhood-mainnet.json`). The
+preflight requires a separately configured `VEYRA_MAINNET_ACCOUNT`, rejects
+reuse of `veyra-testnet`, reads the public chain ID, and remains blocked. No
+Mainnet signing or broadcast command is provided for this milestone. Never pass
+a raw private key or password.
+
+Testnet-only non-broadcast deployment simulation and gas estimate:
 
 ```sh
-# Template only; the DeployVeyra script and an approved contract do not exist yet.
-forge script script/DeployVeyra.s.sol:DeployVeyra \
+forge script script/DeployVeyraResearchEvidenceAnchor.s.sol:DeployVeyraResearchEvidenceAnchor \
   --profile robinhood_testnet --rpc-url robinhood_testnet --chain-id 46630 \
-  --account veyra-testnet --sender <APPROVED_PUBLIC_DEPLOYER_ADDRESS> --broadcast
-
-# Mainnet is a separate, permanently broadcast-blocked workflow for this milestone.
-forge script script/DeployVeyra.s.sol:DeployVeyra \
-  --profile robinhood_mainnet --rpc-url robinhood_mainnet --chain-id 4663 \
-  --account "$VEYRA_MAINNET_ACCOUNT" --sender <APPROVED_PUBLIC_DEPLOYER_ADDRESS>
+  --sender 0xfA142bF0383782Caa349C5C56A7B7D565eEFA562 \
+  --estimate market --gas-estimate-multiplier 130
 ```
 
-After a separately approved Testnet transaction, `bun scripts/robinhood.ts deploy
-verify testnet <ADDRESS> <TX_HASH> <EXPECTED_RUNTIME_CODE_HASH>` checks the
-observed chain ID, successful receipt/address match, and exact runtime-bytecode
-hash at the receipt block, then reports the deployer, receipt gas used, and
-chain-specific explorer URLs. The expected hash must be derived from the exact
-deployment artifact/constructor configuration. Its `sourceVerification` field
-remains `not_verified`; explorer source verification requires separate
-explorer/API support. The verifier is read-only and cannot populate either
-manifest or registry automatically.
+The simulation uses no keystore and does not broadcast. Foundry's market fee
+preset and 130% gas-estimate multiplier provide a conservative estimate, not a
+guaranteed maximum fee; report the gas limit and fee cap used with the computed
+ETH cost. Check the current public deployer balance independently before
+requesting transaction authorization.
 
-There are no deployable contracts today, so preflight remains blocked and no
-deployment gas estimate is available. Do not treat the historical 0.01 ETH
-Testnet observation as a current balance or spending authorization.
+After explicit approval of that estimate, the one Testnet deployment command is:
+
+```sh
+forge script script/DeployVeyraResearchEvidenceAnchor.s.sol:DeployVeyraResearchEvidenceAnchor \
+  --profile robinhood_testnet --rpc-url robinhood_testnet --chain-id 46630 \
+  --keystore "$HOME/.foundry/keystores/robinhood-testnet/veyra-testnet" \
+  --sender 0xfA142bF0383782Caa349C5C56A7B7D565eEFA562 --broadcast --slow
+```
+
+Foundry prompts for the encrypted keystore password; do not put a password or
+raw key in the command or environment. The script rejects every chain ID other
+than 46630 and checks that the deployed contract owner is the supplied public
+deployer.
+
+After a real transaction, record the transaction hash and receipt, then verify
+the receipt's contract address and deployed runtime bytecode at its block. The
+existing verifier checks observed chain ID, successful receipt, address match,
+and runtime-code hash:
+
+```sh
+bun scripts/robinhood.ts deploy verify testnet <CONTRACT_ADDRESS> <TX_HASH> <EXPECTED_RUNTIME_CODE_HASH>
+```
+
+The expected code hash must come from the exact deployed artifact/runtime bytes.
+Record the returned Testnet-only address, transaction hash, receipt block, and
+runtime hash in `contracts/deployments/robinhood-testnet.json` only after that
+verification succeeds. Confirm the receipt and code on the Testnet explorer.
+Keep `sourceVerification: "not_verified"` unless source verification is
+independently confirmed.
+
+The verifier is read-only and cannot populate a manifest or frontend registry
+automatically. The historical 0.01 ETH balance observation is not a current
+balance or spending authorization.

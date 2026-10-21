@@ -13,7 +13,14 @@ export function canUseProtectedResearch(gate: ResearchGateState | string): boole
   return gate === "authenticated";
 }
 
-/** A 401 invalidates operator access. Other HTTP errors keep their existing access state and handling. */
+export function shouldLoadResearchCapabilities(
+  gate: ResearchGateState | string,
+  authenticationMethod: "wallet" | "operator" | undefined,
+): boolean {
+  return canUseProtectedResearch(gate) && (authenticationMethod === "wallet" || authenticationMethod === "operator");
+}
+
+/** A 401 invalidates the active research session. Other HTTP errors keep their existing access state and handling. */
 export function gateAfterProtectedResponse(gate: ResearchGateState, status: number): ResearchGateState {
   return status === 401 && gate === "authenticated" ? "unauthenticated" : gate;
 }

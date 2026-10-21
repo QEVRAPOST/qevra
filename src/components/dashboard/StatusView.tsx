@@ -128,7 +128,7 @@ export function StatusView() {
         title="Status and limits"
         lede={
           model.mode === "live"
-            ? "Reading a wallet and saving research are live and read-only. The account, swaps and signing are not built."
+            ? "Wallet reads and saved research are live. Sign-in uses an explicit EIP-191 login message; transaction signing, custody, and swap execution are disabled."
             : "A preview with simulated data. This is what each part is meant to become, and what is known about it now."
         }
       />

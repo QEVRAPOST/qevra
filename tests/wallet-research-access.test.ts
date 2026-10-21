@@ -12,7 +12,7 @@ test("research access leads with explicit wallet sign-in and keeps operator admi
   }));
   assert.match(markup, /Sign in to Research/);
   assert.match(markup, /EIP-191/i);
-  assert.match(markup, /wallet connection.*remain read-only/i);
+  assert.match(markup, /login-message signature is not a blockchain transaction signature/i);
   assert.match(markup, /Operator administration/);
   assert.match(markup, /configured operator access token/i);
   assert.match(markup, /Run ID is not an authentication token/i);
@@ -40,5 +40,6 @@ test("wallet challenge approval is shown as a distinct user action", () => {
   assert.match(markup, /Review the one-time sign-in message/);
   assert.match(markup, /Approve EIP-191 sign-in message/);
   assert.match(markup, /personal_sign/i);
+  assert.match(markup, /login-message signature, not a blockchain transaction signature/i);
   assert.match(markup, /No transaction or token approval is requested/);
 });

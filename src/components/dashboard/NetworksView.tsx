@@ -7,7 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/Button";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { getExplorerAddressUrl, getExplorerTransactionUrl } from "@/lib/config/networks";
 import { PublicAddressInspector } from "@/components/dashboard/PublicAddressInspector";
-import { getVerifiedVeyraDeployments, VEYRA_DEPLOYMENTS, type VerifiedVeyraDeployment } from "@/lib/config/veyra-deployments";
+import { getVerifiedVeyraDeployments, type VerifiedVeyraDeployment } from "@/lib/config/veyra-deployments";
 import { PROJECT_NAME } from "@/lib/project-brand";
 import type { NetworkId, NetworkRpcState } from "@/types/network";
 import { useAppModel } from "./DemoAppProvider";
@@ -24,7 +24,7 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
   const selected = model.network.options.find((network) => network.id === model.network.selected);
   const deploymentNetworks = model.network.options.filter((network) => network.available);
   const deploymentGroups = deploymentNetworks.map((network) => {
-    const verified = getVerifiedVeyraDeployments(network.id, deploymentRecords ?? VEYRA_DEPLOYMENTS);
+    const verified = getVerifiedVeyraDeployments(network.id, deploymentRecords ?? []);
     return { network, total: verified.length, deployments: verified.slice(0, 10) };
   });
   const hasVerifiedDeployments = deploymentGroups.some((group) => group.total > 0);
@@ -173,13 +173,18 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
               <strong>No verified {PROJECT_NAME} deployments.</strong>
               <p>Phase 0B remains SECURITY NO-GO. Deployment and custody are disabled.</p>
             </div>
-          ) : (
-            <div className="ne-registry-networks">
-              {deploymentGroups.map(({ network, total, deployments }) => (
+          ) : null}
+          <div className="ne-registry-networks">
+            {deploymentGroups.map(({ network, total, deployments }) => {
+              const progress = Math.min(total, 10);
+              return (
                 <section className="ne-registry-network" key={network.id} aria-labelledby={`h-ne-registry-${network.id}`}>
                   <header className="ne-registry-network-head">
                     <h3 id={`h-ne-registry-${network.id}`}>{network.label}</h3>
                     <span>Chain ID {network.chainId}</span>
+                    <span className="ne-registry-meter" aria-label={`${progress} of 10 verified deployment slots used`}>
+                      <strong>{progress}/10</strong> verified
+                    </span>
                   </header>
                   {deployments.length > 0 ? (
                     <ul className="ne-contracts">
@@ -189,10 +194,13 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
                         return (
                           <li key={`${deployment.networkId}:${deployment.address}`} className="ne-contract">
                             <h4>{deployment.name}</h4>
+                            <p className="ne-contract-purpose">{deployment.purpose ?? "Purpose not provided in the deployment manifest."}</p>
                             <dl className="kv">
-                              <div><dt>Contract address</dt><dd><code>{deployment.address}</code></dd></div>
+                              <div><dt>Verified deployed address</dt><dd><code>{deployment.address}</code></dd></div>
                               <div><dt>Deployment status</dt><dd>Verified deployment</dd></div>
-                              <div><dt>Transaction</dt><dd><code>{deployment.transactionHash}</code></dd></div>
+                              <div><dt>Deployer</dt><dd><code>{deployment.deployerAddress}</code></dd></div>
+                              <div><dt>Transaction hash</dt><dd><code>{deployment.transactionHash}</code></dd></div>
+                              <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div>
                               <div><dt>Source verification</dt><dd>{deployment.sourceVerification === "verified" ? "Source verified" : "Not independently verified"}</dd></div>
                             </dl>
                             <div className="ne-actions">
@@ -209,9 +217,9 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
                   )}
                   {total > deployments.length ? <p className="ne-registry-network-note">Showing the first {deployments.length} of {total} verified deployments on this network.</p> : null}
                 </section>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
         </section>
       </div>
     </section>

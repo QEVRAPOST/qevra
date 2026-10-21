@@ -68,16 +68,16 @@
   letter-spacing: 0.02em;
   line-height: 1;
 }
-.wordmark svg {
+.wordmark-mark {
   width: 26px;
   height: 26px;
   flex: none;
+  object-fit: contain;
 }
-/* In the app bar the glyph sits in a wrapper span, as in the prototype, so it keeps inline baseline alignment
-   (Tailwind's reset would otherwise make the svg a block). */
-.wordmark .mark svg {
+/* Keep the shared PNG mark inline with the app-bar wordmark baseline. */
+.wordmark .mark .wordmark-mark {
   display: inline;
-  vertical-align: baseline;
+  vertical-align: middle;
 }
 
 /* ---------- one pinned stage across hero and story ---------- */

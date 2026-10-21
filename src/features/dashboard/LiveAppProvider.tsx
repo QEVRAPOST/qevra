@@ -36,7 +36,7 @@ import { discoverInjectedReadOnlyWallets, type InjectedReadOnlyWalletChoice } fr
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { DEFAULT_NETWORK_ID, isNetworkAvailable, NETWORKS } from "@/lib/config/networks";
 import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "./live-model";
-import { canUseProtectedResearch, expireResearchSession, gateAfterProtectedResponse, mergeFirstHistoryPage, mergeHistoryPage, type ResearchGateState } from "./live-ui-state";
+import { canUseProtectedResearch, expireResearchSession, gateAfterProtectedResponse, mergeFirstHistoryPage, mergeHistoryPage, shouldLoadResearchCapabilities, type ResearchGateState } from "./live-ui-state";
 
 type GateState = ResearchGateState;
 const ACTIVE_RUN_POLL_INTERVAL_MS = 5_000;
@@ -55,6 +55,7 @@ interface ResearchHistoryState {
 interface LiveResearchAccessValue {
   gate: GateState;
   message?: string;
+  capabilityMessage?: string;
   wallet: ReadOnlyWalletState;
   selectedNetwork: NetworkId;
   authenticationMethod?: "wallet" | "operator";
@@ -135,14 +136,20 @@ function sessionErrorGate(error: unknown): Extract<GateState, "service_error" | 
     : "service_error";
 }
 
-function walletSignInErrorMessage(error: unknown): string {
+export function walletSignInErrorMessage(error: unknown): string {
   const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : undefined;
   if (code === 4001) return "The wallet sign-in message was rejected. No research session was created.";
   if (error instanceof SecurityApiClientError) {
-    if (error.status === 401) return "This one-time sign-in message expired or was already used. Request a new message.";
-    if (error.status === 403) return "Wallet sign-in is not enabled for this site origin.";
+    if (error.code === "wallet_signature_invalid") return "The wallet signature did not match the connected account. No research session was created; request a new sign-in message.";
+    if (error.code === "wallet_challenge_expired" || error.code === "wallet_challenge_invalid" || error.code === "wallet_challenge_consumed") {
+      return "This one-time sign-in message expired or was already used. Request a new message.";
+    }
+    if (error.code === "wallet_auth_not_configured") return "Wallet sign-in is not configured on the server.";
+    if (error.code === "persistence_not_configured") return "Wallet sign-in cannot continue because research persistence is not configured on the server.";
+    if (error.status === 403) return "Wallet sign-in is not enabled for this configured VEYRA site origin.";
     if (error.status === 429) return "Wallet sign-in is rate-limited. Wait before trying again.";
     if (error.status === 503 || error.status >= 500) return "Wallet sign-in is temporarily unavailable. Your wallet remains connected.";
+    if (error.status === 401) return "The wallet sign-in could not be verified. Request a new message and try again.";
   }
   return "Wallet sign-in could not be completed. No transaction or token approval was requested.";
 }
@@ -236,7 +243,7 @@ export function LiveAccessGate({
       <section className="wallet-research-access" aria-labelledby="wallet-research-access-heading">
         <p className="operator-access-kicker">Wallet-owned research</p>
         <h3 id="wallet-research-access-heading">Sign in to Research</h3>
-        <p>Connect a wallet, request a one-time sign-in challenge, then approve that exact EIP-191 login message in your wallet. This does not approve tokens or authorize transactions; wallet connection and balance reads remain read-only.</p>
+        <p>Connect a wallet, request a one-time sign-in challenge, then approve that exact EIP-191 login message in your wallet. This login-message signature is not a blockchain transaction signature; it does not approve tokens or authorize transactions.</p>
         {gate === "checking" ? <p className="operator-access-status" role="status">Checking your server-side research session.</p> : null}
         {walletAuthConfigured && gate !== "checking" ? (
           <div className="wallet-research-identity">
@@ -262,7 +269,7 @@ export function LiveAccessGate({
                   <summary>Review the one-time sign-in message</summary>
                   <pre>{signInChallenge.message}</pre>
                 </details>
-                <p>This message expires at {signInChallenge.expiresAt}. Your wallet may label it personal_sign; it is an EIP-191 login message only. Approve it only if the origin, account, and chain match this page. No transaction or token approval is requested.</p>
+                <p>This message expires at {signInChallenge.expiresAt}. Your wallet may label it personal_sign; this is an EIP-191 login-message signature, not a blockchain transaction signature. Approve it only if the origin, account, and chain match this page. No transaction or token approval is requested.</p>
                 {!challengeMatchesCurrent ? <p role="status">This message belongs to another account or network. Cancel it and request a new message for the current wallet state.</p> : null}
                 <div className="wallet-sign-in-actions">
                   <Button type="button" variant="primary" disabled={signInBusy || !walletMatchesSelected || !challengeMatchesCurrent} onClick={() => { void onApproveWalletSignIn(); }}>
@@ -717,7 +724,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     pollInFlight.current = true;
     setIsRefreshing(true);
     try {
-      const canReadCapabilities = authenticationMethodRef.current !== "wallet";
+      const canReadCapabilities = shouldLoadResearchCapabilities(gateRef.current, authenticationMethodRef.current);
       const [capabilityResult, listResult] = await Promise.allSettled([
         canReadCapabilities ? protectRequest(getSecurityCapabilities(), requestEpoch) : Promise.resolve(undefined),
         protectRequest(listSecurityRuns({ limit: 20 }), requestEpoch),
@@ -728,11 +735,11 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
         setCapabilityMessage(undefined);
       } else if (capabilityResult.status === "fulfilled") {
         setCapabilities(undefined);
-        setCapabilityMessage("This wallet session can read its saved reports, but the capabilities endpoint currently requires the separate operator session. Provider, worker, billing, and run availability cannot be verified for wallet users, so creating a new run is disabled.");
+        setCapabilityMessage("Research capabilities could not be checked for this session. Creating a new run remains disabled until availability can be confirmed.");
       }
       else {
         setCapabilities(undefined);
-        setDataError(errorMessage(capabilityResult.reason));
+        setCapabilityMessage(errorMessage(capabilityResult.reason));
       }
       if (listResult.status === "rejected") {
         setDataError(errorMessage(listResult.reason));
@@ -1053,6 +1060,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const access = useMemo<LiveResearchAccessValue>(() => ({
     gate,
     message: gateMessage ?? capabilityMessage,
+    capabilityMessage,
     wallet,
     selectedNetwork,
     authenticationMethod,

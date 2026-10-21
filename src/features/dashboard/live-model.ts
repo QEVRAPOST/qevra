@@ -17,7 +17,7 @@ import { COVERAGE_ROWS } from "@/lib/content/status";
 import { brandizeDisplayStrings, brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import { runBadge, STAGE_META, STAGE_ORDER, STATUS_TEXT } from "@/lib/swarm-view";
 
-const READ_ONLY_NOTICE = brandizeProjectName("This view only reads public account/network data. QEVRA has no smart account, custody, signing, approvals, or swap execution.", PROJECT_NAME);
+const READ_ONLY_NOTICE = brandizeProjectName("This view reads public account/network data. Research sign-in can request an EIP-191 login-message signature after your approval; transaction signing, token approvals, custody, and swap execution are disabled.", PROJECT_NAME);
 
 function validationPath(path: Array<string | number>): string {
   return path.length === 0 ? "<root>" : path.map((part) => typeof part === "number" ? `[${part}]` : part).join(".");
@@ -230,7 +230,7 @@ function buildLiveStatusBar(
   accessState: NonNullable<AppModel["security"]["accessState"]>,
   serviceError = false,
   walletMismatch = false,
-  capabilitiesUnavailable = false,
+  capabilitiesMessage?: string,
 ): StatusBarItem[] {
   const walletText = wallet.address
     ? walletMismatch
@@ -247,8 +247,8 @@ function buildLiveStatusBar(
           ? "Swarm · access rate-limited"
           : accessState === "service_error"
             ? "Swarm · access unavailable"
-          : capabilitiesUnavailable
-            ? "Research availability · not exposed to wallet sessions"
+          : capabilitiesMessage
+            ? "Research availability · unavailable"
             : serviceError
     ? "Live service · error"
     : !capabilities
@@ -389,7 +389,7 @@ export function buildLiveAppModel(input: {
 
   return {
     mode: "live",
-    statusBar: buildLiveStatusBar(wallet, capabilities, accessState, Boolean(input.dataError), walletMismatch, input.authenticationMethod === "wallet" && !capabilities),
+    statusBar: buildLiveStatusBar(wallet, capabilities, accessState, Boolean(input.dataError), walletMismatch, input.capabilitiesMessage),
     coverage: buildLiveCoverage(wallet, walletMismatch, selectedNetwork, capabilities, accessState, runs, input.dataError, input.capabilitiesMessage),
     network: { selected: selectedNetwork, options: [...NETWORKS], rpc, walletMismatch },
     wallet: buildLiveWallet(wallet, walletMismatch, selectedNetwork),

@@ -13,6 +13,7 @@ function deployment(networkId: "testnet" | "mainnet", index: number): VerifiedVe
   const address = `0x${index.toString(16).padStart(40, "0")}` as `0x${string}`;
   return {
     name: `${networkId} contract ${index}`,
+    purpose: `Purpose for ${networkId} contract ${index}.`,
     networkId,
     chainId,
     address,
@@ -112,11 +113,25 @@ test("deployment registry groups verified records by chain, caps each network at
   assert.match(markup, /testnet contract 10/);
   assert.doesNotMatch(markup, /testnet contract 11/);
   assert.match(markup, /mainnet contract 101/);
+  assert.match(markup, /Purpose for testnet contract 1\./);
+  assert.match(markup, /Verified deployed address/);
+  assert.match(markup, /10\/10/);
+  assert.match(markup, /1\/10/);
+  assert.match(markup, /Deployer/);
+  assert.match(markup, /Block number/);
   assert.match(markup, /Verified deployment/);
   assert.match(markup, /Not independently verified/);
   assert.match(markup, /View deployment transaction/);
   assert.match(markup, /\/tx\/0x/);
   assert.match(markup, /Open in Explorer/);
+});
+
+test("empty deployment manifests show independent zero-of-ten progress", () => {
+  const markup = renderNetworks([]);
+  assert.match(markup, /No verified VEYRA deployments\./);
+  assert.equal((markup.match(/0\/10/g) ?? []).length, 2);
+  assert.match(markup, /No verified VEYRA deployments on Robinhood Testnet\./);
+  assert.match(markup, /No verified VEYRA deployments on Robinhood Mainnet\./);
 });
 
 test("transaction explorer URLs accept only hashes for configured public networks", () => {

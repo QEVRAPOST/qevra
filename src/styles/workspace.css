@@ -3217,6 +3217,14 @@
   color: var(--muted);
   font: 400 11px/1.5 var(--f-mono);
 }
+.ne-registry-meter {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.ne-registry-meter strong {
+  color: var(--fg-2);
+  font-weight: 500;
+}
 .ne-registry-network-empty,
 .ne-registry-network-note {
   overflow-wrap: anywhere;
@@ -3233,6 +3241,11 @@
 }
 .ne-contract h4 {
   font: 400 20px/1.2 var(--f-display);
+}
+.ne-contract-purpose {
+  color: var(--muted);
+  font: 400 13px/1.55 var(--f-ui);
+  overflow-wrap: anywhere;
 }
 .ne-contract code {
   overflow-wrap: anywhere;
@@ -3276,6 +3289,12 @@
   .ne-registry-empty {
     display: grid;
     gap: 5px;
+  }
+  .ne-registry-network-head {
+    flex-wrap: wrap;
+  }
+  .ne-registry-meter {
+    margin-left: 0;
   }
 }
 @media (pointer: coarse), (max-width: 640px) {

@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="#ECE8DF" stroke-width="1.5">
-  <rect width="32" height="32" rx="3" fill="#0C0D0F" stroke="none"/>
-  <g transform="translate(3 3) scale(1)">
-    <ellipse cx="13" cy="6.5" rx="8" ry="3.2" stroke="#E3A93B" stroke-dasharray="2.2 1.6"/>
-    <ellipse cx="13" cy="12" rx="9" ry="3.6"/>
-    <ellipse cx="13" cy="17" rx="10" ry="4"/>
-    <path d="M13 12.3v9.4" stroke="#FFE9B8"/>
-  </g>
-</svg>
