@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   if (!query.success) return apiError(400, "invalid_query", "The run-list query is invalid.");
 
   try {
-    const result = await access.store.listRuns(query.data.limit, query.data.cursor);
+    const result = await access.store.listRuns(query.data.limit, query.data.cursor, access.ownerId);
     return Response.json({ runs: result.runs.map(toResearchRunSummary), nextCursor: result.nextCursor }, {
       headers: { "cache-control": "no-store" },
     });
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     if (!globalRate.allowed) return apiError(429, "global_run_quota_exceeded", "The service run quota is currently full. Try again later.", { "retry-after": "3600" });
     const topic = resolveResearchTopic(parsed.data.topicId, parsed.data.question);
     const run = createQueuedRun(randomUUID(), topic.id, topic.question, parsed.data.testIds);
-    await access.store.createRun(run);
+    await access.store.createRun(run, access.ownerId);
     return Response.json({ run: toResearchRunSummary(run) }, {
       status: 202,
       headers: { "cache-control": "no-store", location: `/api/security/runs/${run.id}` },

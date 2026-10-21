@@ -33,19 +33,19 @@ function eventTargetWithAnnouncements(
 }
 
 test("EIP-6963 discovery lists MetaMask, Phantom, Rabby, and Coinbase Wallet without requesting account access", async () => {
-  const requestedMethods: string[] = [];
+  const requestedBy: string[] = [];
   const metamaskIcon = "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E";
   const phantomIcon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
-  const makeProvider = () => ({
+  const makeProvider = (name: string) => ({
     async request({ method }: { method: string }) {
-      requestedMethods.push(method);
+      requestedBy.push(`${name}:${method}`);
       return [];
     },
   });
-  const metamask = makeProvider();
-  const phantom = makeProvider();
-  const rabby = makeProvider();
-  const coinbase = makeProvider();
+  const metamask = makeProvider("MetaMask");
+  const phantom = makeProvider("Phantom");
+  const rabby = makeProvider("Rabby Wallet");
+  const coinbase = makeProvider("Coinbase Wallet");
   const fakeWindow = eventTargetWithAnnouncements([
     { info: { uuid: "mm-uuid", name: "MetaMask", rdns: "io.metamask", icon: metamaskIcon }, provider: metamask },
     { info: { uuid: "phantom-uuid", name: "Phantom", rdns: "app.phantom", icon: phantomIcon }, provider: phantom },
@@ -63,9 +63,13 @@ test("EIP-6963 discovery lists MetaMask, Phantom, Rabby, and Coinbase Wallet wit
     ]);
     assert.deepEqual(wallets.map(({ icon }) => icon), [metamaskIcon, phantomIcon, undefined, undefined]);
     assert.deepEqual(wallets.map(({ provider }) => provider.providerName), ["MetaMask", "Phantom", "Rabby Wallet", "Coinbase Wallet"]);
-    assert.deepEqual(requestedMethods, [], "discovery must not request account access or call wallet RPC");
+    assert.deepEqual(requestedBy, [], "discovery must not request account access or call wallet RPC");
     await connectReadOnlyWallet(wallets[0].provider);
-    assert.deepEqual(requestedMethods, ["eth_requestAccounts"], "account access begins only when the selected provider is explicitly connected");
+    await connectReadOnlyWallet(wallets[1].provider);
+    assert.deepEqual(requestedBy, [
+      "MetaMask:eth_requestAccounts",
+      "Phantom:eth_requestAccounts",
+    ], "only the explicitly selected MetaMask and Phantom providers request account access");
   });
 });
 

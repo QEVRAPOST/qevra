@@ -28,12 +28,19 @@ test("registry entries are shown only for a valid address on the selected config
     chainId: 46_630,
     address: "0x0000000000000000000000000000000000000009" as const,
     deploymentStatus: "verified" as const,
+    observedChainId: 46_630,
+    deployerAddress: "0x0000000000000000000000000000000000000001" as const,
+    transactionHash: `0x${"a".repeat(64)}` as `0x${string}`,
+    receiptStatus: "success" as const,
+    blockNumber: "12345",
+    runtimeBytecodeHash: `0x${"b".repeat(64)}` as `0x${string}`,
     sourceVerification: "verified" as const,
   };
   const wrongChain = { ...valid, chainId: 4_663 };
   const invalidAddress = { ...valid, address: "0xnot-an-address" as `0x${string}` };
+  const noDeploymentEvidence = { ...valid, transactionHash: undefined, runtimeBytecodeHash: undefined } as unknown as typeof valid;
 
-  assert.deepEqual(getVerifiedVeyraDeployments("testnet", [valid, wrongChain, invalidAddress]), [valid]);
+  assert.deepEqual(getVerifiedVeyraDeployments("testnet", [valid, wrongChain, invalidAddress, noDeploymentEvidence]), [valid]);
   assert.deepEqual(getVerifiedVeyraDeployments("mainnet", [valid]), []);
 });
 
@@ -128,6 +135,12 @@ test("network explorer renders a controlled verified entry without merging walle
     chainId: 46_630,
     address: "0x0000000000000000000000000000000000000009",
     deploymentStatus: "verified",
+    observedChainId: 46_630,
+    deployerAddress: "0x0000000000000000000000000000000000000001",
+    transactionHash: `0x${"a".repeat(64)}`,
+    receiptStatus: "success",
+    blockNumber: "12345",
+    runtimeBytecodeHash: `0x${"b".repeat(64)}`,
     sourceVerification: "verified",
   };
   const markup = renderNetworks("testnet", { status: "loading" }, [deployment]);

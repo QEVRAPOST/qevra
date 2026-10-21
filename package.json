@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "lint:copy": "node scripts/copy-lint.mjs",
-    "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
+    "test": "node --import ./tests/register-test-hooks.mjs --import tsx --test tests/*.test.ts",
     "security:worker": "node --conditions=react-server --import tsx src/features/security/worker-main.ts",
     "robinhood:rpc:testnet": "bun scripts/robinhood.ts rpc testnet",
     "robinhood:rpc:mainnet": "bun scripts/robinhood.ts rpc mainnet",

@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { createSession, hasSessionConfiguration, verifyAccessToken, verifySessionCookie } from "@/features/security/auth";
+import { createUserSession, USER_SESSION_COOKIE } from "@/features/security/wallet-auth";
 import { requireResearchAccess } from "@/features/security/api";
 import { runApprovedExperiment } from "@/features/security/approved-experiment";
 import { createQueuedRun, type StoredSource } from "@/features/security/model";
 import { buildVerificationAgentRequest, processResearchRun } from "@/features/security/orchestrator";
+import { toResearchRunDetail } from "@/features/security/public-view";
 import { getModelProvider, ModelProviderError, OpenAICompatibleProvider, type ModelProvider, type StructuredModelRequest } from "@/features/security/provider";
 import { resolveMaxConcurrentRuns } from "@/features/security/groq-profile";
 import { PostgresResearchStore } from "@/features/security/store";
@@ -410,6 +412,27 @@ test("session signatures expire, reject tampering, and compare access tokens", (
   assert.ok(verifySessionCookie(session.value, env, 1_700_000_001_000));
   assert.equal(verifySessionCookie(`${session.value}x`, env, 1_700_000_001_000), undefined);
   assert.equal(verifySessionCookie(session.value, env, 1_800_000_000_000), undefined);
+});
+
+test("wallet user sessions cannot authenticate against operator capability administration", async () => {
+  const previousOperatorSecret = process.env.QEVRA_SESSION_SECRET;
+  const previousUserSecret = process.env.VEYRA_USER_SESSION_SECRET;
+  process.env.QEVRA_SESSION_SECRET = "operator-session-secret-012345678901";
+  process.env.VEYRA_USER_SESSION_SECRET = "separate-user-session-secret-012345678901";
+  try {
+    const userSession = createUserSession("0x0000000000000000000000000000000000000001");
+    assert.ok(userSession);
+    const response = await getSecurityCapabilities(new Request("https://veyra.example/api/security/capabilities", {
+      headers: { cookie: `${USER_SESSION_COOKIE}=${encodeURIComponent(userSession.value)}` },
+    }));
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error.code, "authentication_required");
+  } finally {
+    if (previousOperatorSecret === undefined) delete process.env.QEVRA_SESSION_SECRET;
+    else process.env.QEVRA_SESSION_SECRET = previousOperatorSecret;
+    if (previousUserSecret === undefined) delete process.env.VEYRA_USER_SESSION_SECRET;
+    else process.env.VEYRA_USER_SESSION_SECRET = previousUserSecret;
+  }
 });
 
 test("run creation accepts only approved topics and bounded experiment identifiers", () => {
@@ -843,6 +866,36 @@ test("persisted Robinhood explorer claim stays unclear when the source maps that
   assert.ok(run.verification?.limitations.some((item) => /network-to-explorer association/i.test(item)));
   assert.equal(run.findings[0]?.modelAssessment, "unclear");
   assert.equal(run.findings[0]?.evidenceStatus, "not_verified");
+});
+
+test("historical explorer findings are returned as stored and are not rewritten on read", () => {
+  const run = createQueuedRun("88888886-8888-4888-8888-888888888888", "robinhood-readonly-wallet", "Historical report");
+  const historicalFinding = {
+    id: "network-explorer",
+    claim: "A historical Testnet report named the Mainnet explorer.",
+    modelAssessment: "supported" as const,
+    evidenceStatus: "quote_matched" as const,
+    evidence: [{ sourceId: "historical-source", quote: "Historical exact quotation.", exactQuoteMatched: true }],
+    rationale: "Stored historical rationale.",
+  };
+  run.status = "completed";
+  run.findings = [historicalFinding];
+  run.verification = {
+    summary: "Historical verifier summary.",
+    claimChecks: [{
+      claimId: historicalFinding.id,
+      assessment: "supported",
+      evidence: [{ sourceId: "historical-source", quote: "Historical exact quotation." }],
+      rationale: "Stored historical rationale.",
+    }],
+    testArtifactChecks: [],
+    limitations: [],
+  };
+
+  const detail = toResearchRunDetail(run);
+  assert.deepEqual(detail.findings, [historicalFinding]);
+  assert.deepEqual(run.findings, [historicalFinding]);
+  assert.equal(detail.verificationNote, "Historical verifier summary.");
 });
 
 test("Verification accepts a chain-specific explorer mapping explicitly present in the approved source", async () => {

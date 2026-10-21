@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/Button";
 import { SimTag } from "@/components/ui/SimTag";
 import { ToggleGroup } from "@/components/ui/ToggleGroup";
 import { pipelineFor, runBadge } from "@/lib/swarm-view";
@@ -158,14 +159,14 @@ function Runs() {
       </div>
       {researchAccess?.historyError ? <p role="status" className="ac-note">{researchAccess.historyError}</p> : null}
       {live && researchAccess?.hasMoreRuns ? (
-        <button type="button" className="btn" disabled={researchAccess.isLoadingMore} onClick={() => { void researchAccess.loadMoreRuns(); }}>
+        <Button variant="ghost" size="small" disabled={researchAccess.isLoadingMore} onClick={() => { void researchAccess.loadMoreRuns(); }}>
           {researchAccess.isLoadingMore ? "Loading more…" : "Load more"}
-        </button>
+        </Button>
       ) : null}
       {live && sec.status === "unavailable" && researchAccess && !researchAccess.hasMoreRuns ? (
-        <button type="button" className="btn" disabled={sec.isRefreshing} onClick={() => researchAccess.refreshHistory()}>
+        <Button variant="ghost" size="small" disabled={sec.isRefreshing} onClick={() => researchAccess.refreshHistory()}>
           {sec.isRefreshing ? "Retrying…" : "Retry run history"}
-        </button>
+        </Button>
       ) : null}
     </>
   );

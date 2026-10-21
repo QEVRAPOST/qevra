@@ -3,7 +3,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { formatEther, isAddress } from "viem";
 import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonVariants } from "@/components/ui/Button";
 import { getRobinhoodPublicAddress, NetworkStatusClientError } from "@/features/wallet/network-client";
 import type { RobinhoodPublicAddressSnapshot } from "@/features/wallet/public-rpc";
 import { NETWORKS, getExplorerAddressUrl } from "@/lib/config/networks";
@@ -28,6 +28,14 @@ export function PublicAddressInspectionMessage({ state }: { state: Exclude<Publi
   return <p className="ne-address-empty">Enter a public EVM address to view its balance and network details.</p>;
 }
 
+export function PublicAddressActionButton({ state }: { state: PublicAddressInspectionState }) {
+  return (
+    <Button type="submit" variant="ghost" size="small" disabled={state.status === "loading"}>
+      {publicAddressActionLabel(state)}
+    </Button>
+  );
+}
+
 export function PublicAddressResult({ snapshot }: { snapshot: RobinhoodPublicAddressSnapshot }) {
   const network = NETWORKS.find((item) => item.id === snapshot.networkId);
   const explorerUrl = getExplorerAddressUrl(snapshot.networkId, snapshot.address);
@@ -50,7 +58,7 @@ export function PublicAddressResult({ snapshot }: { snapshot: RobinhoodPublicAdd
       </dl>
       <div className="ne-actions">
         <CopyAddressButton address={snapshot.address} label="Copy Address" />
-        {explorerUrl ? <a className="wl-copy" href={explorerUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open inspected address on ${network?.label ?? "selected network"} explorer`}>Open in Explorer</a> : null}
+        {explorerUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={explorerUrl} target="_blank" rel="noopener noreferrer" aria-label={`Open inspected address on ${network?.label ?? "selected network"} explorer`}>Open in Explorer</a> : null}
       </div>
       <p className="ne-readonly">This address is watch-only. It is not a connected wallet or a verified VEYRA deployment.</p>
     </div>
@@ -141,9 +149,7 @@ export function PublicAddressInspector() {
           aria-describedby="public-address-help"
         />
         <p id="public-address-help" className="ne-separation">Choose the chain, enter an EVM address, then inspect to read native ETH balance and the observed block. Reads use that network’s public RPC and do not request wallet access.</p>
-        <Button type="submit" variant="ghost" size="small" disabled={inspection.status === "loading"}>
-          {publicAddressActionLabel(inspection)}
-        </Button>
+        <PublicAddressActionButton state={inspection} />
       </form>
 
       {inspection.status === "available"

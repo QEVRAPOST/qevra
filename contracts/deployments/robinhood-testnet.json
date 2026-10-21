@@ -1,0 +1,11 @@
+{
+  "schema": "veyra-contract-manifest-v1",
+  "project": "VEYRA",
+  "networkId": "testnet",
+  "chainId": 46630,
+  "rpcAlias": "robinhood_testnet",
+  "explorerBaseUrl": "https://explorer.testnet.chain.robinhood.com",
+  "deploymentStatus": "no_verified_deployments",
+  "sourceVerification": "not_applicable",
+  "contracts": []
+}

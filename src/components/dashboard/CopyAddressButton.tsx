@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { Button } from "@/components/ui/Button";
 import { copyTextToClipboard } from "@/features/wallet/clipboard";
 
 export type CopyAddressStatus = "idle" | "copied" | "unavailable";
@@ -25,9 +26,9 @@ export function CopyAddressButton({ address, label = "Copy address" }: { address
 
   return (
     <>
-      <button type="button" className="wl-copy" onClick={() => { void copyAddress(); }} aria-describedby={statusId}>
+      <Button type="button" variant="ghost" size="small" onClick={() => { void copyAddress(); }} aria-describedby={statusId}>
         {feedback.label}
-      </button>
+      </Button>
       <span className="sr" id={statusId} role="status" aria-live="polite">
         {feedback.announcement}
       </span>

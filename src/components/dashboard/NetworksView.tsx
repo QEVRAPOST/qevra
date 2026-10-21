@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
 import { Button, buttonVariants } from "@/components/ui/Button";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
-import { getExplorerAddressUrl } from "@/lib/config/networks";
+import { getExplorerAddressUrl, getExplorerTransactionUrl } from "@/lib/config/networks";
 import { PublicAddressInspector } from "@/components/dashboard/PublicAddressInspector";
 import { getVerifiedVeyraDeployments, VEYRA_DEPLOYMENTS, type VerifiedVeyraDeployment } from "@/lib/config/veyra-deployments";
 import { PROJECT_NAME } from "@/lib/project-brand";
@@ -22,7 +22,12 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
   });
   const [previewRetry, setPreviewRetry] = useState(0);
   const selected = model.network.options.find((network) => network.id === model.network.selected);
-  const deployments = getVerifiedVeyraDeployments(model.network.selected, deploymentRecords ?? VEYRA_DEPLOYMENTS);
+  const deploymentNetworks = model.network.options.filter((network) => network.available);
+  const deploymentGroups = deploymentNetworks.map((network) => {
+    const verified = getVerifiedVeyraDeployments(network.id, deploymentRecords ?? VEYRA_DEPLOYMENTS);
+    return { network, total: verified.length, deployments: verified.slice(0, 10) };
+  });
+  const hasVerifiedDeployments = deploymentGroups.some((group) => group.total > 0);
   const wallet = model.mode === "live" ? model.wallet.connection : undefined;
   const walletConnection = model.mode !== "live"
     ? "Preview only"
@@ -148,7 +153,7 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
             <Button type="button" variant="ghost" size="small" onClick={refreshPublicRpc} disabled={rpc.status === "loading"}>
               {rpc.status === "unavailable" ? "Retry public RPC" : rpc.status === "loading" ? "Reading public RPC…" : "Refresh public RPC"}
             </Button>
-            {selected ? <a className="wl-copy" href={selected.explorerUrl} target="_blank" rel="noopener noreferrer">Open {selected.short} explorer</a> : null}
+            {selected ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={selected.explorerUrl} target="_blank" rel="noopener noreferrer">Open {selected.short} explorer</a> : null}
             <p className="ne-readonly">Public data only. No wallet permission, signing, or network changes.</p>
           </div>
         </section>
@@ -161,36 +166,51 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
               <p className="ne-section-index">03 · CONTRACT REGISTRY</p>
               <h2 id="h-ne-contracts" className="ov-h">{PROJECT_NAME} deployments</h2>
             </div>
-            <p className="ne-registry-caption">Verified records only</p>
+            <p className="ne-registry-caption">Verified deployments only · connected and watch-only addresses are excluded</p>
           </header>
-          {deployments.length === 0 ? (
+          {!hasVerifiedDeployments ? (
             <div className="ne-registry-empty">
               <strong>No verified {PROJECT_NAME} deployments.</strong>
               <p>Phase 0B remains SECURITY NO-GO. Deployment and custody are disabled.</p>
             </div>
           ) : (
-            <ul className="ne-contracts">
-              {deployments.map((deployment) => {
-                const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
-                const deploymentNetwork = model.network.options.find((network) => network.id === deployment.networkId);
-                return (
-                  <li key={`${deployment.networkId}:${deployment.address}`} className="ne-contract">
-                    <h3>{deployment.name}</h3>
-                    <dl className="kv">
-                      <div><dt>Network</dt><dd>{deploymentNetwork?.label ?? deployment.networkId}</dd></div>
-                      <div><dt>Chain ID</dt><dd>{deployment.chainId}</dd></div>
-                      <div><dt>Contract address</dt><dd><code>{deployment.address}</code></dd></div>
-                      <div><dt>Deployment status</dt><dd>Verified deployment</dd></div>
-                      {deployment.sourceVerification === "verified" ? <div><dt>Source status</dt><dd>Source verified</dd></div> : null}
-                    </dl>
-                    <div className="ne-actions">
-                      <CopyAddressButton address={deployment.address} />
-                      {addressUrl ? <a className="wl-copy" href={addressUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="ne-registry-networks">
+              {deploymentGroups.map(({ network, total, deployments }) => (
+                <section className="ne-registry-network" key={network.id} aria-labelledby={`h-ne-registry-${network.id}`}>
+                  <header className="ne-registry-network-head">
+                    <h3 id={`h-ne-registry-${network.id}`}>{network.label}</h3>
+                    <span>Chain ID {network.chainId}</span>
+                  </header>
+                  {deployments.length > 0 ? (
+                    <ul className="ne-contracts">
+                      {deployments.map((deployment) => {
+                        const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
+                        const transactionUrl = getExplorerTransactionUrl(deployment.networkId, deployment.transactionHash);
+                        return (
+                          <li key={`${deployment.networkId}:${deployment.address}`} className="ne-contract">
+                            <h4>{deployment.name}</h4>
+                            <dl className="kv">
+                              <div><dt>Contract address</dt><dd><code>{deployment.address}</code></dd></div>
+                              <div><dt>Deployment status</dt><dd>Verified deployment</dd></div>
+                              <div><dt>Transaction</dt><dd><code>{deployment.transactionHash}</code></dd></div>
+                              <div><dt>Source verification</dt><dd>{deployment.sourceVerification === "verified" ? "Source verified" : "Not independently verified"}</dd></div>
+                            </dl>
+                            <div className="ne-actions">
+                              <CopyAddressButton address={deployment.address} />
+                              {addressUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={addressUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
+                              {transactionUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={transactionUrl} target="_blank" rel="noopener noreferrer">View deployment transaction</a> : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="ne-registry-network-empty">No verified {PROJECT_NAME} deployments on {network.label}.</p>
+                  )}
+                  {total > deployments.length ? <p className="ne-registry-network-note">Showing the first {deployments.length} of {total} verified deployments on this network.</p> : null}
+                </section>
+              ))}
+            </div>
           )}
         </section>
       </div>

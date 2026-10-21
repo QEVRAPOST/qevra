@@ -24,6 +24,14 @@ export class StoreNotConfiguredError extends Error {
   }
 }
 
+export interface WalletAuthChallenge {
+  nonceHash: string;
+  address: string;
+  chainId: number;
+  message: string;
+  expiresAt: string;
+}
+
 let singleton: PostgresResearchStore | undefined;
 
 export function getResearchStore(env: NodeJS.ProcessEnv = process.env): PostgresResearchStore {
@@ -69,12 +77,16 @@ export class PostgresResearchStore {
         status text NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
         created_at timestamptz NOT NULL,
         updated_at timestamptz NOT NULL,
+        owner_id text,
         lease_owner text,
         lease_until timestamptz,
         data jsonb NOT NULL
       );
+      ALTER TABLE qevra_research_runs ADD COLUMN IF NOT EXISTS owner_id text;
       CREATE INDEX IF NOT EXISTS qevra_research_runs_created_idx
         ON qevra_research_runs (created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS qevra_research_runs_owner_created_idx
+        ON qevra_research_runs (owner_id, created_at DESC, id DESC);
       CREATE INDEX IF NOT EXISTS qevra_research_runs_queue_idx
         ON qevra_research_runs (status, lease_until, created_at);
       CREATE TABLE IF NOT EXISTS qevra_rate_limits (
@@ -87,23 +99,32 @@ export class PostgresResearchStore {
         started_at timestamptz NOT NULL,
         heartbeat_at timestamptz NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS veyra_user_auth_challenges (
+        nonce_hash char(64) PRIMARY KEY,
+        wallet_address text NOT NULL,
+        chain_id integer NOT NULL CHECK (chain_id IN (46630, 4663)),
+        message text NOT NULL,
+        expires_at timestamptz NOT NULL
+      );
     `);
   }
 
-  async createRun(run: ResearchRunRecord): Promise<void> {
+  async createRun(run: ResearchRunRecord, ownerId?: string): Promise<void> {
     await this.ensureSchema();
     await this.pool.query(
-      `INSERT INTO qevra_research_runs (id, topic_id, status, created_at, updated_at, data)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-      [run.id, run.topicId, run.status, run.createdAt, run.updatedAt, JSON.stringify(run)],
+      `INSERT INTO qevra_research_runs (id, topic_id, status, created_at, updated_at, owner_id, data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+      [run.id, run.topicId, run.status, run.createdAt, run.updatedAt, ownerId ?? null, JSON.stringify(run)],
     );
   }
 
-  async getRun(id: string): Promise<ResearchRunRecord | undefined> {
+  async getRun(id: string, ownerId?: string): Promise<ResearchRunRecord | undefined> {
     await this.ensureSchema();
     const result = await this.pool.query<{ data: ResearchRunRecord }>(
-      "SELECT data FROM qevra_research_runs WHERE id = $1",
-      [id],
+      ownerId === undefined
+        ? "SELECT data FROM qevra_research_runs WHERE id = $1"
+        : "SELECT data FROM qevra_research_runs WHERE id = $1 AND owner_id = $2",
+      ownerId === undefined ? [id] : [id, ownerId],
     );
     return result.rows[0]?.data;
   }
@@ -118,7 +139,7 @@ export class PostgresResearchStore {
     );
   }
 
-  async listRuns(limit: number, cursor?: string): Promise<{ runs: ResearchRunRecord[]; nextCursor?: string }> {
+  async listRuns(limit: number, cursor?: string, ownerId?: string): Promise<{ runs: ResearchRunRecord[]; nextCursor?: string }> {
     await this.ensureSchema();
     let result;
     if (cursor) {
@@ -129,18 +150,31 @@ export class PostgresResearchStore {
       if (separator <= 0 || !Number.isFinite(Date.parse(timestamp)) || !/^[0-9a-f-]{36}$/i.test(id)) {
         throw new Error("Invalid run-list cursor.");
       }
-      result = await this.pool.query<{ data: ResearchRunRecord; created_at: Date; id: string }>(
-        `SELECT data, created_at, id FROM qevra_research_runs
-         WHERE (created_at, id) < ($1::timestamptz, $2::uuid)
-         ORDER BY created_at DESC, id DESC LIMIT $3`,
-        [timestamp, id, limit + 1],
-      );
+      result = ownerId === undefined
+        ? await this.pool.query<{ data: ResearchRunRecord; created_at: Date; id: string }>(
+          `SELECT data, created_at, id FROM qevra_research_runs
+           WHERE (created_at, id) < ($1::timestamptz, $2::uuid)
+           ORDER BY created_at DESC, id DESC LIMIT $3`,
+          [timestamp, id, limit + 1],
+        )
+        : await this.pool.query<{ data: ResearchRunRecord; created_at: Date; id: string }>(
+          `SELECT data, created_at, id FROM qevra_research_runs
+           WHERE owner_id = $1 AND (created_at, id) < ($2::timestamptz, $3::uuid)
+           ORDER BY created_at DESC, id DESC LIMIT $4`,
+          [ownerId, timestamp, id, limit + 1],
+        );
     } else {
-      result = await this.pool.query<{ data: ResearchRunRecord; created_at: Date; id: string }>(
-        `SELECT data, created_at, id FROM qevra_research_runs
-         ORDER BY created_at DESC, id DESC LIMIT $1`,
-        [limit + 1],
-      );
+      result = ownerId === undefined
+        ? await this.pool.query<{ data: ResearchRunRecord; created_at: Date; id: string }>(
+          `SELECT data, created_at, id FROM qevra_research_runs
+           ORDER BY created_at DESC, id DESC LIMIT $1`,
+          [limit + 1],
+        )
+        : await this.pool.query<{ data: ResearchRunRecord; created_at: Date; id: string }>(
+          `SELECT data, created_at, id FROM qevra_research_runs
+           WHERE owner_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2`,
+          [ownerId, limit + 1],
+        );
     }
 
     const hasMore = result.rows.length > limit;
@@ -325,12 +359,54 @@ export class PostgresResearchStore {
     return { allowed: count <= limit, remaining: Math.max(0, limit - count) };
   }
 
+  async createWalletAuthChallenge(challenge: WalletAuthChallenge): Promise<void> {
+    await this.ensureSchema();
+    await this.pool.query(
+      `INSERT INTO veyra_user_auth_challenges (nonce_hash, wallet_address, chain_id, message, expires_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [challenge.nonceHash, challenge.address, challenge.chainId, challenge.message, challenge.expiresAt],
+    );
+  }
+
+  async getWalletAuthChallenge(nonceHash: string): Promise<WalletAuthChallenge | undefined> {
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      nonce_hash: string;
+      wallet_address: string;
+      chain_id: number;
+      message: string;
+      expires_at: Date;
+    }>(
+      `SELECT nonce_hash, wallet_address, chain_id, message, expires_at
+       FROM veyra_user_auth_challenges WHERE nonce_hash = $1 AND expires_at > now()`,
+      [nonceHash],
+    );
+    const row = result.rows[0];
+    return row ? {
+      nonceHash: row.nonce_hash.trim(),
+      address: row.wallet_address,
+      chainId: row.chain_id,
+      message: row.message,
+      expiresAt: row.expires_at.toISOString(),
+    } : undefined;
+  }
+
+  async consumeWalletAuthChallenge(nonceHash: string): Promise<boolean> {
+    await this.ensureSchema();
+    const result = await this.pool.query(
+      "DELETE FROM veyra_user_auth_challenges WHERE nonce_hash = $1 AND expires_at > now() RETURNING nonce_hash",
+      [nonceHash],
+    );
+    return result.rowCount === 1;
+  }
+
   private async cleanupOperationalRows(): Promise<void> {
     const now = Date.now();
     if (now - this.lastOperationalCleanupAt < 60 * 60_000) return;
     await this.pool.query(`
       DELETE FROM qevra_rate_limits WHERE window_started_at < now() - interval '1 day';
       DELETE FROM qevra_security_workers WHERE heartbeat_at < now() - interval '1 day';
+      DELETE FROM veyra_user_auth_challenges WHERE expires_at < now();
     `);
     this.lastOperationalCleanupAt = now;
   }

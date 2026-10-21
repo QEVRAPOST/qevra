@@ -9,5 +9,15 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 
+[profile.robinhood_testnet]
+chain_id = 46630
+
+[profile.robinhood_mainnet]
+chain_id = 4663
+
+[rpc_endpoints]
+robinhood_testnet = "https://rpc.testnet.chain.robinhood.com"
+robinhood_mainnet = "https://robinhood.rpc.pinax.network"
+
 # This is a conservative local baseline only. Robinhood Chain's exact deployed
 # EVM revision still needs confirmation before choosing a deployment target.

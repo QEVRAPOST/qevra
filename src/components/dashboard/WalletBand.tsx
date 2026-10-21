@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AddressGlyph } from "@/components/ui/AddressGlyph";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonVariants } from "@/components/ui/Button";
 import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { CopyAddressButton } from "./CopyAddressButton";
@@ -80,11 +80,18 @@ export function WalletBand() {
               <p className="wl-address" title={live ? address : undefined}>{showFullAddress ? address : shown}</p>
               {live && address ? (
                 <>
-                  <button type="button" className="wl-copy" onClick={() => setShowFullAddress((visible) => !visible)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="small"
+                    className="wl-copy"
+                    aria-expanded={showFullAddress}
+                    onClick={() => setShowFullAddress((visible) => !visible)}
+                  >
                     {showFullAddress ? "Shorten address" : "Show full address"}
-                  </button>
+                  </Button>
                   <CopyAddressButton address={address} />
-                  {addressExplorerUrl ? <a className="wl-copy" href={addressExplorerUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
+                  {addressExplorerUrl ? <a className={`${buttonVariants({ variant: "ghost", size: "small" })} wl-copy`} href={addressExplorerUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
                 </>
               ) : null}
             </div>

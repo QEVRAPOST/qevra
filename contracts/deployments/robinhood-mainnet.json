@@ -1,0 +1,11 @@
+{
+  "schema": "veyra-contract-manifest-v1",
+  "project": "VEYRA",
+  "networkId": "mainnet",
+  "chainId": 4663,
+  "rpcAlias": "robinhood_mainnet",
+  "explorerBaseUrl": "https://robinhoodchain.blockscout.com",
+  "deploymentStatus": "no_verified_deployments",
+  "sourceVerification": "not_applicable",
+  "contracts": []
+}

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { hashRateLimitKey, readCookie, verifySessionCookie } from "./auth";
+import { USER_SESSION_COOKIE, verifyUserSessionCookie } from "./wallet-auth";
 import { getResearchStore, StoreNotConfiguredError } from "./store";
 import { getProjectName } from "@/lib/project-brand";
 
@@ -9,14 +10,20 @@ export function apiError(status: number, code: string, message: string, headers?
 }
 
 export async function requireResearchAccess(request: Request, limit = 60, windowMs = 60_000, bucket = "general") {
-  const sessionKey = verifySessionCookie(readCookie(request, "qevra_session"));
-  if (!sessionKey) {
+  const operatorSession = verifySessionCookie(readCookie(request, "qevra_session"));
+  const userSession = verifyUserSessionCookie(readCookie(request, USER_SESSION_COOKIE));
+  const role = operatorSession ? "operator" as const : userSession ? "user" as const : undefined;
+  if (!role) {
     return { response: apiError(401, "authentication_required", `A valid ${getProjectName()} session is required.`) } as const;
   }
+  const sessionKey = operatorSession ?? userSession?.sessionKey;
+  if (!sessionKey) return { response: apiError(401, "authentication_required", `A valid ${getProjectName()} session is required.`) } as const;
+  const principalKey = role === "user" ? userSession?.address.toLowerCase() ?? sessionKey : sessionKey;
+  const effectiveLimit = role === "user" && bucket === "create-run" ? Math.min(limit, 3) : limit;
 
   try {
     const store = getResearchStore();
-    const rate = await store.takeRateLimit(hashRateLimitKey(`${bucket}:${sessionKey}`), limit, windowMs);
+    const rate = await store.takeRateLimit(hashRateLimitKey(`${bucket}:${principalKey}`), effectiveLimit, windowMs);
     if (!rate.allowed) {
       return {
         response: apiError(429, "rate_limit_exceeded", "Too many requests. Try again later.", {
@@ -24,7 +31,12 @@ export async function requireResearchAccess(request: Request, limit = 60, window
         }),
       } as const;
     }
-    return { store, sessionKey } as const;
+    return {
+      store,
+      sessionKey,
+      role,
+      ...(userSession ? { ownerId: userSession.address.toLowerCase() } : {}),
+    } as const;
   } catch (error) {
     const code = error instanceof StoreNotConfiguredError ? "persistence_not_configured" : "persistence_unavailable";
     const message = error instanceof StoreNotConfiguredError

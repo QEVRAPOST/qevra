@@ -90,3 +90,25 @@ test("wallet UI preserves an authorized address after RPC failure and offers a f
   assert.doesNotMatch(markup, /No wallet connected/);
   assert.doesNotMatch(markup, /Connected · read-only/);
 });
+
+test("connected wallet address actions share Aperture button typography and sizing", () => {
+  const markup = renderWalletBand({
+    status: "connected",
+    address: "0x0000000000000000000000000000000000000001",
+    chainId: 46_630,
+    networkName: "Robinhood Chain Testnet",
+  });
+
+  for (const label of ["Show full address", "Copy address", "Open in Explorer"]) {
+    const position = markup.indexOf(label);
+    assert.notEqual(position, -1, `${label} should be rendered`);
+    const buttonStart = markup.lastIndexOf("<button", position);
+    const linkStart = markup.lastIndexOf("<a", position);
+    const tagStart = Math.max(buttonStart, linkStart);
+    const openingTag = markup.slice(tagStart, markup.indexOf(">", tagStart) + 1);
+    assert.match(openingTag, /font-sans/, `${label} should use the shared UI font`);
+    assert.match(openingTag, /text-sm/, `${label} should use the shared small action size`);
+    assert.match(openingTag, /min-h-9/, `${label} should use the shared button height`);
+    assert.doesNotMatch(openingTag, /font-mono/, `${label} is an action label, not technical data`);
+  }
+});

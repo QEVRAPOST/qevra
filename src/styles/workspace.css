@@ -1959,21 +1959,6 @@
   font: 400 clamp(30px, 3.6vw, 48px) / 1.05 var(--f-mono);
   letter-spacing: -0.02em;
 }
-.wl-copy {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line-2);
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--fg-2);
-  font: 400 12px var(--f-mono);
-  cursor: pointer;
-  transition: color var(--t), border-color var(--t);
-}
-.wl-copy:hover {
-  color: var(--fg);
-  border-color: var(--fg-2);
-}
 .wl-net {
   display: flex;
   flex-wrap: wrap;
@@ -3203,6 +3188,39 @@
   color: var(--muted);
   font: 400 11px/1.5 var(--f-mono);
 }
+.ne-registry-networks {
+  display: grid;
+  gap: 26px;
+  min-width: 0;
+}
+.ne-registry-network {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.ne-registry-network-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ne-registry-network-head h3 {
+  color: var(--fg-2);
+  font: 500 13px/1.4 var(--f-ui);
+}
+.ne-registry-network-head span,
+.ne-registry-network-empty,
+.ne-registry-network-note {
+  color: var(--muted);
+  font: 400 11px/1.5 var(--f-mono);
+}
+.ne-registry-network-empty,
+.ne-registry-network-note {
+  overflow-wrap: anywhere;
+}
 .ne-contracts {
   display: grid;
   gap: 18px;
@@ -3213,7 +3231,7 @@
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
-.ne-contract h3 {
+.ne-contract h4 {
   font: 400 20px/1.2 var(--f-display);
 }
 .ne-contract code {
@@ -3258,6 +3276,13 @@
   .ne-registry-empty {
     display: grid;
     gap: 5px;
+  }
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .ne-section-actions > .btn,
+  .ne-address-form > .btn,
+  .ne-actions > .btn {
+    min-height: 44px;
   }
 }
 

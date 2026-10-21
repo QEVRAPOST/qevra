@@ -12,7 +12,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!runIdSchema.safeParse(id).success) return apiError(400, "invalid_run_id", "The research run ID is invalid.");
 
   try {
-    const run = await access.store.getRun(id);
+    const run = await access.store.getRun(id, access.ownerId);
     if (!run) return apiError(404, "run_not_found", "The research run was not found.");
     return Response.json({ run: toResearchRunDetail(run) }, { headers: { "cache-control": "no-store" } });
   } catch {
