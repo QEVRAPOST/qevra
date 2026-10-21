@@ -19,7 +19,8 @@ test("deployment readiness always blocks the vulnerable Phase 0 harness and gate
   const testnet = deploymentReadiness("testnet");
   const mainnet = deploymentReadiness("mainnet");
   assert.equal(testnet.ready, false);
-  assert.match(testnet.reason, /no approved deployment artifact/i);
+  assert.match(testnet.reason, /evidenceanchor.*explicit owner authorization/i);
+  assert.match(testnet.reason, /phase 0 research harness and verifier remain excluded/i);
   assert.equal(mainnet.ready, false);
   assert.match(mainnet.reason, /security review and owner approval/i);
 });

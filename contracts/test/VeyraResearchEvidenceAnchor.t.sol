@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {VeyraResearchEvidenceAnchor} from "../src/research/VeyraResearchEvidenceAnchor.sol";
 
 interface VmEvidenceAnchor {
+    function chainId(uint256 newChainId) external;
     function deal(address account, uint256 newBalance) external;
     function expectEmit(bool checkTopic1, bool checkTopic2, bool checkTopic3, bool checkData, address emitter) external;
     function expectRevert(bytes calldata revertData) external;
@@ -27,10 +28,21 @@ contract VeyraResearchEvidenceAnchorTest {
         uint256 recordedAt
     );
 
+    function setUp() public {
+        vm.chainId(46630);
+    }
+
     function test_constructorSetsImmutableOwnerToDeployer() public {
         VeyraResearchEvidenceAnchor anchor = new VeyraResearchEvidenceAnchor();
 
         require(anchor.owner() == address(this), "constructor must assign deployer as owner");
+    }
+
+    function test_constructorRejectsNonTestnetChain() public {
+        vm.chainId(4663);
+
+        vm.expectRevert(abi.encodeWithSelector(VeyraResearchEvidenceAnchor.UnsupportedChain.selector, 4663));
+        new VeyraResearchEvidenceAnchor();
     }
 
     function test_recordEvidenceStoresAndEmits() public {
@@ -47,7 +59,9 @@ contract VeyraResearchEvidenceAnchorTest {
         require(evidence.runIdHash == RUN_HASH, "run hash must be retained");
         require(evidence.publisher == address(this), "publisher must be retained");
         require(evidence.recordedAt == expectedRecordedAt, "publication time must be retained");
-        require(anchor.isRunRecorded(RUN_HASH), "run hash must be queryable");
+
+        VeyraResearchEvidenceAnchor.Evidence memory byRun = anchor.getEvidenceByRunIdHash(RUN_HASH);
+        require(byRun.exists && byRun.reportHash == REPORT_HASH, "run hash must resolve to its report");
     }
 
     function test_rejectsZeroReportHash() public {
@@ -97,7 +111,8 @@ contract VeyraResearchEvidenceAnchorTest {
         require(evidence.runIdHash == bytes32(0), "unknown run hash must be empty");
         require(evidence.publisher == address(0), "unknown publisher must be empty");
         require(evidence.recordedAt == 0, "unknown timestamp must be empty");
-        require(!anchor.isRunRecorded(UNKNOWN_HASH), "unknown run must be absent");
+        VeyraResearchEvidenceAnchor.Evidence memory byRun = anchor.getEvidenceByRunIdHash(UNKNOWN_HASH);
+        require(!byRun.exists, "unknown run must be absent");
     }
 
     function test_rejectsDirectEtherTransfer() public {

@@ -1,7 +1,7 @@
 import { NETWORKS } from "./networks";
 import type { NetworkId } from "@/types/network";
 
-export interface VerifiedVeyraDeployment {
+export interface VerifiedVeyraDeploymentEvidence {
   name: string;
   /** Plain-language purpose supplied by the deployment manifest, when available. */
   purpose?: string;
@@ -21,6 +21,14 @@ export interface VerifiedVeyraDeployment {
   sourceVerification?: "verified" | "not_verified";
 }
 
+export interface VerifiedVeyraDeployment extends VerifiedVeyraDeploymentEvidence {
+  /** One of the ten names listed by the chain manifest's architectureSlots. */
+  architectureSlot: number;
+}
+
+/** Separately listed research utility; it does not consume one of the ten architecture slots. */
+export type VerifiedVeyraStandaloneDeployment = VerifiedVeyraDeploymentEvidence;
+
 /** Require a successful deployment receipt and matching on-chain identity/code observations. */
 export function getVerifiedVeyraDeployments(
   networkId: NetworkId,
@@ -29,9 +37,13 @@ export function getVerifiedVeyraDeployments(
   const network = NETWORKS.find((candidate) => candidate.id === networkId && candidate.available);
   if (!network) return [];
   const seenAddresses = new Set<string>();
+  const seenSlots = new Set<number>();
   return records.filter((record) => {
     const isVerified = record.networkId === networkId
       && record.chainId === network.chainId
+      && Number.isInteger(record.architectureSlot)
+      && record.architectureSlot >= 1
+      && record.architectureSlot <= 10
       && record.observedChainId === network.chainId
       && record.deploymentStatus === "verified"
       && record.receiptStatus === "success"
@@ -43,8 +55,9 @@ export function getVerifiedVeyraDeployments(
       && /^[1-9][0-9]*$/.test(record.blockNumber);
     if (!isVerified) return false;
     const address = record.address.toLowerCase();
-    if (seenAddresses.has(address)) return false;
+    if (seenAddresses.has(address) || seenSlots.has(record.architectureSlot)) return false;
     seenAddresses.add(address);
+    seenSlots.add(record.architectureSlot);
     return true;
   });
 }

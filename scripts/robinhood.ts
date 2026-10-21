@@ -20,7 +20,7 @@ export function deploymentReadiness(networkId: NetworkId): { ready: false; reaso
   resolveRobinhoodNetwork(networkId);
   return networkId === "mainnet"
     ? { ready: false, reason: "Mainnet deployment is blocked pending independent security review and owner approval." }
-    : { ready: false, reason: "No approved deployment artifact exists; the Phase 0 research harness and verifier are excluded." };
+    : { ready: false, reason: "VeyraResearchEvidenceAnchor is prepared for Testnet but awaits explicit owner authorization; the Phase 0 research harness and verifier remain excluded." };
 }
 
 export interface DeploymentPreflight {

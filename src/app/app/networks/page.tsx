@@ -5,5 +5,11 @@ import { loadVerifiedVeyraDeployments } from "@/lib/config/load-veyra-deployment
 export const metadata: Metadata = { title: "Networks and Contracts" };
 
 export default function Page() {
-  return <NetworksView deploymentRecords={loadVerifiedVeyraDeployments()} />;
+  const registry = loadVerifiedVeyraDeployments();
+  return (
+    <NetworksView
+      deploymentRecords={registry.roadmapContracts}
+      standaloneResearchEvidenceAnchors={registry.standaloneResearchEvidenceAnchors}
+    />
+  );
 }

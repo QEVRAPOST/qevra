@@ -140,26 +140,32 @@ forge script script/DeployVeyraResearchEvidenceAnchor.s.sol:DeployVeyraResearchE
 ```
 
 Foundry prompts for the encrypted keystore password; do not put a password or
-raw key in the command or environment. The script rejects every chain ID other
-than 46630 and checks that the deployed contract owner is the supplied public
-deployer.
+raw key in the command or environment. Both the contract constructor and the
+script reject every chain ID other than 46630, and the script checks that the
+deployed contract owner is the supplied public deployer.
 
-After a real transaction, record the transaction hash and receipt, then verify
-the receipt's contract address and deployed runtime bytecode at its block. The
-existing verifier checks observed chain ID, successful receipt, address match,
-and runtime-code hash:
+The non-broadcast simulation returns `runtimeBytecodeHash` after applying the
+deployer-specific immutable owner to the exact compiled runtime. Keep that
+value with the estimate. After a real transaction, record its transaction hash
+and receipt, then pass the simulated expected runtime hash to the existing
+read-only verifier; it checks observed chain ID, successful receipt, receipt
+address, and bytecode hash at the receipt block:
 
 ```sh
 bun scripts/robinhood.ts deploy verify testnet <CONTRACT_ADDRESS> <TX_HASH> <EXPECTED_RUNTIME_CODE_HASH>
 ```
 
-The expected code hash must come from the exact deployed artifact/runtime bytes.
-Record the returned Testnet-only address, transaction hash, receipt block, and
-runtime hash in `contracts/deployments/robinhood-testnet.json` only after that
-verification succeeds. Confirm the receipt and code on the Testnet explorer.
-Keep `sourceVerification: "not_verified"` unless source verification is
+Use `runtimeBytecodeHash` from the non-broadcast simulation made with the same
+profile, source, compiler, and deployer as the broadcast. Record the returned
+Testnet-only address, transaction hash, receipt block, and runtime hash in
+`contracts/deployments/robinhood-testnet.json` only after that verification
+succeeds. Confirm the receipt and code on the Testnet explorer. Keep
+`sourceVerification: "not_verified"` unless source verification is
 independently confirmed.
 
 The verifier is read-only and cannot populate a manifest or frontend registry
-automatically. The historical 0.01 ETH balance observation is not a current
-balance or spending authorization.
+automatically. After a successful verification, write the verified record to
+the Testnet manifest's `standaloneResearchEvidenceAnchor` field; keep
+`architectureSlots` limited to the proposed ten-contract roadmap and leave
+unverified addresses blank. The historical 0.01 ETH balance observation is not
+a current balance or spending authorization.

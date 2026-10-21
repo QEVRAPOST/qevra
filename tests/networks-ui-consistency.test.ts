@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
 import { PublicAddressActionButton, PublicAddressResult, publicAddressActionLabel } from "@/components/dashboard/PublicAddressInspector";
 import { getExplorerTransactionUrl } from "@/lib/config/networks";
-import type { VerifiedVeyraDeployment } from "@/lib/config/veyra-deployments";
+import type { VerifiedVeyraDeployment, VerifiedVeyraStandaloneDeployment } from "@/lib/config/veyra-deployments";
 
 function deployment(networkId: "testnet" | "mainnet", index: number): VerifiedVeyraDeployment {
   const chainId = networkId === "testnet" ? 46_630 : 4_663;
@@ -14,6 +14,7 @@ function deployment(networkId: "testnet" | "mainnet", index: number): VerifiedVe
   return {
     name: `${networkId} contract ${index}`,
     purpose: `Purpose for ${networkId} contract ${index}.`,
+    architectureSlot: ((index - 1) % 10) + 1,
     networkId,
     chainId,
     address,
@@ -27,7 +28,7 @@ function deployment(networkId: "testnet" | "mainnet", index: number): VerifiedVe
   };
 }
 
-function renderNetworks(records: readonly VerifiedVeyraDeployment[]): string {
+function renderNetworks(records: readonly VerifiedVeyraDeployment[], standaloneResearchEvidenceAnchor?: VerifiedVeyraStandaloneDeployment): string {
   const source = [
     'import { createElement } from "react"',
     'import { renderToStaticMarkup } from "react-dom/server"',
@@ -36,7 +37,7 @@ function renderNetworks(records: readonly VerifiedVeyraDeployment[]): string {
     'import { buildLiveAppModel } from "./src/features/dashboard/live-model.ts"',
     'const model = buildLiveAppModel({ wallet: { status: "disconnected" }, selectedNetwork: "testnet", networkRpc: { status: "available", chainId: 46630, latestBlock: "123", observedAt: "2026-10-21T00:00:00.000Z" }, runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false })',
     'const value = { model, actions: { setNetwork() {}, setAmount() {}, pressSwapButton() {}, pressWalletButton() {}, pressLedgerAction() {}, refreshWallet() {}, refreshNetwork() {}, createSecurityRun() {}, logout() {} } }',
-    `process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(NetworksView, { deploymentRecords: ${JSON.stringify(records)} }))))`,
+    `process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(NetworksView, { deploymentRecords: ${JSON.stringify(records)}, standaloneResearchEvidenceAnchors: ${JSON.stringify(standaloneResearchEvidenceAnchor ? [standaloneResearchEvidenceAnchor] : [])} }))))`,
   ].join(";\n");
   return execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", source], {
     cwd: process.cwd(),
@@ -132,6 +133,33 @@ test("empty deployment manifests show independent zero-of-ten progress", () => {
   assert.equal((markup.match(/0\/10/g) ?? []).length, 2);
   assert.match(markup, /No verified VEYRA deployments on Robinhood Testnet\./);
   assert.match(markup, /No verified VEYRA deployments on Robinhood Mainnet\./);
+});
+
+test("standalone Evidence Anchor is displayed separately and excluded from roadmap progress", () => {
+  const anchor: VerifiedVeyraStandaloneDeployment = {
+    name: "VeyraResearchEvidenceAnchor",
+    purpose: "Anchors hashes only; it does not attest to research truth.",
+    networkId: "testnet",
+    chainId: 46_630,
+    address: "0x0000000000000000000000000000000000000001",
+    deploymentStatus: "verified",
+    observedChainId: 46_630,
+    deployerAddress: `0x${"1".repeat(40)}`,
+    transactionHash: `0x${"a".repeat(64)}`,
+    receiptStatus: "success",
+    blockNumber: "1",
+    runtimeBytecodeHash: `0x${"b".repeat(64)}`,
+  };
+  const markup = renderNetworks([], anchor);
+
+  assert.match(markup, /VeyraResearchEvidenceAnchor/);
+  assert.match(markup, /Standalone research utility/i);
+  assert.match(markup, /excluded from the 10-contract roadmap progress/i);
+  assert.match(markup, /0\/10/);
+  assert.match(markup, /Verified deployed address/);
+  assert.match(markup, /Deployer/);
+  assert.match(markup, /Block number/);
+  assert.match(markup, /View deployment transaction/);
 });
 
 test("transaction explorer URLs accept only hashes for configured public networks", () => {

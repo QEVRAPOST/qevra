@@ -19,7 +19,7 @@ contract DeployVeyraResearchEvidenceAnchor {
     VmVeyraEvidenceAnchorDeploy private constant vm =
         VmVeyraEvidenceAnchorDeploy(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-    function run() external returns (VeyraResearchEvidenceAnchor anchor) {
+    function run() external returns (VeyraResearchEvidenceAnchor anchor, bytes32 runtimeBytecodeHash) {
         if (block.chainid != ROBINHOOD_TESTNET_CHAIN_ID) revert WrongChain(block.chainid);
 
         vm.startBroadcast();
@@ -27,5 +27,6 @@ contract DeployVeyraResearchEvidenceAnchor {
         vm.stopBroadcast();
 
         if (anchor.owner() != EXPECTED_DEPLOYER) revert UnexpectedDeployer(anchor.owner());
+        runtimeBytecodeHash = keccak256(address(anchor).code);
     }
 }

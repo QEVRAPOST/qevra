@@ -5,7 +5,10 @@ pragma solidity 0.8.30;
 /// @dev A recorded hash proves only that its publisher anchored these bytes32 values.
 ///      It does not prove a report's truth, quality, review, or audit status.
 contract VeyraResearchEvidenceAnchor {
+    uint256 public constant ROBINHOOD_TESTNET_CHAIN_ID = 46630;
+
     error UnauthorizedPublisher();
+    error UnsupportedChain(uint256 actualChainId);
     error ZeroReportHash();
     error ZeroRunIdHash();
     error DuplicateReportHash(bytes32 reportHash);
@@ -32,6 +35,7 @@ contract VeyraResearchEvidenceAnchor {
     mapping(bytes32 runIdHash => bytes32 reportHash) private _reportHashByRunIdHash;
 
     constructor() {
+        if (block.chainid != ROBINHOOD_TESTNET_CHAIN_ID) revert UnsupportedChain(block.chainid);
         owner = msg.sender;
     }
 
@@ -61,8 +65,8 @@ contract VeyraResearchEvidenceAnchor {
         return _evidenceByReportHash[reportHash];
     }
 
-    /// @notice Check whether a run identifier hash has already been anchored.
-    function isRunRecorded(bytes32 runIdHash) external view returns (bool) {
-        return _reportHashByRunIdHash[runIdHash] != bytes32(0);
+    /// @notice Read the immutable record associated with a run identifier hash.
+    function getEvidenceByRunIdHash(bytes32 runIdHash) external view returns (Evidence memory) {
+        return _evidenceByReportHash[_reportHashByRunIdHash[runIdHash]];
     }
 }

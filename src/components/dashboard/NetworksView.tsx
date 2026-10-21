@@ -7,13 +7,23 @@ import { Button, buttonVariants } from "@/components/ui/Button";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { getExplorerAddressUrl, getExplorerTransactionUrl } from "@/lib/config/networks";
 import { PublicAddressInspector } from "@/components/dashboard/PublicAddressInspector";
-import { getVerifiedVeyraDeployments, type VerifiedVeyraDeployment } from "@/lib/config/veyra-deployments";
+import {
+  getVerifiedVeyraDeployments,
+  type VerifiedVeyraDeployment,
+  type VerifiedVeyraStandaloneDeployment,
+} from "@/lib/config/veyra-deployments";
 import { PROJECT_NAME } from "@/lib/project-brand";
 import type { NetworkId, NetworkRpcState } from "@/types/network";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 
-export function NetworksView({ deploymentRecords }: { deploymentRecords?: readonly VerifiedVeyraDeployment[] }) {
+export function NetworksView({
+  deploymentRecords,
+  standaloneResearchEvidenceAnchors = [],
+}: {
+  deploymentRecords?: readonly VerifiedVeyraDeployment[];
+  standaloneResearchEvidenceAnchors?: readonly VerifiedVeyraStandaloneDeployment[];
+}) {
   const { model, actions } = useAppModel();
   const [previewRpc, setPreviewRpc] = useState<{ networkId: NetworkId; attempt: number; state: NetworkRpcState }>({
     networkId: "testnet",
@@ -25,9 +35,11 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
   const deploymentNetworks = model.network.options.filter((network) => network.available);
   const deploymentGroups = deploymentNetworks.map((network) => {
     const verified = getVerifiedVeyraDeployments(network.id, deploymentRecords ?? []);
-    return { network, total: verified.length, deployments: verified.slice(0, 10) };
+    const standalone = standaloneResearchEvidenceAnchors.filter((record) => record.networkId === network.id);
+    return { network, total: verified.length, deployments: verified.slice(0, 10), standalone };
   });
-  const hasVerifiedDeployments = deploymentGroups.some((group) => group.total > 0);
+  const hasVerifiedRoadmapDeployments = deploymentGroups.some((group) => group.total > 0);
+  const hasStandaloneDeployments = deploymentGroups.some((group) => group.standalone.length > 0);
   const wallet = model.mode === "live" ? model.wallet.connection : undefined;
   const walletConnection = model.mode !== "live"
     ? "Preview only"
@@ -168,14 +180,20 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
             </div>
             <p className="ne-registry-caption">Verified deployments only · connected and watch-only addresses are excluded</p>
           </header>
-          {!hasVerifiedDeployments ? (
+          {!hasVerifiedRoadmapDeployments && !hasStandaloneDeployments ? (
             <div className="ne-registry-empty">
               <strong>No verified {PROJECT_NAME} deployments.</strong>
               <p>Phase 0B remains SECURITY NO-GO. Deployment and custody are disabled.</p>
             </div>
           ) : null}
+          {!hasVerifiedRoadmapDeployments && hasStandaloneDeployments ? (
+            <div className="ne-registry-empty">
+              <strong>No verified roadmap contracts.</strong>
+              <p>The standalone research utility below does not count toward the ten architecture slots. Phase 0B remains SECURITY NO-GO.</p>
+            </div>
+          ) : null}
           <div className="ne-registry-networks">
-            {deploymentGroups.map(({ network, total, deployments }) => {
+            {deploymentGroups.map(({ network, total, deployments, standalone }) => {
               const progress = Math.min(total, 10);
               return (
                 <section className="ne-registry-network" key={network.id} aria-labelledby={`h-ne-registry-${network.id}`}>
@@ -213,9 +231,38 @@ export function NetworksView({ deploymentRecords }: { deploymentRecords?: readon
                       })}
                     </ul>
                   ) : (
-                    <p className="ne-registry-network-empty">No verified {PROJECT_NAME} deployments on {network.label}.</p>
+                    <p className="ne-registry-network-empty">
+                      {standalone.length > 0
+                        ? `No verified roadmap contracts on ${network.label}.`
+                        : `No verified ${PROJECT_NAME} deployments on ${network.label}.`}
+                    </p>
                   )}
                   {total > deployments.length ? <p className="ne-registry-network-note">Showing the first {deployments.length} of {total} verified deployments on this network.</p> : null}
+                  {standalone.map((deployment) => {
+                    const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
+                    const transactionUrl = getExplorerTransactionUrl(deployment.networkId, deployment.transactionHash);
+                    return (
+                      <article className="ne-contract ne-contract-standalone" key={`standalone:${deployment.networkId}:${deployment.address}`}>
+                        <p className="ne-section-index">STANDALONE RESEARCH UTILITY</p>
+                        <h4>{deployment.name}</h4>
+                        <p className="ne-registry-network-note">Excluded from the 10-contract roadmap progress.</p>
+                        {deployment.purpose ? <p className="ne-contract-purpose">{deployment.purpose}</p> : null}
+                        <dl className="kv">
+                          <div><dt>Verified deployed address</dt><dd><code>{deployment.address}</code></dd></div>
+                          <div><dt>Deployment status</dt><dd>Verified deployment</dd></div>
+                          <div><dt>Deployer</dt><dd><code>{deployment.deployerAddress}</code></dd></div>
+                          <div><dt>Transaction hash</dt><dd><code>{deployment.transactionHash}</code></dd></div>
+                          <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div>
+                          <div><dt>Source verification</dt><dd>{deployment.sourceVerification === "verified" ? "Source verified" : "Not independently verified"}</dd></div>
+                        </dl>
+                        <div className="ne-actions">
+                          <CopyAddressButton address={deployment.address} />
+                          {addressUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={addressUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
+                          {transactionUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={transactionUrl} target="_blank" rel="noopener noreferrer">View deployment transaction</a> : null}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </section>
               );
             })}
