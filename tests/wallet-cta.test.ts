@@ -18,7 +18,15 @@ function renderWalletBand(wallet: Record<string, unknown>): string {
   ], { cwd: process.cwd(), encoding: "utf8" });
 }
 
-test("Overview routes a connected wallet CTA to the shared wallet state", () => {
+function overviewHeroActions(markup: string): string {
+  const start = markup.indexOf('<div class="ov-cta">');
+  const end = markup.indexOf("</div>", start);
+  assert.notEqual(start, -1, "Overview should render its hero action group");
+  assert.notEqual(end, -1, "Overview hero action group should close");
+  return markup.slice(start, end);
+}
+
+test("Overview routes connected wallet status to the Wallet page", () => {
   const markup = renderOverview({
     status: "connected",
     address: "0x0000000000000000000000000000000000000001",
@@ -26,11 +34,26 @@ test("Overview routes a connected wallet CTA to the shared wallet state", () => 
     networkName: "Robinhood Chain Testnet",
   });
 
-  assert.match(markup, /href="\/app\/wallet"[^>]*>View wallet/);
+  assert.match(markup, /href="\/app\/wallet"[^>]*>Open wallet/);
   assert.doesNotMatch(markup, /Connect wallet/);
 });
 
-test("header label and Overview CTA derive from the same wallet model state", () => {
+test("Overview keeps wallet navigation in the readiness row instead of duplicating the global wallet action", () => {
+  const disconnected = renderOverview({ status: "disconnected" });
+  assert.match(disconnected, /href="\/app\/wallet"[^>]*>Connect read-only/);
+  assert.doesNotMatch(overviewHeroActions(disconnected), /wallet|connect/i);
+
+  const connected = renderOverview({
+    status: "connected",
+    address: "0x0000000000000000000000000000000000000001",
+    chainId: 46_630,
+    networkName: "Robinhood Chain Testnet",
+  });
+  assert.match(connected, /href="\/app\/wallet"[^>]*>Open wallet/);
+  assert.doesNotMatch(overviewHeroActions(connected), /wallet|connect/i);
+});
+
+test("global wallet action and Overview wallet navigation reflect the same wallet model state", () => {
   const connectedWallet = {
     status: "connected" as const,
     address: "0x0000000000000000000000000000000000000001" as const,
@@ -41,22 +64,22 @@ test("header label and Overview CTA derive from the same wallet model state", ()
   const connectedModel = buildLiveAppModel({ ...common, wallet: connectedWallet });
   const connectedOverview = renderOverview(connectedWallet);
   assert.equal(connectedModel.wallet.walletButtonLabel, "Disconnect wallet");
-  assert.match(connectedOverview, /href="\/app\/wallet"[^>]*>View wallet/);
+  assert.match(connectedOverview, /href="\/app\/wallet"[^>]*>Open wallet/);
   assert.doesNotMatch(connectedOverview, />Connect wallet</);
 
   const disconnectedWallet = { status: "disconnected" as const };
   const disconnectedModel = buildLiveAppModel({ ...common, wallet: disconnectedWallet });
   const disconnectedOverview = renderOverview(disconnectedWallet);
   assert.equal(disconnectedModel.wallet.walletButtonLabel, "Connect wallet");
-  assert.match(disconnectedOverview, />Connect wallet</);
+  assert.match(disconnectedOverview, /href="\/app\/wallet"[^>]*>Connect read-only/);
+  assert.doesNotMatch(overviewHeroActions(disconnectedOverview), /wallet|connect/i);
 });
 
-test("Overview shows a pending wallet state instead of an enabled disconnected CTA", () => {
+test("Overview leaves pending wallet feedback in the global action and avoids a second connect CTA", () => {
   const markup = renderOverview({ status: "loading", message: "Waiting for your wallet's account-access decision." });
 
   assert.match(markup, /Connecting/);
-  assert.match(markup, /disabled/);
-  assert.doesNotMatch(markup, />Connect wallet</);
+  assert.doesNotMatch(overviewHeroActions(markup), /wallet|connect/i);
 });
 
 test("Overview readiness uses the wallet's connecting and read-error states", () => {

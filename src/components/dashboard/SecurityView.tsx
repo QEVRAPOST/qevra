@@ -96,7 +96,13 @@ function SecurityResearchView() {
 
   return (
     <section className="route sw" aria-labelledby="h-sec">
-      <PageHead id="h-sec" kicker="Security Swarm · operator workspace" title="Security Swarm" lede="Choose a topic, start a run when the service is available, and review saved findings and evidence." />
+      <PageHead id="h-sec" kicker="Security Swarm · research workspace" title="Security Swarm" lede="Choose a topic, start a run when the service is available, and review saved findings and evidence." />
+      {live && researchAccess?.gate === "authenticated" ? (
+        <p className="sw-access-identity" role="status">
+          {researchAccess.authenticationMethod === "wallet" ? "Wallet research session" : "Operator administration session"}
+          {researchAccess.authenticatedAddress ? <> · <code>{researchAccess.authenticatedAddress}</code></> : null}
+        </p>
+      ) : null}
       <div className="sw-ws">
         <aside className="sw-side" aria-label="Research setup and saved runs">
           <SwarmLaunch
@@ -196,13 +202,13 @@ export function SecurityPublicEntry({ children }: { children: ReactNode }) {
         id="h-sec-public"
         kicker="Security Swarm · research workspace"
         title="Security Swarm"
-        lede="Review public-source research, saved evidence, and stated limitations. Live history and new runs require operator access."
+        lede="Review public-source research, saved evidence, and stated limitations. Wallet-owned history and new runs require a research sign-in."
       />
       <section className="sw-access" aria-labelledby="sw-access-h">
         <div className="sw-access-heading">
           <p className="sw-access-kicker">Protected research functions</p>
-          <h2 id="sw-access-h">Operator Access</h2>
-          <p>Saved reports and run creation require the configured server-side operator session. Public wallet and network features stay available without it.</p>
+          <h2 id="sw-access-h">Research Access</h2>
+          <p>Wallet-owned saved reports and permitted research actions require a server-verified sign-in. Public wallet and network features stay available without it.</p>
         </div>
         {children}
       </section>
@@ -223,11 +229,28 @@ export function SecurityResearchAccess({
   onRetry: () => void;
   children?: ReactNode;
 }) {
+  const liveAccess = useLiveResearchAccess();
   if (gate === "authenticated") return children;
 
   return (
     <SecurityPublicEntry>
-      <LiveAccessGate gate={gate} message={message} onLogin={onLogin} onRetry={onRetry} />
+      <LiveAccessGate
+        gate={gate}
+        message={message}
+        wallet={liveAccess?.wallet}
+        selectedNetwork={liveAccess?.selectedNetwork}
+        walletAuthConfigured={liveAccess?.walletAuthConfigured}
+        operatorAuthConfigured={liveAccess?.operatorAuthConfigured}
+        signInChallenge={liveAccess?.signInChallenge}
+        signInBusy={liveAccess?.signInBusy}
+        signInError={liveAccess?.signInError}
+        onRequestWalletSignIn={liveAccess?.requestWalletSignIn}
+        onApproveWalletSignIn={liveAccess?.approveWalletSignIn}
+        onCancelWalletSignIn={liveAccess?.cancelWalletSignIn}
+        onConnectWallet={liveAccess?.connectWallet}
+        onLogin={onLogin}
+        onRetry={onRetry}
+      />
     </SecurityPublicEntry>
   );
 }

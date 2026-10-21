@@ -106,6 +106,8 @@ export class PostgresResearchStore {
         message text NOT NULL,
         expires_at timestamptz NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS veyra_user_auth_challenges_expiry_idx
+        ON veyra_user_auth_challenges (expires_at);
     `);
   }
 

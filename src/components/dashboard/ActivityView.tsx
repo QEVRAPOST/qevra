@@ -252,7 +252,7 @@ function Transactions() {
   );
 }
 
-/** Activity points to the shared operator sign-in instead of embedding a second credential form. */
+/** Activity points to the shared research sign-in instead of embedding a second authentication form. */
 export function ActivityResearchAccess({
   live,
   gate,
@@ -267,14 +267,14 @@ export function ActivityResearchAccess({
   if (!live || gate === null || gate === "authenticated") return children;
 
   const status = gate === "checking"
-    ? "Checking the shared operator session."
+    ? "Checking the shared research session."
     : gate === "not_configured"
       ? "Operator authentication is not configured on the server."
       : gate === "service_error"
-        ? "The operator session could not be checked. Try again from Security Swarm."
+        ? "The research session could not be checked. Try again from Security Swarm."
         : gate === "rate_limited"
-          ? "The operator session check is temporarily rate-limited. Try again from Security Swarm later."
-          : "Research history uses the same operator session as Security Swarm. Sign in there to view saved runs and reports.";
+          ? "The research session check is temporarily rate-limited. Try again from Security Swarm later."
+          : "Research history uses the same wallet or operator session as Security Swarm. Sign in there to view saved runs and reports.";
 
   return (
     <aside className="ac-access" aria-labelledby="ac-access-h">
@@ -282,7 +282,7 @@ export function ActivityResearchAccess({
       <h2 id="ac-access-h">Operator access required</h2>
       <p>{status}</p>
       {gate === "unauthenticated" && message ? <p role="status">{message}</p> : null}
-      <Link className="ov-l" href="/app/security">Operator Access in Security Swarm<span aria-hidden="true">→</span></Link>
+      <Link className="ov-l" href="/app/security">Research sign-in in Security Swarm<span aria-hidden="true">→</span></Link>
     </aside>
   );
 }
@@ -299,7 +299,7 @@ export function ActivityView() {
       <div className="ac-context" aria-label="Activity data sources">
         <section>
           <h2>Research History</h2>
-          <p>Persisted Security Swarm runs, ordered newest first. In live mode, viewing protected run history requires operator sign-in.</p>
+          <p>Persisted Security Swarm runs, ordered newest first. In live mode, viewing protected run history requires a wallet or operator research session.</p>
         </section>
         <section>
           <h2>Transactions</h2>

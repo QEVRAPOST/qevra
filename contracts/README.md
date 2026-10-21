@@ -68,12 +68,12 @@ contract list and budget, the signing command must use `--account`:
 ```sh
 # Template only; the DeployVeyra script and an approved contract do not exist yet.
 forge script script/DeployVeyra.s.sol:DeployVeyra \
-  --profile robinhood_testnet --rpc-url robinhood_testnet \
+  --profile robinhood_testnet --rpc-url robinhood_testnet --chain-id 46630 \
   --account veyra-testnet --sender <APPROVED_PUBLIC_DEPLOYER_ADDRESS> --broadcast
 
 # Mainnet is a separate, permanently broadcast-blocked workflow for this milestone.
 forge script script/DeployVeyra.s.sol:DeployVeyra \
-  --profile robinhood_mainnet --rpc-url robinhood_mainnet \
+  --profile robinhood_mainnet --rpc-url robinhood_mainnet --chain-id 4663 \
   --account "$VEYRA_MAINNET_ACCOUNT" --sender <APPROVED_PUBLIC_DEPLOYER_ADDRESS>
 ```
 

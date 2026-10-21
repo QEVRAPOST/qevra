@@ -36,16 +36,13 @@ function Row({ r }: { r: ReadinessRow }) {
  * exactly as recorded; in the preview it is a reference the visitor can play an illustration on. Nothing moves on its own.
  */
 export function OverviewView() {
-  const { model, actions } = useAppModel();
+  const { model } = useAppModel();
   const live = model.mode === "live";
   const rows = buildReadiness(model);
   const sec = model.security;
   const latest = sec.runs.slice(0, 3);
   const ill = useIllustration();
   const lastRun = live && sec.status === "ready" ? sec.runs[0] : undefined;
-  const walletConnection = model.wallet.connection;
-  const walletPending = live && walletConnection?.status === "loading";
-  const walletConnected = live && Boolean(walletConnection?.address);
   const canvas = ill.step !== null ? illustrationModel(ill.step) : lastRun ? pipelineFor(lastRun) : null;
 
   return (
@@ -67,19 +64,6 @@ export function OverviewView() {
           <Link className={buttonVariants({ variant: "primary" })} href="/app/security">
             Explore Security Swarm
           </Link>
-          {live && walletPending ? (
-            <Button variant="ghost" disabled aria-live="polite">
-              {walletConnection?.message?.startsWith("Refreshing") ? "Refreshing balance…" : "Connecting…"}
-            </Button>
-          ) : live && walletConnected ? (
-            <Link className={buttonVariants({ variant: "ghost" })} href="/app/wallet">View wallet</Link>
-          ) : live ? (
-            <Button variant="ghost" onClick={actions.pressWalletButton}>
-              {walletConnection?.status === "connection_rejected" ? "Connect wallet again" : "Connect wallet"}
-            </Button>
-          ) : (
-            <Link className={buttonVariants({ variant: "ghost" })} href="/app/wallet">Open the wallet</Link>
-          )}
           <Link className="ov-l" href="/app/activity">
             View research activity<span aria-hidden="true">→</span>
           </Link>
@@ -133,10 +117,10 @@ export function OverviewView() {
         </section>
         <section aria-labelledby="h-ov-latest" className="ov-latest">
           <h2 id="h-ov-latest" className="ov-h">Latest research</h2>
-          {live && sec.accessState === "checking" ? <EmptyState title="Checking Security Swarm access.">Public wallet and network information remain available while operator access is checked.</EmptyState> : null}
-          {live && sec.accessState === "unauthenticated" ? <EmptyState title="Sign in to view research history.">Saved research and new runs require an operator session. Public wallet and network information remain available. <Link href="/app/security">Sign in to Security Swarm</Link>.</EmptyState> : null}
-          {live && sec.accessState === "not_configured" ? <EmptyState title="Operator access is not configured.">Research history needs server-side operator authentication. Public wallet and network information remain available.</EmptyState> : null}
-          {live && (sec.accessState === "service_error" || sec.accessState === "rate_limited") ? <EmptyState title={sec.accessState === "rate_limited" ? "Security Swarm access is rate-limited." : "Security Swarm access is unavailable."}>{sec.unavailableMessage ?? "Operator access could not be checked. Public wallet and network information remain available."} <Link href="/app/security">Open Security Swarm</Link>.</EmptyState> : null}
+          {live && sec.accessState === "checking" ? <EmptyState title="Checking Security Swarm access.">Public wallet and network information remain available while the research session is checked.</EmptyState> : null}
+          {live && sec.accessState === "unauthenticated" ? <EmptyState title="Sign in to view research history.">Saved research and new runs require a wallet research sign-in or separate operator administration session. Public wallet and network information remain available. <Link href="/app/security">Sign in to Security Swarm</Link>.</EmptyState> : null}
+          {live && sec.accessState === "not_configured" ? <EmptyState title="Research sign-in is not configured.">The server has not configured wallet user sessions or operator administration. Public wallet and network information remain available.</EmptyState> : null}
+          {live && (sec.accessState === "service_error" || sec.accessState === "rate_limited") ? <EmptyState title={sec.accessState === "rate_limited" ? "Security Swarm access is rate-limited." : "Security Swarm access is unavailable."}>{sec.unavailableMessage ?? "Research access could not be checked. Public wallet and network information remain available."} <Link href="/app/security">Open Security Swarm</Link>.</EmptyState> : null}
           {(!live || sec.accessState === "authenticated") && sec.status === "loading" ? <EmptyState title="Loading live run history.">Checking the authenticated Security Research API. No simulated runs are substituted.</EmptyState> : null}
           {(!live || sec.accessState === "authenticated") && sec.status === "unavailable" ? <EmptyState title="Run history unavailable.">{sec.unavailableMessage ?? "The run feed is not connected. This is not a statement that there are no runs, or that the system is safe."}</EmptyState> : null}
           {(!live || sec.accessState === "authenticated") && sec.status === "empty" ? <EmptyState title="No runs recorded yet.">{live ? "Start the first run in the Security Swarm. It will appear here." : "When a run is recorded it appears here with its evidence and its limits."}</EmptyState> : null}

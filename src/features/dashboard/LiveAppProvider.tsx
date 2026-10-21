@@ -16,19 +16,25 @@ import { Button } from "@/components/ui/Button";
 import { ModelContext } from "@/components/dashboard/AppModelContext";
 import { WalletPickerDialog } from "@/components/dashboard/WalletPickerDialog";
 import {
+  completeWalletAuthChallenge,
   createSecurityRun,
   getSecurityCapabilities,
   getSecurityRun,
   getSecuritySessionStatus,
+  getWalletSessionStatus,
   listSecurityRuns,
   loginToSecurityService,
+  logoutWalletSession,
   logoutFromSecurityService,
+  requestWalletAuthChallenge,
+  signWalletAuthenticationMessage,
   SecurityApiClientError,
+  type WalletAuthChallenge,
 } from "@/features/security/client";
 import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, watchReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
 import { discoverInjectedReadOnlyWallets, type InjectedReadOnlyWalletChoice } from "@/features/wallet/browser";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
-import { DEFAULT_NETWORK_ID, isNetworkAvailable } from "@/lib/config/networks";
+import { DEFAULT_NETWORK_ID, isNetworkAvailable, NETWORKS } from "@/lib/config/networks";
 import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "./live-model";
 import { canUseProtectedResearch, expireResearchSession, gateAfterProtectedResponse, mergeFirstHistoryPage, mergeHistoryPage, type ResearchGateState } from "./live-ui-state";
 
@@ -49,6 +55,19 @@ interface ResearchHistoryState {
 interface LiveResearchAccessValue {
   gate: GateState;
   message?: string;
+  wallet: ReadOnlyWalletState;
+  selectedNetwork: NetworkId;
+  authenticationMethod?: "wallet" | "operator";
+  authenticatedAddress?: `0x${string}`;
+  walletAuthConfigured: boolean;
+  operatorAuthConfigured: boolean;
+  signInChallenge?: WalletAuthChallenge;
+  signInBusy: boolean;
+  signInError?: string;
+  requestWalletSignIn: () => Promise<void>;
+  approveWalletSignIn: () => Promise<void>;
+  cancelWalletSignIn: () => void;
+  connectWallet: () => void;
   login: (token: string) => Promise<void>;
   retry: () => void;
   hasMoreRuns: boolean;
@@ -69,7 +88,25 @@ export function useLiveResearchAccess(): LiveResearchAccessValue | null {
 export function LiveResearchAccessBoundary({ children }: { children: ReactNode }) {
   const access = useLiveResearchAccess();
   if (!access || access.gate === "authenticated") return children;
-  return <LiveAccessGate gate={access.gate} message={access.message} onLogin={access.login} onRetry={access.retry} />;
+  return (
+    <LiveAccessGate
+      gate={access.gate}
+      message={access.message}
+      wallet={access.wallet}
+      selectedNetwork={access.selectedNetwork}
+      walletAuthConfigured={access.walletAuthConfigured}
+      operatorAuthConfigured={access.operatorAuthConfigured}
+      signInChallenge={access.signInChallenge}
+      signInBusy={access.signInBusy}
+      signInError={access.signInError}
+      onRequestWalletSignIn={access.requestWalletSignIn}
+      onApproveWalletSignIn={access.approveWalletSignIn}
+      onCancelWalletSignIn={access.cancelWalletSignIn}
+      onConnectWallet={access.connectWallet}
+      onLogin={access.login}
+      onRetry={access.retry}
+    />
+  );
 }
 
 function errorMessage(error: unknown): string {
@@ -98,19 +135,48 @@ function sessionErrorGate(error: unknown): Extract<GateState, "service_error" | 
     : "service_error";
 }
 
-function sessionStatusGate(status: { configured: boolean; authenticated: boolean }): GateState {
-  if (!status.configured) return "not_configured";
-  return status.authenticated ? "authenticated" : "unauthenticated";
+function walletSignInErrorMessage(error: unknown): string {
+  const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : undefined;
+  if (code === 4001) return "The wallet sign-in message was rejected. No research session was created.";
+  if (error instanceof SecurityApiClientError) {
+    if (error.status === 401) return "This one-time sign-in message expired or was already used. Request a new message.";
+    if (error.status === 403) return "Wallet sign-in is not enabled for this site origin.";
+    if (error.status === 429) return "Wallet sign-in is rate-limited. Wait before trying again.";
+    if (error.status === 503 || error.status >= 500) return "Wallet sign-in is temporarily unavailable. Your wallet remains connected.";
+  }
+  return "Wallet sign-in could not be completed. No transaction or token approval was requested.";
 }
 
 export function LiveAccessGate({
   gate,
   message,
+  wallet = { status: "disconnected" },
+  selectedNetwork = DEFAULT_NETWORK_ID,
+  walletAuthConfigured = true,
+  operatorAuthConfigured = true,
+  signInChallenge,
+  signInBusy = false,
+  signInError,
+  onRequestWalletSignIn = () => Promise.resolve(),
+  onApproveWalletSignIn = () => Promise.resolve(),
+  onCancelWalletSignIn = () => {},
+  onConnectWallet = () => {},
   onLogin,
   onRetry,
 }: {
   gate: Exclude<GateState, "authenticated">;
   message?: string;
+  wallet?: ReadOnlyWalletState;
+  selectedNetwork?: NetworkId;
+  walletAuthConfigured?: boolean;
+  operatorAuthConfigured?: boolean;
+  signInChallenge?: WalletAuthChallenge;
+  signInBusy?: boolean;
+  signInError?: string;
+  onRequestWalletSignIn?: () => Promise<void>;
+  onApproveWalletSignIn?: () => Promise<void>;
+  onCancelWalletSignIn?: () => void;
+  onConnectWallet?: () => void;
   onLogin: (token: string) => Promise<void>;
   onRetry: () => void;
 }) {
@@ -157,58 +223,110 @@ export function LiveAccessGate({
     }
   }
 
+  const selected = NETWORKS.find((network) => network.id === selectedNetwork);
+  const walletMatchesSelected = Boolean(wallet.address && selected && wallet.chainId === selected.chainId);
+  const walletHasAccount = Boolean(wallet.address);
+
   return (
     <section className="operator-access-gate" aria-busy={gate === "checking" || undefined}>
-      {gate === "unauthenticated" ? (
-        <>
-          {message ? <p className="operator-access-message" role="status">{message}</p> : null}
-          <form className="operator-access-form" onSubmit={submit}>
-            <div className="fld operator-token-field">
-              <label className="fl" htmlFor="qevra-live-token">Operator access token</label>
-              <span className="fr operator-token-control">
-                <input
-                  id="qevra-live-token"
-                  type={tokenVisible ? "text" : "password"}
-                  autoComplete="current-password"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  aria-describedby="qevra-live-token-hint"
-                  aria-invalid={loginError ? true : undefined}
-                  value={token}
-                  onChange={(event) => setToken(event.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="small"
-                  aria-label={tokenVisible ? "Hide operator access token" : "Show operator access token"}
-                  aria-pressed={tokenVisible}
-                  aria-controls="qevra-live-token"
-                  onClick={() => setTokenVisible((visible) => !visible)}
-                >
-                  {tokenVisible ? "Hide" : "Show"}
-                </Button>
-              </span>
-              <small id="qevra-live-token-hint">Enter the configured operator access token. A research Run ID is not an authentication token. It is sent only to the same-origin sign-in endpoint.</small>
-            </div>
-            <Button type="submit" disabled={!token || submitting || (loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock)}>
-              {submitting ? "Signing in…" : loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock
-                ? `Try again in ${Math.ceil((loginRetryAt - clock) / 1_000)}s`
-                : "Sign in"}
-            </Button>
-            {loginError ? <p role="alert" className="operator-access-error">{loginError}</p> : null}
-          </form>
-        </>
-      ) : gate === "service_error" || gate === "rate_limited" ? (
-        <div className="operator-access-status" role="status">
-          <p>{message ?? (gate === "rate_limited" ? "The operator session check is being rate-limited. Wait before trying again." : "The operator session could not be checked. Try again shortly.")}</p>
-          <Button type="button" variant="ghost" onClick={onRetry}>Retry session check</Button>
-        </div>
-      ) : gate === "checking" ? (
-        <p className="operator-access-status" role="status">Checking the server-side operator session.</p>
-      ) : (
-        <p className="operator-access-status" role="status">Operator authentication is not configured on the server. Research history and run creation remain protected.</p>
-      )}
+      {message ? <p className="operator-access-message" role="status">{message}</p> : null}
+      <section className="wallet-research-access" aria-labelledby="wallet-research-access-heading">
+        <p className="operator-access-kicker">Wallet-owned research</p>
+        <h3 id="wallet-research-access-heading">Sign in to Research</h3>
+        <p>Connect a wallet, request a one-time sign-in challenge, then approve that exact EIP-191 login message in your wallet. This does not approve tokens or authorize transactions; wallet connection and balance reads remain read-only.</p>
+        {gate === "checking" ? <p className="operator-access-status" role="status">Checking your server-side research session.</p> : null}
+        {walletAuthConfigured && gate !== "checking" ? (
+          <div className="wallet-research-identity">
+            {walletHasAccount ? (
+              <dl className="kv">
+                <div><dt>Connected provider</dt><dd>{wallet.providerName ?? "EIP-1193 wallet"}</dd></div>
+                <div><dt>Connected account</dt><dd><code>{wallet.address}</code></dd></div>
+                <div><dt>Wallet network</dt><dd>{wallet.networkName ?? "Unknown network"}</dd></div>
+                <div><dt>Wallet chain ID</dt><dd>{wallet.chainId ?? "Unknown"}</dd></div>
+                <div><dt>Selected VEYRA network</dt><dd>{selected?.label ?? "Unknown"} · chain ID {selected?.chainId ?? "Unknown"}</dd></div>
+              </dl>
+            ) : (
+              <p className="operator-access-status">Connect MetaMask, Phantom, or another detected EVM wallet to sign in with your account.</p>
+            )}
+            {walletHasAccount && !walletMatchesSelected ? (
+              <p className="operator-access-error" role="status">
+                To sign in on {selected?.label ?? "the selected network"}, manually select chain ID {selected?.chainId ?? "unknown"} in your wallet, then refresh the wallet status. VEYRA will not switch networks.
+              </p>
+            ) : null}
+            {signInChallenge ? (
+              <div className="wallet-sign-in-challenge">
+                <details open>
+                  <summary>Review the one-time sign-in message</summary>
+                  <pre>{signInChallenge.message}</pre>
+                </details>
+                <p>This message expires at {signInChallenge.expiresAt}. Only approve it if the origin, account, and chain match this page. No transaction or token approval is requested.</p>
+                <div className="wallet-sign-in-actions">
+                  <Button type="button" variant="primary" disabled={signInBusy || !walletMatchesSelected} onClick={() => { void onApproveWalletSignIn(); }}>
+                    {signInBusy ? "Waiting for wallet approval…" : "Approve EIP-191 sign-in message"}
+                  </Button>
+                  <Button type="button" variant="ghost" disabled={signInBusy} onClick={onCancelWalletSignIn}>Cancel</Button>
+                </div>
+              </div>
+            ) : walletHasAccount && walletMatchesSelected ? (
+              <Button type="button" variant="primary" disabled={signInBusy} onClick={() => { void onRequestWalletSignIn(); }}>
+                {signInBusy ? "Preparing one-time challenge…" : "Sign in to Research"}
+              </Button>
+            ) : !walletHasAccount ? (
+              <Button type="button" variant="primary" onClick={onConnectWallet}>Connect wallet to sign in</Button>
+            ) : null}
+          </div>
+        ) : gate !== "checking" ? (
+          <p className="operator-access-status" role="status">Wallet sign-in is not configured on the server. Public wallet and network reads remain available.</p>
+        ) : null}
+        {signInError ? <p role="alert" className="operator-access-error">{signInError}</p> : null}
+        {gate === "service_error" || gate === "rate_limited" ? (
+          <div className="operator-access-status" role="status">
+            <p>{message ?? (gate === "rate_limited" ? "The research session check is rate-limited. Wait before trying again." : "The research session could not be checked. Try again shortly.")}</p>
+            <Button type="button" variant="ghost" onClick={onRetry}>Retry session check</Button>
+          </div>
+        ) : null}
+      </section>
+      <details className="operator-admin-access">
+        <summary>Operator administration</summary>
+        <p>Service administrators can use the separately configured operator access token here. This does not sign in a wallet user. A research Run ID is not an authentication token.</p>
+        {!operatorAuthConfigured ? <p className="operator-access-status">Operator authentication is not configured on the server.</p> : null}
+        <form className="operator-access-form" onSubmit={submit}>
+          <div className="fld operator-token-field">
+            <label className="fl" htmlFor="qevra-live-token">Operator access token</label>
+            <span className="fr operator-token-control">
+              <input
+                id="qevra-live-token"
+                type={tokenVisible ? "text" : "password"}
+                autoComplete="current-password"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-describedby="qevra-live-token-hint"
+                aria-invalid={loginError ? true : undefined}
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="small"
+                aria-label={tokenVisible ? "Hide operator access token" : "Show operator access token"}
+                aria-pressed={tokenVisible}
+                aria-controls="qevra-live-token"
+                onClick={() => setTokenVisible((visible) => !visible)}
+              >
+                {tokenVisible ? "Hide" : "Show"}
+              </Button>
+            </span>
+            <small id="qevra-live-token-hint">Enter the configured operator access token. It is sent only to the same-origin administrator sign-in endpoint.</small>
+          </div>
+          <Button type="submit" disabled={!token || submitting || (loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock)}>
+            {submitting ? "Signing in…" : loginRateLimited && loginRetryAt !== undefined && loginRetryAt > clock
+              ? `Try again in ${Math.ceil((loginRetryAt - clock) / 1_000)}s`
+              : "Sign in as operator"}
+          </Button>
+          {loginError ? <p role="alert" className="operator-access-error">{loginError}</p> : null}
+        </form>
+      </details>
     </section>
   );
 }
@@ -216,13 +334,24 @@ export function LiveAccessGate({
 export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const [gate, setGate] = useState<GateState>("checking");
   const [gateMessage, setGateMessage] = useState<string>();
+  const [authenticationMethod, setAuthenticationMethod] = useState<"wallet" | "operator">();
+  const [authenticatedAddress, setAuthenticatedAddress] = useState<`0x${string}`>();
+  const [walletAuthConfigured, setWalletAuthConfigured] = useState(false);
+  const [operatorAuthConfigured, setOperatorAuthConfigured] = useState(false);
+  const [signInChallenge, setSignInChallenge] = useState<WalletAuthChallenge>();
+  const [signInBusy, setSignInBusy] = useState(false);
+  const [signInError, setSignInError] = useState<string>();
+  const [capabilityMessage, setCapabilityMessage] = useState<string>();
   const gateRef = useRef<GateState>("checking");
+  const authenticationMethodRef = useRef<"wallet" | "operator" | undefined>(undefined);
+  const authenticatedAddressRef = useRef<`0x${string}` | undefined>(undefined);
   const [wallet, setWallet] = useState<ReadOnlyWalletState>({ status: "disconnected" });
   const [walletPickerOpen, setWalletPickerOpen] = useState(false);
   const [walletChoices, setWalletChoices] = useState<InjectedReadOnlyWalletChoice[]>([]);
   const [walletDiscoveryLoading, setWalletDiscoveryLoading] = useState(false);
   const [walletDiscoveryError, setWalletDiscoveryError] = useState<string>();
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkId>(DEFAULT_NETWORK_ID);
+  const selectedNetworkRef = useRef<NetworkId>(DEFAULT_NETWORK_ID);
   const [networkRpc, setNetworkRpc] = useState<NetworkRpcState>({ status: "not_requested" });
   const [networkRefreshNonce, setNetworkRefreshNonce] = useState(0);
   const [capabilities, setCapabilities] = useState<AppModel["security"]["capabilities"]>();
@@ -248,6 +377,10 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const optimisticRuns = useRef(new Map<string, ResearchRunSummary>());
   const sessionCheckId = useRef(0);
 
+  useEffect(() => {
+    selectedNetworkRef.current = selectedNetwork;
+  }, [selectedNetwork]);
+
   const updateHistory = useCallback((update: (current: ResearchHistoryState) => ResearchHistoryState) => {
     const next = update(historyRef.current);
     historyRef.current = next;
@@ -259,7 +392,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setGate(next);
   }, []);
 
-  const expireSession = useCallback((message = "Your operator session expired. Sign in again to continue using research history and run details.") => {
+  const expireSession = useCallback((message = "Your research session expired. Sign in again to continue using saved runs and research.") => {
     accessEpoch.current += 1;
     pollRequestId.current += 1;
     pollInFlight.current = false;
@@ -279,6 +412,14 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       preferredRunId: undefined,
     });
     updateGate(gateAfterProtectedResponse(gateRef.current, 401));
+    authenticationMethodRef.current = undefined;
+    authenticatedAddressRef.current = undefined;
+    setAuthenticationMethod(undefined);
+    setAuthenticatedAddress(undefined);
+    setSignInChallenge(undefined);
+    setSignInError(undefined);
+    setSignInBusy(false);
+    setCapabilityMessage(undefined);
     setGateMessage(message);
     setCapabilities(cleared.capabilities);
     updateHistory(() => ({
@@ -303,21 +444,64 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     const requestId = ++sessionCheckId.current;
     updateGate("checking");
     setGateMessage(undefined);
-    try {
-      const status = await getSecuritySessionStatus();
-      if (requestId !== sessionCheckId.current) return;
-      updateGate(sessionStatusGate(status));
-    } catch (error) {
-      if (requestId !== sessionCheckId.current) return;
-      updateGate(sessionErrorGate(error));
-      const message = error instanceof SecurityApiClientError && error.status === 401
-        ? "The operator session could not be verified. Sign in again to continue using research history."
-        : error instanceof SecurityApiClientError && (error.status === 429 || error.code === "rate_limit_exceeded")
-          ? "The operator session check is rate-limited. Wait before trying again."
-          : operatorAccessErrorMessage(error);
-      setGateMessage(message);
+    const [operatorResult, walletResult] = await Promise.allSettled([
+      getSecuritySessionStatus(),
+      getWalletSessionStatus(),
+    ]);
+    if (requestId !== sessionCheckId.current) return;
+
+    const operatorStatus = operatorResult.status === "fulfilled" ? operatorResult.value : undefined;
+    const walletStatus = walletResult.status === "fulfilled" ? walletResult.value : undefined;
+    setOperatorAuthConfigured(operatorStatus?.configured ?? false);
+    setWalletAuthConfigured(walletStatus?.configured ?? false);
+
+    // Protected APIs intentionally prefer the separately authenticated operator cookie when both exist.
+    if (operatorStatus?.authenticated) {
+      authenticationMethodRef.current = "operator";
+      authenticatedAddressRef.current = undefined;
+      setAuthenticationMethod("operator");
+      setAuthenticatedAddress(undefined);
+      updateGate("authenticated");
+      if (walletStatus?.authenticated) {
+        setGateMessage("Operator administration access is active in this browser. Sign out of it before using wallet-owned research history.");
+      }
+      return;
     }
+    if (walletStatus?.authenticated && walletStatus.address) {
+      authenticationMethodRef.current = "wallet";
+      authenticatedAddressRef.current = walletStatus.address;
+      setAuthenticationMethod("wallet");
+      setAuthenticatedAddress(walletStatus.address);
+      updateGate("authenticated");
+      return;
+    }
+
+    authenticationMethodRef.current = undefined;
+    authenticatedAddressRef.current = undefined;
+    setAuthenticationMethod(undefined);
+    setAuthenticatedAddress(undefined);
+    if (operatorResult.status === "rejected" || walletResult.status === "rejected") {
+      const error = operatorResult.status === "rejected" ? operatorResult.reason : walletResult.status === "rejected" ? walletResult.reason : undefined;
+      updateGate(sessionErrorGate(error));
+      const message = error instanceof SecurityApiClientError && (error.status === 429 || error.code === "rate_limit_exceeded")
+        ? "The research session check is rate-limited. Wait before trying again."
+        : "The research session could not be checked. Try again shortly.";
+      setGateMessage(message);
+      return;
+    }
+    updateGate(operatorStatus?.configured || walletStatus?.configured ? "unauthenticated" : "not_configured");
   }, [updateGate]);
+
+  const applyWalletState = useCallback((value: ReadOnlyWalletState) => {
+    setWallet(value);
+    const sessionAddress = authenticatedAddressRef.current;
+    if (authenticationMethodRef.current === "wallet" && sessionAddress
+      && (!value.address || value.address.toLowerCase() !== sessionAddress.toLowerCase())) {
+      setSignInChallenge(undefined);
+      void logoutWalletSession().catch(() => undefined);
+      expireSession("The connected wallet account changed. The wallet-owned research session was cleared; sign in again with the authorized account.");
+    }
+  }, [expireSession]);
 
   const refreshWallet = useCallback(async () => {
     const provider = providerRef.current;
@@ -326,8 +510,8 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setWallet({ status: "loading", message: "Refreshing the wallet account, network, and read-only balance." });
     const value = await refreshReadOnlyWallet(provider);
     if (!walletRequestGuardRef.current.isCurrent(requestId) || providerRef.current !== provider) return;
-    setWallet(value);
-  }, []);
+    applyWalletState(value);
+  }, [applyWalletState]);
 
   const closeWalletPicker = useCallback(() => {
     walletDiscoveryId.current += 1;
@@ -373,19 +557,126 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     providerRef.current = provider;
     const state = await connectReadOnlyWallet(provider);
     if (!walletRequestGuardRef.current.isCurrent(requestId) || providerRef.current !== provider) return;
-    setWallet(state);
+    applyWalletState(state);
     if (state.address) {
       unwatchRef.current = watchReadOnlyWallet(provider, () => { void refreshWallet(); });
     } else {
       providerRef.current = undefined;
     }
-  }, [closeWalletPicker, refreshWallet, wallet.address, wallet.status]);
+  }, [applyWalletState, closeWalletPicker, refreshWallet, wallet.address, wallet.status]);
 
   const selectWallet = useCallback((id: string) => {
     const choice = walletChoices.find((walletChoice) => walletChoice.id === id);
     if (!choice || wallet.address || wallet.status === "loading") return;
     void connectWallet(choice.provider);
   }, [connectWallet, wallet.address, wallet.status, walletChoices]);
+
+  const requestWalletSignIn = useCallback(async () => {
+    if (gateRef.current === "authenticated" || signInBusy) return;
+    const provider = providerRef.current;
+    const expectedChainId = NETWORKS.find((network) => network.id === selectedNetwork)?.chainId;
+    if (!wallet.address || !provider) {
+      setSignInError("Connect a wallet before requesting a research sign-in message.");
+      return;
+    }
+    if (!expectedChainId || wallet.chainId !== expectedChainId) {
+      setSignInError(`Manually select ${NETWORKS.find((network) => network.id === selectedNetwork)?.label ?? "the selected network"} (chain ID ${expectedChainId ?? "unknown"}) in your wallet before signing in. VEYRA will not switch it.`);
+      return;
+    }
+    setSignInBusy(true);
+    setSignInError(undefined);
+    setSignInChallenge(undefined);
+    try {
+      const challenge = await requestWalletAuthChallenge({ networkId: selectedNetwork, address: wallet.address });
+      if (Date.parse(challenge.expiresAt) <= Date.now()) {
+        throw new SecurityApiClientError(401, "wallet_challenge_expired", "The sign-in message expired before it could be reviewed.");
+      }
+      const [accounts, chainValue] = await Promise.all([
+        provider.request({ method: "eth_accounts" }),
+        provider.request({ method: "eth_chainId" }),
+      ]);
+      const currentAddress = Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : undefined;
+      const currentChainId = typeof chainValue === "string" && /^0x[0-9a-f]+$/i.test(chainValue) ? Number.parseInt(chainValue, 16) : undefined;
+      if (providerRef.current !== provider || currentAddress?.toLowerCase() !== wallet.address.toLowerCase()
+        || currentChainId !== expectedChainId || selectedNetworkRef.current !== selectedNetwork) {
+        throw new Error("wallet_auth_context_changed");
+      }
+      setSignInChallenge(challenge);
+    } catch (error) {
+      setSignInError(walletSignInErrorMessage(error));
+    } finally {
+      setSignInBusy(false);
+    }
+  }, [signInBusy, selectedNetwork, wallet.address, wallet.chainId]);
+
+  const approveWalletSignIn = useCallback(async () => {
+    const provider = providerRef.current;
+    const challenge = signInChallenge;
+    const expectedChainId = NETWORKS.find((network) => network.id === selectedNetwork)?.chainId;
+    if (gateRef.current === "authenticated" || signInBusy) return;
+    if (!challenge || !wallet.address || !provider || !expectedChainId) {
+      setSignInError("Request a new sign-in message after connecting your wallet.");
+      return;
+    }
+    if (Date.parse(challenge.expiresAt) <= Date.now()) {
+      setSignInChallenge(undefined);
+      setSignInError("This one-time sign-in message expired. Request a new message.");
+      return;
+    }
+    if (wallet.chainId !== expectedChainId) {
+      setSignInChallenge(undefined);
+      setSignInError(`Manually select ${NETWORKS.find((network) => network.id === selectedNetwork)?.label ?? "the selected network"} (chain ID ${expectedChainId}) in your wallet, then request a new sign-in message.`);
+      return;
+    }
+    setSignInBusy(true);
+    setSignInError(undefined);
+    try {
+      const signature = await signWalletAuthenticationMessage(provider, wallet.address, challenge.message);
+      const [accounts, chainValue] = await Promise.all([
+        provider.request({ method: "eth_accounts" }),
+        provider.request({ method: "eth_chainId" }),
+      ]);
+      const currentAddress = Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : undefined;
+      const currentChainId = typeof chainValue === "string" && /^0x[0-9a-f]+$/i.test(chainValue) ? Number.parseInt(chainValue, 16) : undefined;
+      if (providerRef.current !== provider || currentAddress?.toLowerCase() !== wallet.address.toLowerCase()
+        || currentChainId !== expectedChainId || selectedNetworkRef.current !== selectedNetwork) {
+        throw new Error("wallet_auth_context_changed");
+      }
+      const session = await completeWalletAuthChallenge({ address: wallet.address, nonce: challenge.nonce, signature });
+      accessEpoch.current += 1;
+      pollRequestId.current += 1;
+      pollInFlight.current = false;
+      authenticationMethodRef.current = "wallet";
+      authenticatedAddressRef.current = session.address;
+      setAuthenticationMethod("wallet");
+      setAuthenticatedAddress(session.address);
+      setWalletAuthConfigured(true);
+      setSignInChallenge(undefined);
+      setSignInError(undefined);
+      setCapabilityMessage(undefined);
+      updateHistory(() => ({ runs: null, loadedPageCount: 0, isLoadingMore: false }));
+      setDetails({});
+      detailCache.current = {};
+      optimisticRuns.current.clear();
+      setDetailErrors({});
+      setPreferredRunId(undefined);
+      setCapabilities(undefined);
+      setGateMessage(undefined);
+      setDataError(undefined);
+      updateGate("authenticated");
+    } catch (error) {
+      if (error instanceof SecurityApiClientError && error.status === 401) setSignInChallenge(undefined);
+      setSignInError(walletSignInErrorMessage(error));
+    } finally {
+      setSignInBusy(false);
+    }
+  }, [signInChallenge, selectedNetwork, signInBusy, wallet.address, wallet.chainId, updateHistory, updateGate]);
+
+  const cancelWalletSignIn = useCallback(() => {
+    if (signInBusy) return;
+    setSignInChallenge(undefined);
+    setSignInError(undefined);
+  }, [signInBusy]);
 
   const pressWalletButton = useCallback(() => {
     if (wallet.address) {
@@ -407,12 +698,19 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     pollInFlight.current = true;
     setIsRefreshing(true);
     try {
+      const canReadCapabilities = authenticationMethodRef.current !== "wallet";
       const [capabilityResult, listResult] = await Promise.allSettled([
-        protectRequest(getSecurityCapabilities(), requestEpoch),
+        canReadCapabilities ? protectRequest(getSecurityCapabilities(), requestEpoch) : Promise.resolve(undefined),
         protectRequest(listSecurityRuns({ limit: 20 }), requestEpoch),
       ]);
       if (requestEpoch !== accessEpoch.current || !canUseProtectedResearch(gateRef.current)) return;
-      if (capabilityResult.status === "fulfilled") setCapabilities(capabilityResult.value);
+      if (capabilityResult.status === "fulfilled" && capabilityResult.value) {
+        setCapabilities(capabilityResult.value);
+        setCapabilityMessage(undefined);
+      } else if (capabilityResult.status === "fulfilled") {
+        setCapabilities(undefined);
+        setCapabilityMessage("This wallet session can read its saved reports, but the capabilities endpoint currently requires the separate operator session. Provider, worker, billing, and run availability cannot be verified for wallet users, so creating a new run is disabled.");
+      }
       else {
         setCapabilities(undefined);
         setDataError(errorMessage(capabilityResult.reason));
@@ -474,21 +772,11 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   }, [protectRequest, updateHistory]);
 
   useEffect(() => {
-    const requestId = ++sessionCheckId.current;
-    let active = true;
-    void getSecuritySessionStatus().then((status) => {
-      if (!active || requestId !== sessionCheckId.current) return;
-      updateGate(sessionStatusGate(status));
-    }).catch((error: unknown) => {
-      if (!active || requestId !== sessionCheckId.current) return;
-      updateGate(sessionErrorGate(error));
-      setGateMessage(errorMessage(error));
-    });
+    void checkSession();
     return () => {
-      active = false;
       sessionCheckId.current += 1;
     };
-  }, [updateGate]);
+  }, [checkSession]);
 
   useEffect(() => {
     if (gate !== "authenticated") return;
@@ -551,6 +839,13 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     accessEpoch.current += 1;
     pollRequestId.current += 1;
     pollInFlight.current = false;
+    authenticationMethodRef.current = "operator";
+    authenticatedAddressRef.current = undefined;
+    setAuthenticationMethod("operator");
+    setAuthenticatedAddress(undefined);
+    setOperatorAuthConfigured(true);
+    setCapabilityMessage(undefined);
+    setSignInChallenge(undefined);
     updateHistory(() => ({ runs: null, loadedPageCount: 0, isLoadingMore: false }));
     setDetails({});
     detailCache.current = {};
@@ -564,24 +859,32 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   }, [updateGate, updateHistory]);
 
   const logout = useCallback(() => {
-    void logoutFromSecurityService().catch(() => undefined).finally(() => {
-      accessEpoch.current += 1;
-      pollRequestId.current += 1;
-      pollInFlight.current = false;
-      updateGate("unauthenticated");
-      updateHistory(() => ({ runs: null, loadedPageCount: 0, isLoadingMore: false }));
-      setDetails({});
-      detailCache.current = {};
-      optimisticRuns.current.clear();
-      setPreferredRunId(undefined);
-      setCapabilities(undefined);
-      setDetailErrors({});
-      setGateMessage(undefined);
-      setDataError(undefined);
-      setActionMessage(undefined);
-      setIsRefreshing(false);
-      setIsCreating(false);
-    });
+    const activeMethod = authenticationMethodRef.current;
+    authenticationMethodRef.current = undefined;
+    authenticatedAddressRef.current = undefined;
+    setAuthenticationMethod(undefined);
+    setAuthenticatedAddress(undefined);
+    setSignInChallenge(undefined);
+    setSignInError(undefined);
+    setCapabilityMessage(undefined);
+    accessEpoch.current += 1;
+    pollRequestId.current += 1;
+    pollInFlight.current = false;
+    updateGate("unauthenticated");
+    updateHistory(() => ({ runs: null, loadedPageCount: 0, isLoadingMore: false }));
+    setDetails({});
+    detailCache.current = {};
+    optimisticRuns.current.clear();
+    setPreferredRunId(undefined);
+    setCapabilities(undefined);
+    setDetailErrors({});
+    setGateMessage(undefined);
+    setDataError(undefined);
+    setActionMessage(undefined);
+    setIsRefreshing(false);
+    setIsCreating(false);
+    const signOut = activeMethod === "wallet" ? logoutWalletSession() : logoutFromSecurityService();
+    void signOut.catch(() => setGateMessage("Your local research view is signed out, but the server could not confirm that the session cookie was cleared."));
   }, [updateGate, updateHistory]);
 
   const loadMoreRuns = useCallback(async () => {
@@ -656,7 +959,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     if (capabilities?.provider !== "available" || capabilities.worker !== "available" || capabilities.persistence !== "available") {
-      setActionMessage("Live research execution is unavailable. Existing live run history remains available.");
+      setActionMessage(capabilityMessage ?? "Live research execution is unavailable. Existing live run history remains available.");
       return;
     }
     const requestEpoch = accessEpoch.current;
@@ -672,7 +975,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     }).catch((error: unknown) => {
       if (requestEpoch === accessEpoch.current && !isUnauthorized(error)) setActionMessage(errorMessage(error));
     }).finally(() => setIsCreating(false));
-  }, [capabilities, loadLiveData, protectRequest, updateHistory]);
+  }, [capabilities, capabilityMessage, loadLiveData, protectRequest, updateHistory]);
 
   const securityRuns = useMemo(
     () => history.runs?.map((summary) => {
@@ -690,14 +993,14 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       capabilities,
       runs: history.runs,
       accessState: gate,
-      accessMessage: gateMessage,
+      accessMessage: gateMessage ?? capabilityMessage,
       preferredRunId,
       dataError: history.historyError ?? dataError,
       isRefreshing,
       isCreating,
       actionMessage,
       hasMoreRuns: Boolean(history.nextCursor),
-    }), [wallet, selectedNetwork, networkRpc, capabilities, history, gate, gateMessage, preferredRunId, dataError, isRefreshing, isCreating, actionMessage]);
+    }), [wallet, selectedNetwork, networkRpc, capabilities, history, gate, gateMessage, capabilityMessage, preferredRunId, dataError, isRefreshing, isCreating, actionMessage]);
   const actions = useMemo<AppActions>(() => ({
       setNetwork(id) {
         if (!isNetworkAvailable(id)) return;
@@ -722,7 +1025,20 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AppModelValue>(() => ({ model: { ...model, security: { ...model.security, runs: securityRuns } }, actions }), [model, actions, securityRuns]);
   const access = useMemo<LiveResearchAccessValue>(() => ({
     gate,
-    message: gateMessage,
+    message: gateMessage ?? capabilityMessage,
+    wallet,
+    selectedNetwork,
+    authenticationMethod,
+    authenticatedAddress,
+    walletAuthConfigured,
+    operatorAuthConfigured,
+    signInChallenge,
+    signInBusy,
+    signInError,
+    requestWalletSignIn,
+    approveWalletSignIn,
+    cancelWalletSignIn,
+    connectWallet: () => { void openWalletPicker(); },
     login,
     retry: () => { void checkSession(); },
     hasMoreRuns: Boolean(history.nextCursor),
@@ -731,7 +1047,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     loadMoreRuns,
     refreshHistory: () => { void loadLiveData(); },
     loadResearchRun,
-  }), [gate, gateMessage, login, checkSession, history.nextCursor, history.isLoadingMore, history.historyError, loadMoreRuns, loadLiveData, loadResearchRun]);
+  }), [gate, gateMessage, capabilityMessage, wallet, selectedNetwork, authenticationMethod, authenticatedAddress, walletAuthConfigured, operatorAuthConfigured, signInChallenge, signInBusy, signInError, requestWalletSignIn, approveWalletSignIn, cancelWalletSignIn, openWalletPicker, login, checkSession, history.nextCursor, history.isLoadingMore, history.historyError, loadMoreRuns, loadLiveData, loadResearchRun]);
 
   return (
     <LiveResearchAccessContext.Provider value={access}>

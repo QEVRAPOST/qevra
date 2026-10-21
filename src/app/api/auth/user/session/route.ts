@@ -73,6 +73,7 @@ export async function POST(request: Request) {
     const session = createUserSession(address);
     if (!session) return apiError(503, "wallet_auth_not_configured", "Wallet sign-in is not configured.");
     const response = NextResponse.json({
+      configured: true,
       authenticated: true,
       address: session.address,
       expiresAt: new Date(session.expiresAt * 1_000).toISOString(),

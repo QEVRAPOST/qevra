@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { POST as requestSwapQuote } from "@/app/api/swap/quote/route";
 import {
   compareIntentToExecution,
   discoverSwapQuote,
@@ -93,6 +94,29 @@ test("quote discovery returns unavailable on both chains while no reviewed route
     reason: "no_verified_route",
     networkId: "mainnet",
     chainId: 4_663,
+    quote: null,
+    signingEnabled: false,
+    executionEnabled: false,
+  });
+});
+
+test("swap quote API returns a no-store unavailable result without contacting a quote provider", async () => {
+  const response = await requestSwapQuote(new Request("https://veyra.example/api/swap/quote", {
+    method: "POST",
+    headers: {
+      origin: "https://veyra.example",
+      host: "veyra.example",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(request),
+  }));
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), {
+    status: "unavailable",
+    reason: "no_verified_route",
+    networkId: "testnet",
+    chainId: 46_630,
     quote: null,
     signingEnabled: false,
     executionEnabled: false,
