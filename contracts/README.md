@@ -55,11 +55,16 @@ such assets. Do not send assets to it. Only publish hashes of research material
 that is safe to identify publicly; hashes of private or low-entropy values can
 still disclose information through guessing.
 
-The anchor's Testnet deployment is gated on the owner's approval of the final
-gas estimate. Until an actual receipt and runtime-code hash are verified,
-`contracts/deployments/robinhood-testnet.json` keeps `contracts: []` and every
-slot/candidate address is empty. The Mainnet profile has no anchor deployment
-script and is read-only preflight tooling only.
+The standalone Evidence Anchor is deployed on Robinhood Testnet at
+`0x10A47a16A6A903574Ed4058B67750073cC992632` (chain ID 46630), from the funded
+deployer, with a successful receipt in block `140219918`. Its runtime-bytecode
+hash is
+`0x75145cfa0c4eae7612db613f469eeafbf81ba898e07b3a96e1888378dffa798b`.
+Blockscout reports `is_verified: false`; source code is **not verified**.
+The record is stored in `standaloneResearchEvidenceAnchor`, separate from the
+roadmap `contracts` array. The ten proposed roadmap slots remain empty at 0/10.
+The Mainnet profile has no anchor deployment script and remains read-only
+preflight tooling only.
 
 ## Proposed-contract readiness
 
@@ -130,7 +135,9 @@ guaranteed maximum fee; report the gas limit and fee cap used with the computed
 ETH cost. Check the current public deployer balance independently before
 requesting transaction authorization.
 
-After explicit approval of that estimate, the one Testnet deployment command is:
+This is the command used for the first deployment after owner approval. **Do not
+run it again without a separate approval**; a repeat would create another
+standalone anchor:
 
 ```sh
 forge script script/DeployVeyraResearchEvidenceAnchor.s.sol:DeployVeyraResearchEvidenceAnchor \
@@ -145,21 +152,28 @@ script reject every chain ID other than 46630, and the script checks that the
 deployed contract owner is the supplied public deployer.
 
 The non-broadcast simulation returns `runtimeBytecodeHash` after applying the
-deployer-specific immutable owner to the exact compiled runtime. Keep that
-value with the estimate. After a real transaction, record its transaction hash
-and receipt, then pass the simulated expected runtime hash to the existing
-read-only verifier; it checks observed chain ID, successful receipt, receipt
-address, and bytecode hash at the receipt block:
+deployer-specific immutable owner to the exact compiled runtime. For the
+completed deployment, the RPC receipt, deployer, contract address, chain ID,
+owner, and runtime-bytecode hash were independently checked. The RPC returned
+the matching code hash at the receipt block once, then later reported historical
+state unavailable; the repository's generic verifier consequently returned a
+read failure on retry. A latest-state `cast code` hash and Blockscout's
+successful creation record also match. The Blockscout address response reports
+source verification as false.
+
+For future deployments on a provider with historical-state access, pass the
+simulated expected runtime hash to the existing read-only verifier. It checks
+observed chain ID, successful receipt, receipt address, and bytecode hash at the
+receipt block:
 
 ```sh
 bun scripts/robinhood.ts deploy verify testnet <CONTRACT_ADDRESS> <TX_HASH> <EXPECTED_RUNTIME_CODE_HASH>
 ```
 
-Use `runtimeBytecodeHash` from the non-broadcast simulation made with the same
-profile, source, compiler, and deployer as the broadcast. Record the returned
-Testnet-only address, transaction hash, receipt block, and runtime hash in
-`contracts/deployments/robinhood-testnet.json` only after that verification
-succeeds. Confirm the receipt and code on the Testnet explorer. Keep
+Use `runtimeBytecodeHash` from a non-broadcast simulation made with the same
+profile, source, compiler, and deployer as the broadcast. Record a future
+Testnet-only deployment in `contracts/deployments/robinhood-testnet.json` only
+after receipt and runtime-code verification. Keep
 `sourceVerification: "not_verified"` unless source verification is
 independently confirmed.
 

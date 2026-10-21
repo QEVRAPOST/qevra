@@ -5,8 +5,8 @@
   "chainId": 46630,
   "rpcAlias": "robinhood_testnet",
   "explorerBaseUrl": "https://explorer.testnet.chain.robinhood.com",
-  "deploymentStatus": "no_verified_deployments",
-  "sourceVerification": "not_applicable",
+  "deploymentStatus": "verified_deployments",
+  "sourceVerification": "not_verified",
   "contracts": [],
   "architectureSlots": [
     {
@@ -85,9 +85,16 @@
     "purpose": "Anchors only nonzero hashes of research reports and run identifiers; does not attest to truth or implement architecture slot 10.",
     "networkId": "testnet",
     "chainId": 46630,
-    "readiness": "prepared_pending_final_authorization",
-    "deploymentStatus": "not_deployed",
-    "address": ""
+    "readiness": "verified",
+    "deploymentStatus": "verified",
+    "address": "0x10A47a16A6A903574Ed4058B67750073cC992632",
+    "observedChainId": 46630,
+    "deployerAddress": "0xfA142bF0383782Caa349C5C56A7B7D565eEFA562",
+    "transactionHash": "0xb512a881c0bfa01d33786a6726c40db9b31f64f2598f02022f10a752e0b2ebae",
+    "receiptStatus": "success",
+    "blockNumber": "140219918",
+    "runtimeBytecodeHash": "0x75145cfa0c4eae7612db613f469eeafbf81ba898e07b3a96e1888378dffa798b",
+    "sourceVerification": "not_verified"
   },
   "preflight": {
     "readOnly": true,

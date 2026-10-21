@@ -174,5 +174,19 @@ test("server loader reads only validated records from the checked-in chain manif
   assert.ok(records.every((record) => record.chainId === record.observedChainId));
   assert.equal(new Set(records.map((record) => `${record.networkId}:${record.address.toLowerCase()}`)).size, records.length);
   assert.deepEqual(registry.roadmapContracts, []);
-  assert.deepEqual(registry.standaloneResearchEvidenceAnchors, []);
+  assert.deepEqual(registry.standaloneResearchEvidenceAnchors, [{
+    name: "VeyraResearchEvidenceAnchor",
+    purpose: "Anchors only nonzero hashes of research reports and run identifiers; does not attest to truth or implement architecture slot 10.",
+    networkId: "testnet",
+    chainId: 46_630,
+    address: "0x10A47a16A6A903574Ed4058B67750073cC992632",
+    deploymentStatus: "verified",
+    observedChainId: 46_630,
+    deployerAddress: "0xfA142bF0383782Caa349C5C56A7B7D565eEFA562",
+    transactionHash: "0xb512a881c0bfa01d33786a6726c40db9b31f64f2598f02022f10a752e0b2ebae",
+    receiptStatus: "success",
+    blockNumber: "140219918",
+    runtimeBytecodeHash: "0x75145cfa0c4eae7612db613f469eeafbf81ba898e07b3a96e1888378dffa798b",
+    sourceVerification: "not_verified",
+  }]);
 });

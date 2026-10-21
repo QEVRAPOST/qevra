@@ -31,12 +31,13 @@ import {
   SecurityApiClientError,
   type WalletAuthChallenge,
 } from "@/features/security/client";
-import { connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, watchReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
+import { beginReadOnlyWalletRefresh, connectReadOnlyWallet, createWalletRequestGuard, disconnectReadOnlyWallet, refreshReadOnlyWallet, watchReadOnlyWallet, type ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
 import { discoverInjectedReadOnlyWallets, type InjectedReadOnlyWalletChoice } from "@/features/wallet/browser";
+import { clearPreferredWallet, readPreferredWallet, rememberPreferredWallet, restorePreferredReadOnlyWallet } from "@/features/wallet/persistence";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { DEFAULT_NETWORK_ID, isNetworkAvailable, NETWORKS } from "@/lib/config/networks";
 import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "./live-model";
-import { canUseProtectedResearch, expireResearchSession, gateAfterProtectedResponse, mergeFirstHistoryPage, mergeHistoryPage, shouldLoadResearchCapabilities, type ResearchGateState } from "./live-ui-state";
+import { canUseProtectedResearch, expireResearchSession, gateAfterProtectedResponse, mergeFirstHistoryPage, mergeHistoryPage, shouldLoadResearchCapabilities, walletResearchSessionAccountMismatch, type ResearchGateState } from "./live-ui-state";
 
 type GateState = ResearchGateState;
 const ACTIVE_RUN_POLL_INTERVAL_MS = 5_000;
@@ -509,8 +510,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const applyWalletState = useCallback((value: ReadOnlyWalletState) => {
     setWallet(value);
     const sessionAddress = authenticatedAddressRef.current;
-    if (authenticationMethodRef.current === "wallet" && sessionAddress
-      && (!value.address || value.address.toLowerCase() !== sessionAddress.toLowerCase())) {
+    if (walletResearchSessionAccountMismatch(authenticationMethodRef.current, sessionAddress, value.address)) {
       setSignInChallenge(undefined);
       expireSession("The connected wallet account changed. The wallet-owned research session was cleared; sign in again with the authorized account.");
     }
@@ -520,7 +520,7 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     const provider = providerRef.current;
     if (!provider) return;
     const requestId = walletRequestGuardRef.current.begin();
-    setWallet({ status: "loading", message: "Refreshing the wallet account, network, and read-only balance." });
+    setWallet((current) => beginReadOnlyWalletRefresh(current));
     const value = await refreshReadOnlyWallet(provider);
     if (!walletRequestGuardRef.current.isCurrent(requestId) || providerRef.current !== provider) return;
     applyWalletState(value);
@@ -556,10 +556,11 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     unwatchRef.current?.();
     unwatchRef.current = undefined;
     providerRef.current = undefined;
+    clearPreferredWallet();
     setWallet(disconnectReadOnlyWallet());
   }, []);
 
-  const connectWallet = useCallback(async (provider: ReadOnlyEip1193Provider) => {
+  const connectWallet = useCallback(async (choice: InjectedReadOnlyWalletChoice) => {
     if (wallet.status === "loading") return;
     if (wallet.address) return;
     closeWalletPicker();
@@ -567,11 +568,13 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     setWallet({ status: "loading", message: "Waiting for your wallet's account-access decision." });
     unwatchRef.current?.();
     unwatchRef.current = undefined;
+    const { provider } = choice;
     providerRef.current = provider;
     const state = await connectReadOnlyWallet(provider);
     if (!walletRequestGuardRef.current.isCurrent(requestId) || providerRef.current !== provider) return;
     applyWalletState(state);
     if (state.address) {
+      rememberPreferredWallet(choice);
       unwatchRef.current = watchReadOnlyWallet(provider, () => { void refreshWallet(); });
     } else {
       providerRef.current = undefined;
@@ -581,8 +584,38 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
   const selectWallet = useCallback((id: string) => {
     const choice = walletChoices.find((walletChoice) => walletChoice.id === id);
     if (!choice || wallet.address || wallet.status === "loading") return;
-    void connectWallet(choice.provider);
+    void connectWallet(choice);
   }, [connectWallet, wallet.address, wallet.status, walletChoices]);
+
+  const restorePreferredWallet = useCallback(async () => {
+    const identity = readPreferredWallet();
+    if (!identity) return;
+    const requestId = walletRequestGuardRef.current.begin();
+    setWallet({ status: "loading", message: `Checking ${identity.name} for an already authorized account.` });
+    let choices: InjectedReadOnlyWalletChoice[];
+    try {
+      choices = await discoverInjectedReadOnlyWallets();
+    } catch {
+      if (walletRequestGuardRef.current.isCurrent(requestId)) {
+        setWallet({ status: "provider_error", message: `VEYRA could not check ${identity.name}. Reconnect it manually to try again.` });
+      }
+      return;
+    }
+    if (!walletRequestGuardRef.current.isCurrent(requestId)) return;
+
+    const restored = await restorePreferredReadOnlyWallet(identity, choices, (choice) => {
+      unwatchRef.current?.();
+      providerRef.current = choice.provider;
+      unwatchRef.current = watchReadOnlyWallet(choice.provider, () => { void refreshWallet(); });
+    });
+    if (!walletRequestGuardRef.current.isCurrent(requestId)) return;
+    if (!restored.choice) {
+      providerRef.current = undefined;
+      unwatchRef.current?.();
+      unwatchRef.current = undefined;
+    }
+    applyWalletState(restored.state);
+  }, [applyWalletState, refreshWallet]);
 
   const requestWalletSignIn = useCallback(async () => {
     if (gateRef.current === "authenticated" || signInBusy) return;
@@ -803,6 +836,10 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       sessionCheckId.current += 1;
     };
   }, [checkSession]);
+
+  useEffect(() => {
+    void restorePreferredWallet();
+  }, [restorePreferredWallet]);
 
   useEffect(() => {
     if (gate !== "authenticated") return;

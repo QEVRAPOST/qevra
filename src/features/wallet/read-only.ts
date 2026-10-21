@@ -29,6 +29,19 @@ export function createWalletRequestGuard() {
   };
 }
 
+/** Keeps the selected account visible during refresh while dropping its previous balance snapshot. */
+export function beginReadOnlyWalletRefresh(current: ReadOnlyWalletState): ReadOnlyWalletState {
+  return {
+    status: "loading",
+    ...(current.address ? { address: current.address } : {}),
+    ...(current.providerName ? { providerName: current.providerName } : {}),
+    ...(current.chainId !== undefined ? { chainId: current.chainId } : {}),
+    ...(current.networkName ? { networkName: current.networkName } : {}),
+    ...(current.isQevraTargetNetwork !== undefined ? { isQevraTargetNetwork: current.isQevraTargetNetwork } : {}),
+    message: "Refreshing the wallet account, network, and read-only balance.",
+  };
+}
+
 const ROBINHOOD_TESTNET_CHAIN_ID = 46_630;
 const ROBINHOOD_MAINNET_CHAIN_ID = 4_663;
 
@@ -64,9 +77,13 @@ function parseBlock(value: unknown): { number: bigint; hash: `0x${string}`; rpcN
   return { number, hash: block.hash as `0x${string}`, rpcNumber: block.number };
 }
 
-function providerErrorState(error: unknown, readStage: boolean): ReadOnlyWalletState {
+function providerErrorState(error: unknown, readStage: boolean, requestedAccountPermission: boolean): ReadOnlyWalletState {
   const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : undefined;
-  if (code === 4001) return { status: "connection_rejected", message: "Wallet connection was rejected. No signature was requested." };
+  if (code === 4001) {
+    return requestedAccountPermission
+      ? { status: "connection_rejected", message: "Wallet connection was rejected. No signature was requested." }
+      : { status: "provider_error", message: "The wallet declined a silent account check. Reconnect manually to try again." };
+  }
   if (code === 4900 || code === 4901) return { status: "provider_error", message: "The wallet provider is disconnected." };
   if (readStage) return { status: "rpc_unavailable", message: "The wallet's read-only RPC request failed. No write request was sent." };
   return { status: "provider_error", message: "The wallet provider did not return a valid read-only response." };
@@ -97,7 +114,13 @@ async function readWallet(provider: ReadOnlyEip1193Provider, requestAccounts: bo
   const providerInfo = provider.providerName ? { providerName: provider.providerName } : {};
   try {
     const accounts = await provider.request({ method: requestAccounts ? "eth_requestAccounts" : "eth_accounts" });
-    if (!Array.isArray(accounts) || accounts.length === 0) return { status: "disconnected" };
+    if (!Array.isArray(accounts) || accounts.length === 0) {
+      return {
+        status: "disconnected",
+        ...providerInfo,
+        message: "No wallet account is currently available. Unlock the wallet or reconnect manually.",
+      };
+    }
     const account = accounts[0];
     if (typeof account !== "string" || !isAddress(account)) {
       return { status: "invalid_rpc_response", message: "The wallet returned an invalid account address." };
@@ -170,7 +193,7 @@ async function readWallet(provider: ReadOnlyEip1193Provider, requestAccounts: bo
     return { status: "connected", address, ...providerInfo, chainId, networkName, isQevraTargetNetwork: true, balance: publicBalance };
   } catch (error) {
     return {
-      ...providerErrorState(error, readStage),
+      ...providerErrorState(error, readStage, requestAccounts),
       ...(address ? { address } : {}),
       ...providerInfo,
       ...(chainId !== undefined ? { chainId } : {}),

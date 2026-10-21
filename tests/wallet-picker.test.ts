@@ -106,6 +106,7 @@ test("legacy injected provider discovery offers every installed provider without
   await withFakeWindow(fakeWindow, async () => {
     const wallets = await discoverInjectedReadOnlyWallets(0);
     assert.deepEqual(wallets.map(({ name }) => name), ["Wallet One", "Wallet Two", "MetaMask", "Phantom"]);
+    assert.equal(wallets[2]?.rdns, "io.metamask", "legacy MetaMask should retain a stable provider identity across reloads");
     assert.equal(wallets[3]?.rdns, "app.phantom", "the detected Phantom provider should have a stable brand fallback key");
     assert.deepEqual(wallets.slice(0, 2).map(({ icon }) => icon), [undefined, "data:image/webp;base64,UklGRg=="]);
     assert.deepEqual(requestedMethods, []);

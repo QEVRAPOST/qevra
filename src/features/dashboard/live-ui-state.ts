@@ -20,6 +20,16 @@ export function shouldLoadResearchCapabilities(
   return canUseProtectedResearch(gate) && (authenticationMethod === "wallet" || authenticationMethod === "operator");
 }
 
+/** Keep an EIP-191 session independent of wallet connectivity; only a known different account invalidates it. */
+export function walletResearchSessionAccountMismatch(
+  authenticationMethod: "wallet" | "operator" | undefined,
+  sessionAddress: string | undefined,
+  walletAddress: string | undefined,
+): boolean {
+  if (authenticationMethod !== "wallet" || !sessionAddress || !walletAddress) return false;
+  return sessionAddress.toLowerCase() !== walletAddress.toLowerCase();
+}
+
 /** A 401 invalidates the active research session. Other HTTP errors keep their existing access state and handling. */
 export function gateAfterProtectedResponse(gate: ResearchGateState, status: number): ResearchGateState {
   return status === 401 && gate === "authenticated" ? "unauthenticated" : gate;
