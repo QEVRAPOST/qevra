@@ -131,6 +131,8 @@ export interface SecurityResearchCapabilities {
   provider: IntegrationAvailability;
   providerName?: string;
   authentication: IntegrationAvailability;
+  /** Explicit owner approval gate for billable model requests. */
+  billing: IntegrationAvailability;
   persistence: IntegrationAvailability;
   worker: IntegrationAvailability;
   deterministicExperiments: IntegrationAvailability;

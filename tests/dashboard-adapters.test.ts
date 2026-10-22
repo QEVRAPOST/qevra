@@ -19,6 +19,7 @@ test("live dashboard adapter keeps live provenance separate from demo fixtures a
   const capabilities: SecurityResearchCapabilities = {
     provider: "not_configured",
     authentication: "available",
+    billing: "not_configured",
     persistence: "available",
     worker: "available",
     deterministicExperiments: "not_configured",
@@ -114,6 +115,7 @@ test("live model shows backend failures honestly without demo fallback or execut
       providerName: "Credentials missing",
       unavailableReason: "model_provider_credentials_missing",
       authentication: "available",
+      billing: "available",
       persistence: "unavailable",
       worker: "unavailable",
       deterministicExperiments: "not_configured",
@@ -149,6 +151,7 @@ test("live status bar distinguishes provider configuration, provider availabilit
   const capabilities: SecurityResearchCapabilities = {
     provider: "not_configured",
     authentication: "available",
+    billing: "not_configured",
     persistence: "available",
     worker: "available",
     deterministicExperiments: "not_configured",

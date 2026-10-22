@@ -98,6 +98,19 @@ function invalidWalletAuthResponse(): SecurityApiClientError {
   return new SecurityApiClientError(502, "invalid_wallet_auth_response", "The wallet sign-in service returned an invalid response.");
 }
 
+const INTEGRATION_AVAILABILITY = new Set(["available", "unavailable", "not_configured", "unsupported"]);
+
+function isSecurityResearchCapabilities(value: unknown): value is SecurityResearchCapabilities {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<SecurityResearchCapabilities>;
+  const requiredStatuses = [candidate.provider, candidate.authentication, candidate.billing, candidate.persistence,
+    candidate.worker, candidate.deterministicExperiments];
+  return requiredStatuses.every((status) => typeof status === "string" && INTEGRATION_AVAILABILITY.has(status))
+    && Number.isSafeInteger(candidate.sourceCount) && (candidate.sourceCount ?? -1) >= 0
+    && (candidate.providerName === undefined || (typeof candidate.providerName === "string" && candidate.providerName.length <= 160))
+    && (candidate.unavailableReason === undefined || (typeof candidate.unavailableReason === "string" && candidate.unavailableReason.length <= 160));
+}
+
 export async function getWalletSessionStatus(): Promise<WalletSessionStatus> {
   const response = await requestJson<unknown>("/api/auth/user/session");
   if (!isWalletSessionStatus(response)) throw invalidWalletAuthResponse();
@@ -158,7 +171,11 @@ export async function signWalletAuthenticationMessage(
 }
 
 export async function getSecurityCapabilities(): Promise<SecurityResearchCapabilities> {
-  return requestJson("/api/security/capabilities");
+  const response = await requestJson<unknown>("/api/security/capabilities");
+  if (!isSecurityResearchCapabilities(response)) {
+    throw new SecurityApiClientError(502, "invalid_capabilities_response", "The research capabilities service returned incomplete readiness information.");
+  }
+  return response;
 }
 
 export async function listSecurityRuns(input: { cursor?: string; limit?: number } = {}): Promise<{

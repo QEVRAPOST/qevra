@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   completeWalletAuthChallenge,
+  getSecurityCapabilities,
   getWalletSessionStatus,
   logoutWalletSession,
   requestWalletAuthChallenge,
@@ -86,6 +87,27 @@ test("wallet session sign-out uses the separate user-session endpoint", async ()
     await logoutWalletSession();
     assert.equal(requestUrl, "/api/auth/user/session");
     assert.equal(requestMethod, "DELETE");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("security capabilities reject a response that omits explicit billing readiness", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    provider: "available",
+    authentication: "available",
+    persistence: "available",
+    worker: "available",
+    deterministicExperiments: "available",
+    sourceCount: 3,
+  });
+  try {
+    await assert.rejects(
+      getSecurityCapabilities(),
+      (error: unknown) => error instanceof Error && "code" in error
+        && (error as { code?: string }).code === "invalid_capabilities_response",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

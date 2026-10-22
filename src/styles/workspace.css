@@ -332,6 +332,20 @@
   border-top: 1px solid var(--line);
   padding-top: 12px;
 }
+.mm-session {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: 400 12px/1.4 var(--f-mono);
+  color: var(--muted);
+}
+.mm-session p {
+  flex: 1 1 240px;
+  margin: 0;
+}
 
 /* ---------- the orbit canvas (Security Swarm pipeline) ----------
  * Research → Analysis → Verification sit on an arc over hairline aperture rings; Sources and Human review are its two

@@ -147,6 +147,7 @@ test("billing-disabled execution is explained while saved reports remain availab
     provider: "not_configured",
     providerName: "Awaiting authorization",
     authentication: "available",
+    billing: "not_configured",
     persistence: "available",
     worker: "available",
     deterministicExperiments: "available",

@@ -24,6 +24,7 @@ export async function GET(request: Request) {
   const capabilities: SecurityResearchCapabilities = {
     ...describeProviderState(provider),
     authentication: hasSessionConfiguration() || hasWalletAuthConfiguration() ? "available" : "not_configured",
+    billing: process.env.QEVRA_AI_BILLING_APPROVED === "true" ? "available" : "not_configured",
     persistence: process.env.DATABASE_URL ? "available" : "not_configured",
     worker: "unavailable",
     deterministicExperiments: isExperimentSandboxConfigured() ? "available" : "not_configured",

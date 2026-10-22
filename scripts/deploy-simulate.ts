@@ -1,7 +1,6 @@
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { keccak256, type Hex } from "viem";
-import testnetManifest from "../contracts/deployments/robinhood-testnet.json";
-import mainnetManifest from "../contracts/deployments/robinhood-mainnet.json";
 import { parseVerifiedVeyraManifest, type VeyraDeploymentManifest } from "@/lib/config/veyra-deployment-manifest";
 import type { VerifiedVeyraDeployment, VerifiedVeyraStandaloneDeployment } from "@/lib/config/veyra-deployments";
 import { resolveRobinhoodNetwork } from "./robinhood";
@@ -31,6 +30,7 @@ const ARCHITECTURE_NAMES = [
 type ProgressState = "running" | "complete" | "failed";
 type ProgressEvent = { label: string; state: ProgressState };
 type ProgressHandler = (event: ProgressEvent) => void;
+type NetworkSelection = NetworkId | "all";
 
 type SimulationOptions = {
   projectName?: string;
@@ -38,15 +38,18 @@ type SimulationOptions = {
   colorDepth?: "16" | "256" | "truecolor";
   columns?: number;
   fetchImpl?: typeof fetch;
+  /** Manifest override for focused tests; production reads the checked-in files at runtime. */
+  deploymentManifests?: Partial<Record<NetworkId, unknown>>;
   onProgress?: ProgressHandler;
 };
 
-type DeploymentStatus = "DEPLOYED · MANIFEST VERIFIED" | "ADDRESS PRESENT · NOT VERIFIED" | "NOT DEPLOYED · BLOCKED" | "NOT DEPLOYED · HARD NO-GO" | "NOT DEPLOYED" | "REGISTRY UNAVAILABLE";
+type DeploymentStatus = "DEPLOYED · MANIFEST VERIFIED" | "ADDRESS PRESENT · NOT VERIFIED" | "NOT DEPLOYED" | "REGISTRY UNAVAILABLE";
 
 type ArchitectureRow = {
   slot: number;
   name: string;
   status: DeploymentStatus;
+  readiness: string;
   address?: string;
   sourceVerification?: string;
   verifiedRecord?: VerifiedVeyraDeployment;
@@ -76,6 +79,7 @@ type NetworkResult = {
   latestBlock: string;
   detail: string;
   liveAnchorCheck: string;
+  liveChecks: Array<{ name: string; status: string }>;
 };
 
 type RpcErrorCode = "rpc_timeout" | "rpc_unavailable" | "rpc_http_error" | "rpc_invalid_response" | "rpc_error" | "rpc_chain_id_mismatch";
@@ -195,6 +199,33 @@ function sourceLabel(value: unknown): string {
   return value === "verified" ? "VERIFIED" : value === "not_verified" ? "NOT VERIFIED" : "UNKNOWN";
 }
 
+function readinessLabel(value: unknown): string {
+  if (value === "hard_no_go") return "SECURITY NO-GO";
+  if (value === "blocked") return "PENDING REVIEW";
+  if (typeof value !== "string" || !value.trim()) return "NOT ASSESSED";
+  return value.trim().replaceAll("_", " ").toUpperCase();
+}
+
+function deploymentTone(status: DeploymentStatus): "good" | "warn" | "bad" {
+  if (status === "DEPLOYED · MANIFEST VERIFIED") return "good";
+  if (status === "REGISTRY UNAVAILABLE") return "bad";
+  return "warn";
+}
+
+function readinessTone(readiness: string): "good" | "warn" | "bad" | "muted" {
+  if (readiness === "SECURITY NO-GO") return "bad";
+  if (readiness === "PENDING REVIEW" || readiness === "NOT DEPLOYED") return "warn";
+  if (readiness === "NOT ASSESSED") return "muted";
+  return "good";
+}
+
+function liveCheckTone(status: string): "good" | "warn" | "bad" | "muted" {
+  if (status === "LIVE RECEIPT + BYTECODE MATCH") return "good";
+  if (status.includes("MISMATCH")) return "bad";
+  if (status.includes("UNAVAILABLE")) return "warn";
+  return "muted";
+}
+
 function contractName(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined;
   const name = value.solidityName ?? value.name;
@@ -220,7 +251,7 @@ function isRegistryAvailable(networkId: NetworkId, raw: VeyraDeploymentManifest,
 
 function architectureNames(raw: VeyraDeploymentManifest): string[] {
   const declared = new Map<number, string>();
-  for (const candidate of raw.architectureSlots) {
+  for (const candidate of Array.isArray(raw.architectureSlots) ? raw.architectureSlots : []) {
     if (!isRecord(candidate) || !Number.isInteger(candidate.slot) || typeof candidate.solidityName !== "string") continue;
     const slot = candidate.slot as number;
     if (slot >= 1 && slot <= ARCHITECTURE_NAMES.length && candidate.solidityName.trim()) {
@@ -238,10 +269,13 @@ function buildRegistrySnapshot(networkId: NetworkId, input: unknown): RegistrySn
   const names = architectureNames(raw);
   const slots = names.map((name, index): ArchitectureRow => {
     const slotNumber = index + 1;
-    if (!available) return { slot: slotNumber, name, status: "REGISTRY UNAVAILABLE" };
+    const definition = Array.isArray(raw.architectureSlots)
+      ? raw.architectureSlots.find((candidate) => isRecord(candidate)
+        && candidate.slot === slotNumber && candidate.solidityName === name)
+      : undefined;
+    const readiness = readinessLabel(isRecord(definition) ? definition.readiness : undefined);
+    if (!available) return { slot: slotNumber, name, status: "REGISTRY UNAVAILABLE", readiness };
 
-    const definition = raw.architectureSlots.find((candidate) => isRecord(candidate)
-      && candidate.slot === slotNumber && candidate.solidityName === name);
     const candidate = recordForSlot(raw, slotNumber, name);
     const verified = parsed.roadmapContracts.find((record) => record.name === name && record.architectureSlot === slotNumber);
     if (verified) {
@@ -249,6 +283,7 @@ function buildRegistrySnapshot(networkId: NetworkId, input: unknown): RegistrySn
         slot: slotNumber,
         name,
         status: "DEPLOYED · MANIFEST VERIFIED",
+        readiness,
         address: verified.address,
         sourceVerification: sourceLabel(verified.sourceVerification),
         verifiedRecord: verified,
@@ -257,13 +292,13 @@ function buildRegistrySnapshot(networkId: NetworkId, input: unknown): RegistrySn
 
     const candidateAddress = safeAddress(isRecord(candidate) ? candidate.address : undefined)
       ?? safeAddress(isRecord(definition) ? definition.address : undefined);
-    if (candidateAddress) return { slot: slotNumber, name, status: "ADDRESS PRESENT · NOT VERIFIED", address: candidateAddress };
+    if (candidateAddress) return { slot: slotNumber, name, status: "ADDRESS PRESENT · NOT VERIFIED", readiness };
 
-    const readiness = isRecord(definition) && typeof definition.readiness === "string" ? definition.readiness : "";
     return {
       slot: slotNumber,
       name,
-      status: readiness === "hard_no_go" ? "NOT DEPLOYED · HARD NO-GO" : readiness === "blocked" ? "NOT DEPLOYED · BLOCKED" : "NOT DEPLOYED",
+      status: "NOT DEPLOYED",
+      readiness,
     };
   });
 
@@ -283,7 +318,7 @@ function buildRegistrySnapshot(networkId: NetworkId, input: unknown): RegistrySn
         verifiedRecord: verifiedAnchor,
       };
     } else if (isRecord(rawAnchor) && safeAddress(rawAnchor.address)) {
-      anchor = { status: "ADDRESS PRESENT · NOT VERIFIED", address: safeAddress(rawAnchor.address) };
+      anchor = { status: "ADDRESS PRESENT · NOT VERIFIED" };
     } else {
       anchor = { status: "NOT DEPLOYED" };
     }
@@ -367,18 +402,20 @@ function statusForRpcError(error: unknown, network: NetworkOption, observedChain
       latestBlock: "Unavailable",
       detail: `Expected chain ${network.chainId}; observed ${error.observedChainId ?? "unknown"}. No block or deployment checks followed.`,
       liveAnchorCheck: "NOT CHECKED",
+      liveChecks: [],
     };
   }
   const code = error instanceof ReadOnlyRpcError ? error.code : "rpc_unavailable";
   const status = error instanceof ReadOnlyRpcError && error.httpStatus
-    ? `ACCESS FAILURE · HTTP ${error.httpStatus}`
-    : `ACCESS FAILURE · ${code}`;
+    ? `RPC UNAVAILABLE · HTTP ${error.httpStatus}`
+    : `RPC UNAVAILABLE · ${code}`;
   return {
     status,
     observedChainId,
     latestBlock: "Unavailable",
     detail: "RPC preflight did not complete. No deployment or transaction action was attempted.",
     liveAnchorCheck: "NOT CHECKED",
+    liveChecks: [],
   };
 }
 
@@ -413,75 +450,143 @@ async function verifyOnChain(
   }
 }
 
+function loadDeploymentManifest(networkId: NetworkId): unknown {
+  try {
+    const fileUrl = new URL(`../contracts/deployments/robinhood-${networkId}.json`, import.meta.url);
+    return JSON.parse(readFileSync(fileUrl, "utf8")) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function networkIdsForSelection(selection: NetworkSelection): NetworkId[] {
+  return selection === "all" ? ["testnet", "mainnet"] : [selection];
+}
+
 function formatRegistry(
   frame: ReturnType<typeof createFrame>,
   registry: RegistrySnapshot,
   sectionNumber: string,
-  liveAnchorCheck: string,
+  networkResult: NetworkResult,
 ): void {
   const { addBorder, section, row, note } = frame;
   section(sectionNumber, `${registry.network.label.toUpperCase()} 10-CONTRACT ARCHITECTURE REGISTRY · CHAIN ${registry.network.chainId}`);
   if (!registry.available) note("Deployment manifest failed schema, network, or chain identity checks.");
   row("Architecture slots", `${registry.slots.filter((slot) => slot.status === "DEPLOYED · MANIFEST VERIFIED").length}/10 manifest-verified`, "muted");
   for (const slot of registry.slots) {
-    const tone = slot.status.startsWith("DEPLOYED") ? "good" : slot.status.startsWith("NOT DEPLOYED") ? "warn" : "bad";
-    frame.boxLine(`SLOT ${String(slot.slot).padStart(2, "0")} · ${slot.name} · ${slot.status}`, "left", tone);
-    if (slot.address) row("  Registry address", slot.address, "muted");
-    if (slot.sourceVerification) row("  Source verification", slot.sourceVerification, slot.sourceVerification === "VERIFIED" ? "good" : "warn");
+    frame.boxLine(`SLOT ${String(slot.slot).padStart(2, "0")} · ${slot.name}`, "left", "plain");
+    row("Deployment status", slot.status, deploymentTone(slot.status));
+    row("Security readiness", slot.readiness, readinessTone(slot.readiness));
+    if (slot.address) row("Verified address", slot.address, "good");
+    if (slot.sourceVerification) row("Source verification", slot.sourceVerification, slot.sourceVerification === "VERIFIED" ? "good" : "warn");
+    const liveCheck = networkResult.liveChecks.find((check) => check.name === slot.name);
+    if (liveCheck) {
+      row("Live RPC check", liveCheck.status, liveCheckTone(liveCheck.status));
+      if (liveCheck.status.includes("LIVE CHECK UNAVAILABLE")) {
+        note("Manifest evidence remains intact; live verification is temporarily unavailable.");
+      }
+    } else if (slot.status === "DEPLOYED · MANIFEST VERIFIED") {
+      row("Live RPC check", "NOT RECHECKED THIS RUN", "muted");
+    }
   }
   addBorder();
 
   section(`${Number(sectionNumber) + 1}`.padStart(2, "0"), `STANDALONE ${registry.networkId.toUpperCase()} EVIDENCE ANCHOR · CHAIN ${registry.network.chainId}`);
   row("Contract", "VeyraResearchEvidenceAnchor");
-  const anchorTone = registry.anchor.status.startsWith("DEPLOYED") ? "good" : registry.anchor.status === "NOT DEPLOYED" ? "warn" : "bad";
-  row("Deployment status", registry.anchor.status, anchorTone);
-  if (registry.anchor.address) row("Address", registry.anchor.address, "good");
+  row("Deployment status", registry.anchor.status, deploymentTone(registry.anchor.status));
+  if (registry.anchor.address) row("Verified address", registry.anchor.address, "good");
   if (registry.anchor.transactionHash) row("Transaction", registry.anchor.transactionHash, "muted");
   if (registry.anchor.blockNumber) row("Deployment block", registry.anchor.blockNumber, "muted");
   if (registry.anchor.sourceVerification) {
     row("Source verification", registry.anchor.sourceVerification, registry.anchor.sourceVerification === "VERIFIED" ? "good" : "warn");
   }
-  if (registry.networkId === "testnet" && registry.anchor.verifiedRecord) row("Current RPC evidence", liveAnchorCheck, liveAnchorCheck === "LIVE RECEIPT + BYTECODE MATCH" ? "good" : "warn");
+  const liveAnchor = networkResult.liveChecks.find((check) => check.name === "VeyraResearchEvidenceAnchor");
+  if (liveAnchor) {
+    row("Live RPC check", liveAnchor.status, liveCheckTone(liveAnchor.status));
+    if (liveAnchor.status.includes("LIVE CHECK UNAVAILABLE")) {
+      note("Manifest evidence remains intact; live verification is temporarily unavailable.");
+    }
+  }
   note("This utility is separate from architecture slot 10.");
   addBorder();
 }
 
-function formatReadiness(
-  network: NetworkOption,
-  registries: Record<NetworkId, RegistrySnapshot>,
-  networkResult: NetworkResult,
+function appendTerminalHeader(
+  frame: ReturnType<typeof createFrame>,
+  selection: NetworkSelection,
   projectName: string,
-  options: Required<Pick<SimulationOptions, "color" | "colorDepth" | "columns">>,
-): string {
-  const frame = createFrame(options.columns, options.color, options.colorDepth);
-  const { rows, addBorder, boxLine, centeredWordmark, section, row, note } = frame;
-  const testnet = registries.testnet;
-  const mainnet = registries.mainnet;
-  const verifiedTestnetSlots = testnet.slots.filter((slot) => slot.status === "DEPLOYED · MANIFEST VERIFIED").length;
-  const verifiedMainnetSlots = mainnet.slots.filter((slot) => slot.status === "DEPLOYED · MANIFEST VERIFIED").length;
-
+): void {
+  const { addBorder, boxLine, centeredWordmark } = frame;
+  const network = selection === "all" ? undefined : resolveRobinhoodNetwork(selection);
   addBorder("=");
   boxLine("");
   centeredWordmark(projectName);
   boxLine("");
   boxLine("VEYRA / ROBINHOOD NETWORK READINESS", "center", "plain");
-  boxLine(`${network.label.toUpperCase()}  |  EXPECTED CHAIN ${network.chainId}`, "center", "brand");
-  boxLine("READ-ONLY NETWORK AND DEPLOYMENT STATUS", "center", "plain");
-  boxLine("STATUS DISPLAY ONLY — NO TRANSACTION IS SIMULATED", "center", "muted");
+  boxLine(network
+    ? `${network.label.toUpperCase()}  |  EXPECTED CHAIN ${network.chainId}`
+    : "ROBINHOOD TESTNET + MAINNET  |  CHAINS 46630 + 4663", "center", "brand");
+  boxLine("READ-ONLY NETWORK AND DEPLOYMENT STATUS WALKTHROUGH", "center", "plain");
+  boxLine(selection === "mainnet"
+    ? "MAINNET READINESS ONLY — NO SIGNING, SPENDING OR BROADCAST"
+    : selection === "all"
+      ? "READ-ONLY RPC + MANIFEST CHECKS — MAINNET READINESS ONLY; NO DEPLOYMENT SIMULATED"
+      : "RPC + MANIFEST READS ONLY — NO FOUNDRY DEPLOYMENT SIMULATED", "center", "muted");
   addBorder("=");
+}
 
-  section("01", "LIVE NETWORK VALIDATION");
-  row("RPC connectivity", networkResult.status, networkResult.status === "AVAILABLE" ? "good" : "bad");
-  row("Observed chain ID", networkResult.observedChainId, networkResult.observedChainId === String(network.chainId) ? "good" : "warn");
-  row("Expected chain ID", String(network.chainId));
-  row("Latest block", networkResult.latestBlock, networkResult.latestBlock === "Unavailable" ? "warn" : "good");
-  if (networkResult.detail) note(networkResult.detail);
-  addBorder();
+function formatTerminalHeader(
+  selection: NetworkSelection,
+  projectName: string,
+  options: Required<Pick<SimulationOptions, "color" | "colorDepth" | "columns">>,
+): string {
+  const frame = createFrame(options.columns, options.color, options.colorDepth);
+  appendTerminalHeader(frame, selection, projectName);
+  return `${frame.rows.join("\n")}\n`;
+}
 
-  formatRegistry(frame, testnet, "02", networkResult.liveAnchorCheck);
-  formatRegistry(frame, mainnet, "04", "NOT CHECKED");
+function formatReadiness(
+  selection: NetworkSelection,
+  registries: Partial<Record<NetworkId, RegistrySnapshot>>,
+  networkResults: Partial<Record<NetworkId, NetworkResult>>,
+  projectName: string,
+  options: Required<Pick<SimulationOptions, "color" | "colorDepth" | "columns">>,
+): string {
+  const frame = createFrame(options.columns, options.color, options.colorDepth);
+  const { rows, addBorder, boxLine, section, row, note } = frame;
+  const networkIds = networkIdsForSelection(selection);
+  const selectedRegistries = networkIds.map((networkId) => registries[networkId]).filter((registry): registry is RegistrySnapshot => Boolean(registry));
+  let sectionNumber = 1;
 
-  section("06", "THREE CORE PRODUCT PILLARS");
+  appendTerminalHeader(frame, selection, projectName);
+
+  for (const registry of selectedRegistries) {
+    const network = registry.network;
+    const result = networkResults[registry.networkId] ?? {
+      status: "RPC UNAVAILABLE · rpc_unavailable",
+      observedChainId: "Unavailable",
+      latestBlock: "Unavailable",
+      detail: "RPC preflight did not complete. No deployment or transaction action was attempted.",
+      liveAnchorCheck: "NOT CHECKED",
+      liveChecks: [],
+    };
+    section(String(sectionNumber).padStart(2, "0"), `${network.label.toUpperCase()} LIVE NETWORK VALIDATION`);
+    const networkTone = result.status === "AVAILABLE" ? "good" : result.status === "CHAIN MISMATCH" ? "bad" : "warn";
+    row("RPC connectivity", result.status, networkTone);
+    row("Observed chain ID", result.observedChainId, result.observedChainId === String(network.chainId) ? "good" : "warn");
+    row("Expected chain ID", String(network.chainId));
+    row("Latest block", result.latestBlock, result.latestBlock === "Unavailable" ? "warn" : "good");
+    if (result.detail) note(result.detail);
+    addBorder();
+    formatRegistry(frame, registry, String(sectionNumber + 1).padStart(2, "0"), result);
+    sectionNumber += 3;
+  }
+
+  const verifiedByNetwork = new Map(selectedRegistries.map((registry) => [
+    registry.networkId,
+    registry.slots.filter((slot) => slot.status === "DEPLOYED · MANIFEST VERIFIED").length,
+  ]));
+  section(String(sectionNumber++).padStart(2, "0"), "THREE CORE PRODUCT PILLARS");
   row("A · Post-Quantum Smart Account", "BLOCKED — ML-DSA security remains NO-GO; the EVM wallet remains read-only.", "bad");
   row("B · Simple Swap + Intent Lock", "PARTIAL — input validation and intent comparison exist; no verified quote route or execution.", "warn");
   row("C · Autonomous Security Swarm", "HISTORICAL COMPLETE REPORT — current new-run readiness requires an authenticated capability check.", "warn");
@@ -489,13 +594,14 @@ function formatReadiness(
   row("New research runs", "READINESS CHECK REQUIRED", "warn");
   addBorder();
 
-  section("07", "FINAL READINESS SUMMARY");
-  row("Testnet architecture", `${verifiedTestnetSlots}/10 manifest-verified`, verifiedTestnetSlots === 10 ? "good" : "warn");
-  row("Mainnet architecture", `${verifiedMainnetSlots}/10 manifest-verified`, verifiedMainnetSlots === 10 ? "good" : "warn");
-  row("Testnet Evidence Anchor", testnet.anchor.status, testnet.anchor.status.startsWith("DEPLOYED") ? "good" : "warn");
-  row("Mainnet Evidence Anchor", mainnet.anchor.status, mainnet.anchor.status === "NOT DEPLOYED" ? "warn" : "good");
+  section(String(sectionNumber).padStart(2, "0"), "FINAL READINESS SUMMARY");
+  for (const registry of selectedRegistries) {
+    const verifiedSlots = verifiedByNetwork.get(registry.networkId) ?? 0;
+    row(`${registry.network.short} architecture`, `${verifiedSlots}/10 manifest-verified`, verifiedSlots === 10 ? "good" : "warn");
+    row(`${registry.network.short} Evidence Anchor`, registry.anchor.status, deploymentTone(registry.anchor.status));
+  }
   row("Transaction signing", "NOT PERFORMED", "muted");
-  row("Broadcast", "DISABLED", "bad");
+  row("Broadcast", "DISABLED", "muted");
   addBorder("=");
   boxLine("THIS IS A READ-ONLY STATUS DISPLAY; NO TRANSACTION IS SIMULATED.", "center", "plain");
   boxLine("NO PRIVATE KEY LOADED · NO SIGNATURE REQUESTED · NO TRANSACTION BROADCAST", "center", "muted");
@@ -504,29 +610,74 @@ function formatReadiness(
   return `${rows.join("\n")}\n`;
 }
 
-export function shouldAnimateTerminal(isTTY: boolean, env: Record<string, string | undefined>): boolean {
-  return isTTY && env.NO_COLOR === undefined && env.TERM !== "dumb";
+export function shouldAnimateTerminal(
+  isTTY: boolean,
+  env: Record<string, string | undefined>,
+  structuredOutput = false,
+  fast = false,
+): boolean {
+  const isTest = env.NODE_ENV === "test"
+    || env.NODE_TEST_CONTEXT !== undefined
+    || env.JEST_WORKER_ID !== undefined
+    || env.VITEST !== undefined
+    || env.BUN_TESTING !== undefined;
+  return isTTY && !isTest && !structuredOutput && !fast && env.NO_COLOR === undefined && env.TERM !== "dumb";
 }
 
-export function parseDeploymentArgs(args: string[]): { networkId: NetworkId; mode: "show" | "simulate" } {
-  const showFlags = args.filter((arg) => arg === "--testnet" || arg === "--mainnet");
-  if (showFlags.length > 1) throw new Error("--testnet and --mainnet are mutually exclusive.");
-  if (showFlags.length === 1) {
-    if (args.length !== 1) throw new Error(`Unknown option: ${args.find((arg) => arg !== showFlags[0])}`);
-    return { networkId: showFlags[0] === "--testnet" ? "testnet" : "mainnet", mode: "show" };
+export function parseDeploymentArgs(args: string[]): {
+  networkId: NetworkSelection;
+  mode: "show" | "simulate";
+  fast: boolean;
+  speed: number;
+  json: boolean;
+} {
+  let networkId: NetworkSelection | undefined;
+  let mode: "show" | "simulate" | undefined;
+  let fast = false;
+  let speed = 1;
+  let json = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "--network") {
+      if (networkId) throw new Error("Choose one network only; --network cannot be combined with another network flag.");
+      const value = args[index + 1];
+      if (value !== "testnet" && value !== "mainnet" && value !== "all") throw new Error("Network must be testnet, mainnet, or all.");
+      networkId = value;
+      mode = "simulate";
+      index += 1;
+      continue;
+    }
+    if (argument === "--testnet" || argument === "--mainnet") {
+      if (networkId) throw new Error("--testnet, --mainnet, and --network are mutually exclusive.");
+      networkId = argument === "--testnet" ? "testnet" : "mainnet";
+      mode = "show";
+      continue;
+    }
+    if (argument === "--fast") {
+      fast = true;
+      continue;
+    }
+    if (argument === "--json") {
+      json = true;
+      continue;
+    }
+    if (argument === "--speed") {
+      const value = args[index + 1];
+      if (!value || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) throw new Error("Speed must be a number between 0.25 and 4.");
+      speed = Number(value);
+      if (speed < 0.25 || speed > 4) throw new Error("Speed must be between 0.25 and 4.");
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown option: ${argument}`);
   }
-
-  if (args[0] === "--network") {
-    if (args.length !== 2) throw new Error("Usage: bun run deploy:simulate --network <testnet|mainnet>");
-    if (args[1] !== "testnet" && args[1] !== "mainnet") throw new Error("Network must be testnet or mainnet.");
-    return { networkId: args[1], mode: "simulate" };
+  if (!networkId || !mode) {
+    throw new Error("Usage: bun run deploy:show --testnet | --mainnet; legacy: bun run deploy:simulate --network <testnet|mainnet|all> [--fast] [--speed <0.25-4>] [--json]");
   }
-
-  if (args.length > 0) throw new Error(`Unknown option: ${args[0]}`);
-  throw new Error("Usage: bun run deploy:show --testnet | --mainnet; legacy: bun run deploy:simulate --network <testnet|mainnet>");
+  return { networkId, mode, fast, speed, json };
 }
 
-function terminalProgressHandler(): ProgressHandler {
+function terminalProgressHandler(speed: number): ProgressHandler {
   const frames = ["|", "/", "-", "\\"];
   let timer: ReturnType<typeof setInterval> | undefined;
   let currentLabel = "";
@@ -544,7 +695,7 @@ function terminalProgressHandler(): ProgressHandler {
       timer = setInterval(() => {
         frame = (frame + 1) % frames.length;
         process.stdout.write(`\r[${frames[frame]}] ${currentLabel}`);
-      }, 90);
+      }, Math.max(20, Math.round(90 / speed)));
       timer.unref();
       return;
     }
@@ -553,11 +704,37 @@ function terminalProgressHandler(): ProgressHandler {
   };
 }
 
+function revealDelay(line: string): number {
+  if (/^[+=-]{20,}$/.test(line.trim())) return 36;
+  if (/\b(?:LIVE NETWORK VALIDATION|ROBINHOOD .* REGISTRY|EVIDENCE ANCHOR|CORE PRODUCT PILLARS|FINAL READINESS SUMMARY)\b/.test(line)) return 145;
+  if (/SLOT \d+|ADDRESS │|TRANSACTION │|DEPLOYMENT BLOCK │/.test(line)) return 34;
+  if (line.includes("#")) return 42;
+  return 22;
+}
+
+export async function revealTerminalOutput(
+  value: string,
+  options: {
+    speed?: number;
+    write?: (value: string) => void;
+    wait?: (milliseconds: number) => Promise<void>;
+  } = {},
+): Promise<void> {
+  const speed = Number.isFinite(options.speed) && options.speed! > 0 ? options.speed! : 1;
+  const write = options.write ?? ((chunk: string) => { process.stdout.write(chunk); });
+  const wait = options.wait ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const lines = value.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  for (const line of lines) {
+    await wait(Math.max(4, Math.round(revealDelay(line) / speed)));
+    write(`${line}\n`);
+  }
+}
+
 export async function simulateDeployment(
-  networkId: NetworkId,
+  networkId: NetworkSelection,
   options: SimulationOptions = {},
 ): Promise<{ exitCode: number; output: string }> {
-  const network = resolveRobinhoodNetwork(networkId);
   const color = options.color ?? Boolean(process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb");
   const colorDepth = options.colorDepth ?? (process.env.COLORTERM === "truecolor" || process.env.COLORTERM === "24bit"
     ? "truecolor"
@@ -565,65 +742,63 @@ export async function simulateDeployment(
   const projectName = options.projectName ?? process.env.NEXT_PUBLIC_PROJECT_NAME ?? "VEYRA";
   const columns = options.columns ?? process.stdout.columns ?? 100;
   const fetchImpl = options.fetchImpl ?? fetch;
+  const selectedIds = networkIdsForSelection(networkId);
+  const registries: Partial<Record<NetworkId, RegistrySnapshot>> = {};
+  for (const id of selectedIds) {
+    const manifest = options.deploymentManifests?.[id] ?? loadDeploymentManifest(id);
+    registries[id] = buildRegistrySnapshot(id, manifest);
+  }
   let exitCode = 0;
-  let networkResult: NetworkResult = {
-    status: "ACCESS FAILURE · rpc_unavailable",
-    observedChainId: "Unavailable",
-    latestBlock: "Unavailable",
-    detail: "RPC preflight did not complete. No deployment or transaction action was attempted.",
-    liveAnchorCheck: "NOT CHECKED",
-  };
-  let observedChainId = "Unavailable";
+  const networkResults: Partial<Record<NetworkId, NetworkResult>> = {};
 
-  try {
-    const chainId = await withProgress("Robinhood RPC chain ID", options.onProgress, async () => {
-      const rawChainId = await requestRpc(network, "eth_chainId", [], fetchImpl);
-      const value = parseHexQuantity(rawChainId);
-      if (value === undefined || value <= BigInt(0)) throw new ReadOnlyRpcError("rpc_invalid_response");
-      observedChainId = value.toString();
-      if (value !== BigInt(network.chainId)) throw new ReadOnlyRpcError("rpc_chain_id_mismatch", undefined, Number(value));
-      return value;
-    });
-    const latestBlock = await withProgress("Latest block", options.onProgress, async () => {
-      const rawBlock = await requestRpc(network, "eth_blockNumber", [], fetchImpl);
-      const block = parseHexQuantity(rawBlock);
-      if (block === undefined) throw new ReadOnlyRpcError("rpc_invalid_response");
-      return block.toString();
-    });
-    const registries = await withProgress("Inspect Testnet and Mainnet registries", options.onProgress, async () => ({
-      testnet: buildRegistrySnapshot("testnet", testnetManifest),
-      mainnet: buildRegistrySnapshot("mainnet", mainnetManifest),
-    }));
+  for (const id of selectedIds) {
+    const network = resolveRobinhoodNetwork(id);
+    const registry = registries[id];
+    let observedChainId = "Unavailable";
+    try {
+      const chainId = await withProgress(`Robinhood ${network.short} RPC chain ID`, options.onProgress, async () => {
+        const rawChainId = await requestRpc(network, "eth_chainId", [], fetchImpl);
+        const value = parseHexQuantity(rawChainId);
+        if (value === undefined || value <= BigInt(0)) throw new ReadOnlyRpcError("rpc_invalid_response");
+        observedChainId = value.toString();
+        if (value !== BigInt(network.chainId)) throw new ReadOnlyRpcError("rpc_chain_id_mismatch", undefined, Number(value));
+        return value;
+      });
+      const latestBlock = await withProgress(`Robinhood ${network.short} latest block`, options.onProgress, async () => {
+        const rawBlock = await requestRpc(network, "eth_blockNumber", [], fetchImpl);
+        const block = parseHexQuantity(rawBlock);
+        if (block === undefined) throw new ReadOnlyRpcError("rpc_invalid_response");
+        return block.toString();
+      });
 
-    let liveAnchorCheck = "NOT CHECKED";
-    if (networkId === "testnet" && registries.testnet.anchor.verifiedRecord) {
-      liveAnchorCheck = await withProgress("Verify Testnet Evidence Anchor", options.onProgress, () =>
-        verifyOnChain(registries.testnet.anchor.verifiedRecord!, network, fetchImpl));
-    } else if (networkId === "mainnet") {
-      for (const record of registries.mainnet.verifiedDeployments) {
-        await withProgress(`Verify ${record.name}`, options.onProgress, () => verifyOnChain(record, network, fetchImpl));
+      const recordsToCheck = [
+        ...(id === "mainnet" ? registry?.verifiedDeployments ?? [] : []),
+        ...(id === "testnet" && registry?.anchor.verifiedRecord ? [registry.anchor.verifiedRecord] : []),
+      ];
+      const liveChecks: NetworkResult["liveChecks"] = [];
+      for (const record of recordsToCheck) {
+        const status = await withProgress(`Verify ${record.name} on ${network.short}`, options.onProgress, () =>
+          verifyOnChain(record, network, fetchImpl));
+        liveChecks.push({ name: record.name, status });
       }
-    }
 
-    networkResult = {
-      status: "AVAILABLE",
-      observedChainId: chainId.toString(),
-      latestBlock,
-      detail: "The selected Robinhood RPC returned the expected chain ID and latest block.",
-      liveAnchorCheck,
-    };
-  } catch (error) {
-    exitCode = 1;
-    networkResult = statusForRpcError(error, network, observedChainId);
+      networkResults[id] = {
+        status: "AVAILABLE",
+        observedChainId: chainId.toString(),
+        latestBlock,
+        detail: `The Robinhood ${network.short} RPC returned the expected chain ID and latest block.`,
+        liveAnchorCheck: liveChecks.find((check) => check.name === "VeyraResearchEvidenceAnchor")?.status ?? "NOT CHECKED",
+        liveChecks,
+      };
+    } catch (error) {
+      exitCode = 1;
+      networkResults[id] = statusForRpcError(error, network, observedChainId);
+    }
   }
 
-  const registries = {
-    testnet: buildRegistrySnapshot("testnet", testnetManifest),
-    mainnet: buildRegistrySnapshot("mainnet", mainnetManifest),
-  };
   return {
     exitCode,
-    output: formatReadiness(network, registries, networkResult, projectName, {
+    output: formatReadiness(networkId, registries, networkResults, projectName, {
       color,
       colorDepth,
       columns,
@@ -633,10 +808,35 @@ export async function simulateDeployment(
 
 export async function main(args: string[]): Promise<number> {
   try {
-    const { networkId } = parseDeploymentArgs(args);
-    const onProgress = shouldAnimateTerminal(Boolean(process.stdout.isTTY), process.env) ? terminalProgressHandler() : undefined;
-    const result = await simulateDeployment(networkId, { onProgress });
-    process.stdout.write(result.output);
+    const parsed = parseDeploymentArgs(args);
+    const animated = shouldAnimateTerminal(Boolean(process.stdout.isTTY), process.env, parsed.json, parsed.fast);
+    const color = !parsed.json && Boolean(process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb");
+    const colorDepth = process.env.COLORTERM === "truecolor" || process.env.COLORTERM === "24bit"
+      ? "truecolor"
+      : (process.env.TERM ?? "").includes("256color") ? "256" : "16";
+    const columns = process.stdout.columns ?? 100;
+    const projectName = process.env.NEXT_PUBLIC_PROJECT_NAME ?? "VEYRA";
+    if (animated) {
+      await revealTerminalOutput(formatTerminalHeader(parsed.networkId, projectName, { color, colorDepth, columns }), { speed: parsed.speed });
+    }
+    const result = await simulateDeployment(parsed.networkId, {
+      projectName,
+      color,
+      colorDepth,
+      columns,
+      ...(animated ? { onProgress: terminalProgressHandler(parsed.speed) } : {}),
+    });
+    if (parsed.json) {
+      const reportLines = result.output.trimEnd().split("\n");
+      process.stdout.write(`${JSON.stringify({ networkId: parsed.networkId, exitCode: result.exitCode, reportLines })}\n`);
+    } else if (animated) {
+      const lines = result.output.split("\n");
+      const validationIndex = lines.findIndex((line) => /01 \/ .*LIVE NETWORK VALIDATION/.test(line));
+      const bodyStart = validationIndex >= 0 ? validationIndex - 1 : 0;
+      await revealTerminalOutput(lines.slice(bodyStart).join("\n"), { speed: parsed.speed });
+    } else {
+      process.stdout.write(result.output);
+    }
     return result.exitCode;
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : "Deployment readiness showcase failed."}\n`);

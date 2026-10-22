@@ -15,6 +15,7 @@ import type {
 import { Button } from "@/components/ui/Button";
 import { ModelContext } from "@/components/dashboard/AppModelContext";
 import { WalletPickerDialog } from "@/components/dashboard/WalletPickerDialog";
+import { startBlocker } from "@/components/dashboard/SwarmLaunch";
 import {
   completeWalletAuthChallenge,
   createSecurityRun,
@@ -1021,8 +1022,9 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
       setActionMessage("Sign in to the Security Swarm before starting a research run.");
       return;
     }
-    if (capabilities?.provider !== "available" || capabilities.worker !== "available" || capabilities.persistence !== "available") {
-      setActionMessage(capabilityMessage ?? "Live research execution is unavailable. Existing live run history remains available.");
+    const readinessBlocker = startBlocker(capabilities);
+    if (capabilityMessage || readinessBlocker) {
+      setActionMessage(capabilityMessage ?? readinessBlocker ?? "Research availability could not be confirmed.");
       return;
     }
     const requestEpoch = accessEpoch.current;

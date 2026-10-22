@@ -4,7 +4,8 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
-import { getExplorerAddressUrl } from "@/lib/config/networks";
+import { getExplorerAddressUrl, getExplorerTransactionUrl } from "@/lib/config/networks";
+import { loadVerifiedVeyraDeployments } from "@/lib/config/load-veyra-deployments";
 import { getVerifiedVeyraDeployments } from "@/lib/config/veyra-deployments";
 
 test("network explorer address links are derived from the selected wallet chain configuration", () => {
@@ -12,7 +13,14 @@ test("network explorer address links are derived from the selected wallet chain 
     getExplorerAddressUrl("testnet", "0x0000000000000000000000000000000000000001"),
     "https://explorer.testnet.chain.robinhood.com/address/0x0000000000000000000000000000000000000001",
   );
+  assert.equal(
+    getExplorerAddressUrl("mainnet", "0x0000000000000000000000000000000000000001"),
+    "https://robinhoodchain.blockscout.com/address/0x0000000000000000000000000000000000000001",
+  );
+  assert.equal(getExplorerTransactionUrl("testnet", `0x${"a".repeat(64)}`), `https://explorer.testnet.chain.robinhood.com/tx/0x${"a".repeat(64)}`);
+  assert.equal(getExplorerTransactionUrl("mainnet", `0x${"a".repeat(64)}`), `https://robinhoodchain.blockscout.com/tx/0x${"a".repeat(64)}`);
   assert.equal(getExplorerAddressUrl("mainnet", "not-an-address"), undefined);
+  assert.equal(getExplorerTransactionUrl("testnet", "not-a-hash"), undefined);
 });
 
 test("the registry helper does not invent deployment records", () => {
@@ -49,10 +57,11 @@ function renderNetworks(
   rpc: Record<string, unknown>,
   records?: unknown[],
   wallet: Record<string, unknown> = { status: "disconnected" },
+  standaloneRecords?: unknown[],
 ): string {
   return execFileSync(process.execPath, [
     "--import", "tsx", "--input-type=module", "--eval",
-    `import { createElement } from "react"; import { renderToStaticMarkup } from "react-dom/server"; import { ModelContext } from "./src/components/dashboard/AppModelContext.tsx"; import { NetworksView } from "./src/components/dashboard/NetworksView.tsx"; import { buildLiveAppModel } from "./src/features/dashboard/live-model.ts"; const model = buildLiveAppModel({ wallet: ${JSON.stringify(wallet)}, selectedNetwork: ${JSON.stringify(network)}, networkRpc: ${JSON.stringify(rpc)}, runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false }); const value = { model, actions: { setNetwork() {}, setAmount() {}, pressSwapButton() {}, pressWalletButton() {}, pressLedgerAction() {}, refreshWallet() {}, refreshNetwork() {}, createSecurityRun() {}, logout() {} } }; process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(NetworksView, { deploymentRecords: ${JSON.stringify(records)} }))))`,
+    `import { createElement } from "react"; import { renderToStaticMarkup } from "react-dom/server"; import { ModelContext } from "./src/components/dashboard/AppModelContext.tsx"; import { NetworksView } from "./src/components/dashboard/NetworksView.tsx"; import { buildLiveAppModel } from "./src/features/dashboard/live-model.ts"; const model = buildLiveAppModel({ wallet: ${JSON.stringify(wallet)}, selectedNetwork: ${JSON.stringify(network)}, networkRpc: ${JSON.stringify(rpc)}, runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false }); const value = { model, actions: { setNetwork() {}, setAmount() {}, pressSwapButton() {}, pressWalletButton() {}, pressLedgerAction() {}, refreshWallet() {}, refreshNetwork() {}, createSecurityRun() {}, logout() {} } }; process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(NetworksView, { deploymentRecords: ${JSON.stringify(records)}, standaloneResearchEvidenceAnchors: ${JSON.stringify(standaloneRecords)} }))))`,
   ], { cwd: process.cwd(), encoding: "utf8" });
 }
 
@@ -151,6 +160,74 @@ test("network explorer renders a controlled verified entry without merging walle
   assert.match(markup, /Source verified/);
   assert.match(markup, /Copy address/);
   assert.match(markup, /Open in Explorer/);
+  assert.match(markup, /target="_blank"/);
+  assert.match(markup, /rel="noopener noreferrer"/);
+  assert.match(markup, /href="https:\/\/explorer\.testnet\.chain\.robinhood\.com\/address\/0x0000000000000000000000000000000000000009"/);
+  assert.match(markup, /href="https:\/\/explorer\.testnet\.chain\.robinhood\.com\/tx\/0x[a]{64}"/);
+});
+
+test("registry keeps Testnet and Mainnet contract and transaction links on their own explorers", () => {
+  const testnetAddress = "0x0000000000000000000000000000000000000011";
+  const mainnetAddress = "0x0000000000000000000000000000000000000022";
+  const testnetTransaction = `0x${"a".repeat(64)}`;
+  const mainnetTransaction = `0x${"c".repeat(64)}`;
+  const base = {
+    name: "VeyraKeyRegistry",
+    deploymentStatus: "verified",
+    observedChainId: 46_630,
+    deployerAddress: "0x0000000000000000000000000000000000000001",
+    receiptStatus: "success",
+    blockNumber: "12345",
+    runtimeBytecodeHash: `0x${"b".repeat(64)}`,
+    sourceVerification: "not_verified",
+  };
+  const markup = renderNetworks("testnet", { status: "loading" }, [
+    { ...base, networkId: "testnet", chainId: 46_630, architectureSlot: 2, address: testnetAddress, transactionHash: testnetTransaction },
+    { ...base, networkId: "mainnet", chainId: 4_663, observedChainId: 4_663, architectureSlot: 2, address: mainnetAddress, transactionHash: mainnetTransaction },
+  ]);
+
+  assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${testnetAddress}"`));
+  assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/tx/${testnetTransaction}"`));
+  assert.match(markup, new RegExp(`href="https://robinhoodchain\\.blockscout\\.com/address/${mainnetAddress}"`));
+  assert.match(markup, new RegExp(`href="https://robinhoodchain\\.blockscout\\.com/tx/${mainnetTransaction}"`));
+});
+
+test("standalone Evidence Anchor remains linked and does not consume roadmap progress", () => {
+  const address = "0x0000000000000000000000000000000000000033";
+  const transactionHash = `0x${"d".repeat(64)}`;
+  const anchor = {
+    name: "VeyraResearchEvidenceAnchor",
+    purpose: "Hash-only research evidence anchoring.",
+    networkId: "testnet",
+    chainId: 46_630,
+    address,
+    deploymentStatus: "verified",
+    observedChainId: 46_630,
+    deployerAddress: "0x0000000000000000000000000000000000000001",
+    transactionHash,
+    receiptStatus: "success",
+    blockNumber: "100",
+    runtimeBytecodeHash: `0x${"e".repeat(64)}`,
+    sourceVerification: "not_verified",
+  };
+  const markup = renderNetworks("testnet", { status: "loading" }, [], { status: "disconnected" }, [anchor]);
+
+  assert.match(markup, /VeyraResearchEvidenceAnchor/);
+  assert.match(markup, /0\/10/);
+  assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${address}"`));
+  assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/tx/${transactionHash}"`));
+});
+
+test("the checked-in Evidence Anchor remains visible and links to its Testnet address and transaction", () => {
+  const registry = loadVerifiedVeyraDeployments();
+  const anchor = registry.standaloneResearchEvidenceAnchors.find((record) => record.networkId === "testnet");
+  assert.ok(anchor, "the validated Testnet Evidence Anchor should remain in the manifest registry");
+  const markup = renderNetworks("testnet", { status: "loading" }, registry.roadmapContracts, { status: "disconnected" }, [anchor]);
+
+  assert.match(markup, new RegExp(anchor.address));
+  assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${anchor.address}"`));
+  assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/tx/${anchor.transactionHash}"`));
+  assert.match(markup, new RegExp(`${registry.roadmapContracts.filter((record) => record.networkId === "testnet").length}/10`));
 });
 
 test("network explorer surfaces public RPC failures and a retry action", () => {
