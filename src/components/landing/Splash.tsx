@@ -138,7 +138,7 @@ export function Splash({ projectName }: { projectName: string }) {
   return (
     <div ref={root} className="splash" data-state="run" aria-hidden="true" suppressHydrationWarning>
       <canvas ref={canvas} />
-      <p className="splash-name">{projectName} · design preview</p>
+      <p className="splash-name">{projectName} · Robinhood Chain</p>
     </div>
   );
 }

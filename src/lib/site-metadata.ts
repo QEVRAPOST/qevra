@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const BRAND_LOGO_PATH = "/logo.png";
 export const SOCIAL_PREVIEW_PATH = "/og-image.webp";
 
-const DESCRIPTION = "A wallet and simple swap for Robinhood Chain. A design preview: post-quantum authorization is under evaluation, and nothing here holds funds.";
+const DESCRIPTION = "Read-only wallet access for EVM accounts and public Robinhood Chain deployment evidence, with the VEYRA Research Engine's demonstrated three-stage Security Swarm. Smart-account custody and swap execution are unavailable.";
 
 function getConfiguredMetadataBase(): URL | undefined {
   const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL
@@ -37,7 +37,7 @@ export function createSiteMetadata(projectName: string): Metadata {
         url: SOCIAL_PREVIEW_PATH,
         width: 1731,
         height: 909,
-        alt: `${projectName} research-first trading intelligence for Robinhood Chain`,
+        alt: `${projectName} read-only wallet access and Security Swarm research for Robinhood Chain`,
       }],
     },
     twitter: {

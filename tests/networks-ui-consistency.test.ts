@@ -140,7 +140,7 @@ test("deployment registry follows the selected network, caps slots at ten, and e
   assert.doesNotMatch(testnetMarkup, /mainnet contract 101/);
   assert.match(testnetMarkup, /Purpose for testnet contract 1\./);
   assert.match(testnetMarkup, /Full contract address/);
-  assert.match(testnetMarkup, /10\/10/);
+  assert.match(testnetMarkup, /5\/5<\/strong> MVP contracts deployed/);
   assert.match(testnetMarkup, /Deployer/);
   assert.match(testnetMarkup, /Block number/);
   assert.match(testnetMarkup, /Verified on-chain record/);
@@ -151,15 +151,15 @@ test("deployment registry follows the selected network, caps slots at ten, and e
   assert.equal((mainnetMarkup.match(/class="ne-contract"/g) ?? []).length, 1);
   assert.match(mainnetMarkup, /mainnet contract 101/);
   assert.doesNotMatch(mainnetMarkup, /testnet contract 1/);
-  assert.match(mainnetMarkup, /1\/10/);
+  assert.match(mainnetMarkup, /0\/5<\/strong> MVP contracts deployed/);
 });
 
-test("empty deployment manifests show independent zero-of-ten progress", () => {
+test("empty deployment manifests show independent zero-of-five MVP progress", () => {
   const markup = renderNetworks([]);
-  assert.match(markup, /No verified VEYRA deployments\./);
-  assert.equal((markup.match(/0\/10/g) ?? []).length, 1);
-  assert.match(markup, /No verified VEYRA deployments on Robinhood Testnet\./);
-  assert.doesNotMatch(markup, /No verified VEYRA deployments on Robinhood Mainnet\./);
+  assert.match(markup, /No verified VEYRA MVP deployments\./);
+  assert.equal((markup.match(/0\/5/g) ?? []).length, 1);
+  assert.match(markup, /No deployed VEYRA MVP contracts on Robinhood Testnet\./);
+  assert.doesNotMatch(markup, /No deployed VEYRA MVP contracts on Robinhood Mainnet\./);
 });
 
 test("standalone Evidence Anchor is displayed separately and excluded from roadmap progress", () => {
@@ -181,8 +181,8 @@ test("standalone Evidence Anchor is displayed separately and excluded from roadm
 
   assert.match(markup, /VeyraResearchEvidenceAnchor/);
   assert.match(markup, /Standalone research utility/i);
-  assert.match(markup, /excluded from the 10-contract roadmap progress/i);
-  assert.match(markup, /0\/10/);
+  assert.match(markup, /excluded from the five-contract MVP progress/i);
+  assert.match(markup, /0\/5/);
   assert.match(markup, /Full contract address/);
   assert.match(markup, /Deployer/);
   assert.match(markup, /Block number/);

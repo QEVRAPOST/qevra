@@ -21,7 +21,7 @@ test("site metadata uses the supplied logo favicon and social preview image", ()
     url: "/og-image.webp",
     width: 1731,
     height: 909,
-    alt: "VEYRA research-first trading intelligence for Robinhood Chain",
+    alt: "VEYRA read-only wallet access and Security Swarm research for Robinhood Chain",
   }]);
   assert.deepEqual(metadata.twitter?.images, ["/og-image.webp"]);
   assert.equal((metadata.twitter as { card?: string } | undefined)?.card, "summary_large_image");

@@ -5,11 +5,11 @@
  */
 
 /** Core sentence, wherever the Swarm is introduced. */
-export const CORE_SENTENCE = "The Security Swarm researches, tests, and reports. It does not control your wallet.";
+export const CORE_SENTENCE = "The Security Swarm researches, analyzes, verifies, and reports. It does not control your wallet.";
 
 /** Swarm paragraph, split at the sentence break on the landing band. */
 export const SWARM_PARAGRAPH_A =
-  "QEVRA’s agents do not access your private keys, sign transactions on your behalf, or move your funds. They work with public security information and isolated test environments.";
+  "VEYRA’s agents do not access your private keys, sign transactions on your behalf, or move your funds. They research approved public sources and check quoted evidence against retrieved source text.";
 export const SWARM_PARAGRAPH_B =
   "Proposed security changes must pass deterministic tests, appropriate security review, and explicit human approval before deployment.";
 export const SWARM_PARAGRAPH = `${SWARM_PARAGRAPH_A} ${SWARM_PARAGRAPH_B}`;
@@ -25,9 +25,9 @@ export const PQ_NOTE_APP =
 export const PQC_RULE =
   "An account can be called PQC-protected only if no ordinary wallet key can withdraw funds or replace the key. That is still being designed, and independent review is needed before any mainnet use.";
 
-/** Landing footer. These describe the prototype, not the product: they change when the underlying facts change. */
+/** Landing footer. These describe the current product surface and change when the underlying facts change. */
 export const FOOTER_PREVIEW =
-  "This page is a design preview, not a working wallet. It reads no chain, holds no funds and reports no audit. Every address, value and run shown is an example.";
+  "Wallet connection and Robinhood public reads are available in read-only mode. A wallet-authenticated three-stage research run has been demonstrated, but reports are not audits. Smart-account custody and swap execution are unavailable.";
 export const FOOTER_ROBINHOOD =
   "Built for Robinhood Chain. Robinhood brand-use rules have not been checked yet, so the name appears only in plain text.";
 

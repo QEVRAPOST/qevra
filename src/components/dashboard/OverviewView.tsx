@@ -55,8 +55,8 @@ export function OverviewView() {
         <p className="pg-lede">
           {brandizeProjectName(
             live
-              ? "QEVRA is an experimental post-quantum wallet project for Robinhood Chain. Today you can read a wallet and run public-source research in the Security Swarm."
-              : "QEVRA is an experimental post-quantum wallet project for Robinhood Chain. This preview shows how the research workspace and the read-only wallet will work, with simulated data.",
+              ? "VEYRA provides read-only EVM wallet access and the VEYRA Research Engine. A wallet-authenticated three-stage Security Swarm run has been demonstrated; reports are research, not audits. Smart-account custody and swap execution are unavailable."
+              : "This demo build uses simulated workspace data. A configured live build supports read-only EVM wallet access and wallet-authenticated Security Swarm research. Smart-account custody and swap execution are unavailable.",
             PROJECT_NAME,
           )}
         </p>

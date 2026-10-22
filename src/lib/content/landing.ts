@@ -6,18 +6,17 @@ export { DEFAULT_PROJECT_NAME } from "@/lib/project-brand";
 /** Landing copy (docs/QEVRA_DESIGN_DIRECTION.md section 5.3). Sentence case, active voice, no claims past the evidence. */
 
 export const HERO = {
-  eyebrow: "A wallet and simple swap on Robinhood Chain",
-  headline: "Authorize every detail of every swap.",
-  lede: "QEVRA is a wallet and a simple swap for Robinhood Chain. It opens a separate smart account, checks every swap detail you reviewed with Intent Lock, and explores post-quantum authorization in the open.",
-  /** under the buttons: what a visitor can actually do today */
-  note: "Explore the preview with example data. Wallet and swap are not live yet.",
+  eyebrow: "Read-only wallet and security research on Robinhood Chain",
+  headline: "Read the network. Review the evidence.",
+  lede: "Connect an EVM wallet for public address, network and balance reads. Sign in to the VEYRA Research Engine to use the three-stage Security Swarm when service is available. Smart-account custody and swap execution are unavailable.",
+  note: "Public Testnet deployment evidence is open to everyone. Wallet connection is read-only; research sign-in uses a separate, explicit message signature.",
 } as const;
 
 /** The closing section (the curtain at the bottom of the page). The words restate the approved hero and story copy. */
 export const CURTAIN = {
-  kicker: "Design preview",
-  title: "One swap, with every detail reviewed before you sign.",
-  body: "Open the app preview to try it. It uses example data only, and nothing in it can move funds.",
+  kicker: "Read Robinhood Chain",
+  title: "Public reads and source-backed research.",
+  body: "Explore public Testnet deployment evidence without a wallet, connect for read-only wallet data, or sign in to the VEYRA Research Engine when research service is available. Post-quantum custody and swap execution are unavailable.",
 } as const;
 
 /** Frame indexes the nav and the hero button jump to (frame 0 is the story intro, frames 1 to 7 are the steps). */
@@ -31,14 +30,14 @@ export interface HeroFact {
 }
 
 export const HERO_FACTS: HeroFact[] = [
-  { material: "outline", lead: "Wallet", body: "Connect the wallet you already use. QEVRA opens a separate smart account for its assets." },
-  { material: "dotted", lead: "Simple swap", body: "One swap, reviewed with Intent Lock before you sign. The router is not configured yet." },
-  { material: "outline", lead: "Post-quantum research", body: "ML-DSA signatures are under evaluation, and a separate Security Swarm researches and tests in the open. Not audited." },
+  { material: "outline", lead: "Read-only wallet", body: "Connect an existing EVM wallet to see its address, actual network and native balance. No transaction signing or custody." },
+  { material: "dotted", lead: "Swap + Intent Lock", body: "Explore the parameter comparison preview. No live quote, supported route or swap execution is available." },
+  { material: "outline", lead: "VEYRA Research Engine", body: "The three-stage Security Swarm has completed a wallet-authenticated research demonstration. Its reports are not audits; post-quantum custody remains unavailable." },
 ];
 
 /**
  * The hero's three objects. The right side of the hero builds one of them at a time as the visitor scrolls,
- * so the first screen answers "what is this?" in three pictures: the account, the lock, the research.
+ * so the first screen answers "what is this?" in three pictures: the wallet, the lock, the research.
  * Captions restate the approved copy and add no claim past the evidence.
  */
 export interface HeroScene {
@@ -54,10 +53,10 @@ export interface HeroScene {
 
 export const HERO_SCENES: readonly HeroScene[] = [
   {
-    tab: "Smart account",
-    name: "QEVRA smart account",
-    lead: "A separate account.",
-    text: "QEVRA opens its own smart account, apart from the wallet you connect. The outlines are examples: it holds nothing, and there is no deposit path yet.",
+    tab: "Account concept",
+    name: "Future smart-account concept",
+    lead: "Not deployed or available.",
+    text: "The illustration shows a future smart-account concept, separate from your connected wallet. No smart-account custody or post-quantum authorization is available; it holds nothing.",
     label:
       "A small vault with an open door, standing apart from a flat plate that stands for your connected wallet. Dashed outlines inside the vault are example assets, none are held. A dotted, crossed line between the plate and the vault marks that no deposit path exists yet.",
   },
@@ -73,9 +72,9 @@ export const HERO_SCENES: readonly HeroScene[] = [
     tab: "Research + Swarm",
     name: "Post-quantum research and the Security Swarm",
     lead: "The Security Swarm.",
-    text: "A coordinated set of research agents that investigate, cross-check and document risk before anything is approved. It supports review in the open and does not control your wallet or move funds.",
+    text: "A three-stage research workflow that investigates, analyzes and verifies claims from approved public sources. A wallet-authenticated run has been demonstrated; availability depends on the service. Reports support human review and are not audits.",
     label:
-      "An illustration of the Security Swarm. A coordinator stands in the middle of a glass trust boundary with one gate. Around it, six specialist agents: Research, Analysis, Verification, Risk, Policy and Report. Lines join each agent to the coordinator and to its neighbours, and small lights travel along them as the agents cross-check each other. A small dashed lattice floats above the coordinator: post-quantum research that is under evaluation. Through the gate, the Report agent sends one report to a human review dock that is unlit in this preview. A glass wall, the air gap, stands in front of your wallet and the line to it is crossed out.",
+      "An illustration of the Security Swarm, not a live run. The demonstrated workflow has three stages: Research, Analysis and Verification. A report with sources and limitations is separate from human review. A dashed lattice represents post-quantum research under evaluation. The Swarm does not access the connected wallet or move funds.",
   },
 ];
 
@@ -87,15 +86,15 @@ export const HERO_PARTS: Readonly<Record<HeroPartId, HeroPart>> = {
   /* 1. the smart account */
   "v-wallet": {
     name: "Your connected wallet",
-    text: "An external account. It signs the way it always has. QEVRA makes no protection claim for it.",
+    text: "An external account used for public reads. A separate, explicit EIP-191 message signature is used only for research login; no transaction is signed.",
     type: "EOA",
-    brief: ["The wallet you already use: an external", "account. It signs the way it always has.", "No protection claimed for it."],
+    brief: ["External wallet: public address, chain", "and balance reads. No transactions."],
   },
   "v-account": {
-    name: "QEVRA smart account",
-    text: "A separate address, designed for QEVRA assets. How it is authorized is still under evaluation. No smart account exists yet.",
+    name: "Future smart-account concept",
+    text: "A future separate account concept. No smart-account contract or custody is available, and no assets are held.",
     type: "smart account",
-    brief: ["A separate address, designed for the", "assets you choose to use here.", "Experimental: no contract exists yet."],
+    brief: ["A future separate-account concept.", "No custody or contract is available."],
   },
   "v-assets": {
     name: "Example assets",
@@ -155,9 +154,9 @@ export const HERO_PARTS: Readonly<Record<HeroPartId, HeroPart>> = {
   /* 3. post-quantum research and the Security Swarm */
   "l-coord": {
     name: "Coordinator",
-    text: "Directs the specialist agents, gathers what they find and hands the cross-checked set to the Report agent. It is not a wallet and holds no keys.",
+    text: "Coordinates the Research, Analysis and Verification stages, then presents a saved report with sources and limitations. It is not a wallet and holds no keys.",
     type: "orchestrator",
-    brief: ["Directs the agents and gathers findings.", "Hands the cross-checked set to Report.", "Holds no keys."],
+    brief: ["Coordinates three research stages.", "Returns a report with evidence and limits.", "Holds no keys."],
   },
   "l-a-research": {
     name: "Research",
@@ -173,33 +172,33 @@ export const HERO_PARTS: Readonly<Record<HeroPartId, HeroPart>> = {
   },
   "l-a-verify": {
     name: "Verification",
-    text: "Cross-checks the other agents' findings and runs named tests in isolated sandboxes that hold no production secrets.",
+    text: "Checks quoted evidence against the retrieved source text and records what could not be verified.",
     type: "agent · cross-checks",
-    brief: ["Re-checks the other agents' findings.", "Runs named tests in isolated sandboxes", "that hold no production secrets."],
+    brief: ["Checks quotes against retrieved source", "text and records limitations."],
   },
   "l-a-risk": {
     name: "Risk",
-    text: "Rates what could go wrong, and says what is still unknown. A planned specialty in this illustration.",
-    type: "agent · rates (planned)",
-    brief: ["Rates what could go wrong, and says", "what is still unknown.", "A planned specialty in this illustration."],
+    text: "A conceptual role in the illustration, not an agent stage in the demonstrated three-stage workflow.",
+    type: "illustrative role",
+    brief: ["Illustrative role; not a live agent", "in the three-stage workflow."],
   },
   "l-a-policy": {
     name: "Policy",
-    text: "Checks findings against the rules: a change needs passing tests, a security review and explicit human approval. A planned specialty in this illustration.",
-    type: "agent · rules (planned)",
-    brief: ["Checks findings against the rules: tests,", "a security review, human approval.", "A planned specialty in this illustration."],
+    text: "A conceptual role in the illustration. A completed research run does not approve code changes or replace human review.",
+    type: "illustrative role",
+    brief: ["Illustrative role; a research run", "does not approve changes."],
   },
   "l-a-report": {
     name: "Report",
-    text: "Writes the report with its sources and its limits. Reports go to Human review through the gate: the one path out. A planned specialty in this illustration.",
-    type: "agent · writes (planned)",
-    brief: ["Writes one report, with its sources", "and its limits. It is the only thing", "that leaves, through the gate."],
+    text: "The three-stage workflow produces a saved report with sources and limitations. Human review is separate and must be recorded independently.",
+    type: "saved research report",
+    brief: ["Saved report with sources and limits.", "Human review is separate."],
   },
   "l-ring": {
     name: "Trust boundary",
-    text: "The agents work inside it, in isolated sandboxes with no production secrets. Only a report leaves, through the gate, to Human review. A design boundary, not a promise that nothing can go wrong.",
+    text: "The diagram shows a separation between research and wallet control. Agents use approved public sources; a completed report is not an approval or audit. This illustration is not a proof that nothing can go wrong.",
     type: "perimeter",
-    brief: ["Agents work inside, in isolated sandboxes.", "Only a report leaves, through the gate."],
+    brief: ["Research uses approved public sources.", "Reports do not control the wallet."],
   },
   "l-lattice": {
     name: "Post-quantum research",
@@ -295,14 +294,14 @@ export interface StoryStep {
 export const STORY_STEPS: StoryStep[] = [
   {
     id: "account",
-    kicker: "Chapter 1 of 3 · The smart account",
-    title: "Two accounts, kept apart",
-    body: "You connect the wallet you already use. QEVRA then opens a second, separate smart account with its own address, meant for the assets you choose to use with QEVRA.",
+    kicker: "Chapter 1 of 3 · Read-only wallet",
+    title: "Your connected wallet stays yours",
+    body: "Connect an existing EVM wallet to read its public address, actual network and native balance. A separate smart-account design is future research: no account is deployed, no assets are held and post-quantum custody is unavailable.",
     path: [
-      { material: "outline", lead: "Your connected wallet", detail: "An external account. It signs the way it always has. QEVRA makes no protection claim for it." },
-      { material: "outline", lead: "QEVRA smart account", detail: "A separate address, designed for QEVRA assets. How it is authorized is still under evaluation." },
+      { material: "outline", lead: "Your connected wallet", detail: "An external account used for public reads. Research login separately asks for an EIP-191 message signature; it does not authorize a transaction." },
+      { material: "dotted", lead: "Future smart-account research", detail: "No contract, custody, deposit path or post-quantum authorization is available." },
     ],
-    note: "Design preview. No smart account exists, nothing is held, and no assets are protected by it.",
+    note: "The wallet connection is read-only. Smart-account custody remains unavailable pending security research and independent review.",
   },
   {
     id: "details",
@@ -334,18 +333,18 @@ export const STORY_STEPS: StoryStep[] = [
     id: "swarm",
     kicker: "Chapter 3 of 3 · The Security Swarm",
     title: "The Security Swarm stays outside the gap",
-    core: "The Security Swarm researches, tests, and reports. It does not control your wallet.",
-    body: "Its ring sits apart from the stack, with an air gap between them. Its reports go to a human review dock, which stays unlit until a person records a review.",
-    cta: { label: "See example runs", href: "/app/security" },
+    core: "The Security Swarm researches, analyzes, verifies, and reports. It does not control your wallet.",
+    body: "Its ring sits apart from the stack. Saved research reports include sources and limitations; human review is separate and is not implied by a completed run.",
+    cta: { label: "Open Security Swarm", href: "/app/security" },
   },
   {
     id: "start",
-    title: "Try the app preview",
-    body: "Connect a wallet, open a QEVRA account, then make one swap. The preview uses example data only, and nothing in it can move funds.",
+    title: "Explore the working read-only product",
+    body: "Review public Testnet deployment evidence without a wallet. Connect an EVM wallet to read its public balance, or sign in to the VEYRA Research Engine to access saved reports and start a run when service permits it. Smart-account custody and swap execution are unavailable.",
     path: [
-      { material: "outline", lead: "Connect wallet", detail: "Use the wallet you already have, an external account." },
-      { material: "outline", lead: "Open your QEVRA account", detail: "A separate smart account holds your QEVRA assets." },
-      { material: "dotted", lead: "Swap", detail: "One simple swap, reviewed before you sign. No route is set yet." },
+      { material: "outline", lead: "Public Testnet evidence", detail: "See validated deployments at /app/networks; no wallet is required." },
+      { material: "outline", lead: "Read-only wallet", detail: "Connect a supported EVM wallet for public address, network and native balance reads." },
+      { material: "dotted", lead: "VEYRA Research Engine", detail: "Sign in with an explicit message signature to view reports and create a run only when service availability allows." },
     ],
     launch: true,
   },
@@ -354,7 +353,7 @@ export const STORY_STEPS: StoryStep[] = [
 /** Figure caption per frame: a bold lead, then one plain sentence. Frame 0 and the closing frame lead with "Figure." */
 export const FRAME_CAPTIONS: ReadonlyArray<{ lead: string; text: string }> = [
   { lead: "Figure.", text: "Eight rings, one per swap detail." },
-  { lead: "Chapter 1 of 3.", text: "The base is the QEVRA smart account. It is separate from your connected wallet." },
+  { lead: "Chapter 1 of 3.", text: "Your connected wallet provides public reads. The smart-account illustration is a future concept, not an available contract." },
   { lead: "Chapter 2 of 3.", text: "Eight rings, one per detail. Each is turned away until you review it." },
   { lead: "Chapter 2 of 3.", text: "Each ring turns to its reviewed value. Light passes when all eight match." },
   { lead: "Chapter 2 of 3.", text: "The amount ring is out of line, so the light stops there." },
@@ -393,10 +392,10 @@ export const GLYPH_LABEL =
 
 /** Swarm band. */
 export const SWARM_CAN: readonly string[] = [
-  "Read public papers, advisories, standards and repositories.",
-  "Run tests in isolated sandboxes that hold no production secrets.",
-  "Report what it found, with its sources, its limits and what it could not verify.",
-  "Propose a fix as a patch on a development branch.",
+  "Research approved public sources for the selected topic.",
+  "Analyze source-backed claims and their implications.",
+  "Check evidence quotes against retrieved source text and record limitations.",
+  "Produce a saved report with findings, sources and limitations.",
 ];
 
 export const SWARM_CANNOT: readonly string[] = [
@@ -424,15 +423,15 @@ export interface SwarmFocus {
 }
 
 export const SWARM_CAN_FOCUS: readonly SwarmFocus[] = [
-  { ref: "Security Swarm · reads", note: "Reads public sources only: papers, advisories, standards and repositories. Nothing private.", parts: ["swarm"], rows: { swarm: [0] } },
-  { ref: "Security Swarm · runs", note: "Runs named tests in isolated sandboxes that hold no production secrets.", parts: ["swarm"], rows: { swarm: [1] } },
-  { ref: "Security Swarm · writes", note: "Writes reports with their sources and limits. They go to Human review, the one path that exists.", parts: ["swarm", "review"], rows: { swarm: [2], review: [2] }, report: true },
-  { ref: "Security Swarm · writes", note: "A proposed fix is a patch on a development branch. It reaches a person the same way a report does.", parts: ["swarm", "review"], rows: { swarm: [2], review: [2] }, report: true },
+  { ref: "Security Swarm · research", note: "Researches approved public sources for the selected topic. Nothing private.", parts: ["swarm"], rows: { swarm: [0] } },
+  { ref: "Security Swarm · analysis", note: "Analyzes source-backed claims and their implications.", parts: ["swarm"], rows: { swarm: [1] } },
+  { ref: "Security Swarm · verification", note: "Checks quotes against retrieved source text and records what could not be verified.", parts: ["swarm"], rows: { swarm: [2] } },
+  { ref: "Security Swarm · report", note: "Produces a saved report with findings, sources and limitations. A finished report is not an audit or approval.", parts: ["swarm", "review"], rows: { swarm: [3], review: [2] }, report: true },
 ];
 
 export const SWARM_CANNOT_FOCUS: readonly SwarmFocus[] = [
-  { ref: "Security Swarm · holds, Your wallet · keys", note: "Holds no keys: no private keys, post-quantum keys, seed phrases or signing sessions.", parts: ["swarm", "wallet"], rows: { swarm: [3], wallet: [1] } },
-  { ref: "Security Swarm · can sign, Your wallet · signs", note: "Can sign nothing. Signing stays with you, only you.", parts: ["swarm", "wallet"], rows: { swarm: [4], wallet: [0] } },
+  { ref: "Security Swarm · keys, Your wallet · keys", note: "Has no access to private keys, post-quantum keys, seed phrases or signing sessions.", parts: ["swarm", "wallet"], rows: { swarm: [4], wallet: [1] } },
+  { ref: "Security Swarm · transaction signing, Your wallet · signs", note: "The Swarm cannot sign transactions. Any research-login message signature is initiated and approved by the wallet owner.", parts: ["swarm", "wallet"], rows: { swarm: [4], wallet: [0] } },
   { ref: "Air gap · Your wallet · Swarm", note: "No path crosses the air gap, so production contracts are out of the Swarm's reach.", parts: ["gap", "wallet"], rows: { wallet: [2] } },
   { ref: "Air gap · Your wallet · Swarm", note: "Signers, recovery rules, router allowlists and spending limits are out of its reach too.", parts: ["gap", "wallet"], rows: { wallet: [2, 3] } },
   { ref: "Human review · needs, decides", note: "A fix is merged only after passing tests, a security review and explicit human approval.", parts: ["review"], rows: { review: [1, 3, 4] } },
@@ -441,9 +440,9 @@ export const SWARM_CANNOT_FOCUS: readonly SwarmFocus[] = [
 export const SWARM_DEFAULT_NOTE = "Scroll the list, or select a part of the diagram, to read what it can do and what it cannot.";
 
 export const GAP_FIGURE_TITLE =
-  "Three cards: Security Swarm, Human review, and Your wallet. Reports pass from the Swarm to Human review. Nothing passes from the Swarm to your wallet, and the span between them is marked as an air gap.";
+  "Three cards: Security Swarm, Human review, and Your wallet. Saved research reports can be reviewed by a person. Nothing passes from the Swarm to your wallet, and the span between them is marked as an air gap.";
 export const GAP_FIGURE_CAPTION =
   "Reports reach a human review dock. The Swarm has no path to your keys, your signing, or your funds.";
 
 export const STATUS_BAND_INTRO =
-  "Nothing on this page is implemented. This table says what each part is meant to become, and how much is known about it now.";
+  "This table separates available read-only features from future security research and capabilities that are not available.";

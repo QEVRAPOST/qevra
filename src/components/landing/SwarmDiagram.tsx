@@ -22,14 +22,14 @@ interface PartInfo {
 const PARTS: Record<Part, PartInfo> = {
   swarm: {
     name: "Security Swarm",
-    role: "researches, tests, reports",
-    text: "Agents may read public sources, run named tests in isolated sandboxes that hold no production secrets, and write reports that list their evidence and their limits. They hold no keys and cannot sign.",
-    relation: "Permitted path: reports go to Human review. Nothing else leaves the Swarm.",
+    role: "researches, analyzes, verifies, reports",
+    text: "The demonstrated workflow researches approved public sources, analyzes claims, verifies quoted evidence against retrieved text, and saves a report with limitations. It holds no keys and cannot sign transactions.",
+    relation: "Saved reports support separate human review; completion is not an approval or audit.",
   },
   review: {
     name: "Human review",
     role: "a person decides",
-    text: "Findings and proposed changes reach a review dock. A change needs passing deterministic tests, an appropriate security review and explicit human approval before it is deployed. In this preview the dock is unlit: no review has been recorded.",
+    text: "A research report can be reviewed by a person. Human review is recorded separately; a completed run does not approve a finding or code change.",
     relation: "Receives reports from the Swarm. Has no automatic path to your wallet either.",
   },
   wallet: {
@@ -56,7 +56,7 @@ const RELATED: Record<Part, Part[]> = {
 
 /**
  * The three cards, drawn like entities in a data diagram: a header, then one row per fact (a name and a value).
- * Row 2 of the Swarm ("writes") and of Human review ("receives") are the two ends of the one path that exists.
+ * Row 3 of the Swarm ("writes") and row 2 of Human review ("receives") describe the report path.
  */
 interface CardDef {
   id: Card;
@@ -73,11 +73,11 @@ const CARDS: readonly CardDef[] = [
     title: "Security Swarm",
     tag: "no keys",
     rows: [
-      ["reads", "public sources"],
-      ["runs", "sandboxed tests"],
-      ["writes", "reports"],
-      ["holds", "no keys"],
-      ["can sign", "nothing"],
+      ["researches", "approved sources"],
+      ["analyzes", "claims"],
+      ["verifies", "quoted evidence"],
+      ["writes", "saved reports"],
+      ["keys / tx signing", "no access"],
     ],
   },
   {

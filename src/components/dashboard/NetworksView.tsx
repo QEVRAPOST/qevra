@@ -22,6 +22,9 @@ import type { NetworkId, NetworkRpcState } from "@/types/network";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 
+const MVP_ARCHITECTURE_SLOT_RANGE = { first: 6, last: 10 } as const;
+const MVP_ARCHITECTURE_SLOT_COUNT = MVP_ARCHITECTURE_SLOT_RANGE.last - MVP_ARCHITECTURE_SLOT_RANGE.first + 1;
+
 function RegistryCopyAction({ address }: { address: string }) {
   const tooltipId = useId();
   const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -176,13 +179,21 @@ function DeploymentTableRow({
       <tr className="ne-detail-row" id={detailsId} hidden={!expanded}>
         <td colSpan={5}>
           <dl className="ne-contract-details">
-            <div><dt>On-chain deployment</dt><dd>{deployment ? "Deployed and bytecode checked" : "No verified deployment record"}</dd></div>
+            <div><dt>On-chain deployment</dt><dd>{deployment ? "On-chain deployment confirmed" : "No verified deployment record"}</dd></div>
             {deployment && addressUrl ? <div><dt>Full contract address</dt><dd><a className="ne-evidence-link" href={addressUrl} target="_blank" rel="noopener noreferrer"><code>{deployment.address}</code></a></dd></div> : null}
             {deployment && transactionUrl ? <div><dt>Full transaction hash</dt><dd><a className="ne-evidence-link" href={transactionUrl} target="_blank" rel="noopener noreferrer"><code>{deployment.transactionHash}</code></a></dd></div> : null}
             {deployment ? <div><dt>Deployer address</dt><dd><code>{deployment.deployerAddress}</code></dd></div> : null}
             {deployment ? <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div> : null}
             <div><dt>Manifest deployment verification</dt><dd>{deployment ? "Verified on-chain record" : "Not applicable"}</dd></div>
-            <div><dt>Source verification</dt><dd>{sourceStatus}</dd></div>
+            <div>
+              <dt>Source verification</dt>
+              <dd>
+                {sourceStatus}
+                {deployment?.sourceVerification === "not_verified" ? (
+                  <small>Source verification unavailable; no independent source verification is recorded.</small>
+                ) : null}
+              </dd>
+            </div>
             <div><dt>Operational readiness</dt><dd>{operationalStatus}</dd></div>
             {deployment?.runtimeBytecodeHash ? <div><dt>Runtime bytecode hash</dt><dd><code>{deployment.runtimeBytecodeHash}</code></dd></div> : null}
             {deployment?.purpose ? <div className="ne-detail-purpose"><dt>Contract purpose</dt><dd>{deployment.purpose}</dd></div> : null}
@@ -191,8 +202,8 @@ function DeploymentTableRow({
               <dt>Operational restrictions</dt>
               <dd>{standalone
                 ? "Standalone research utility; excluded from architecture progress. Registry actions are read-only."
-                : swapInactive
-                  ? "Deployed and bytecode checked, but operationally inactive. Swap execution is disabled."
+                : deployment && operationalStatus === "INACTIVE"
+                  ? "Deployment is confirmed, but this contract is not enabled for real swaps or asset authorization. Registry actions are read-only."
                   : deployment
                     ? "Deployment evidence is separate from operational readiness. The registry does not initiate contract actions."
                     : "This contract has not been deployed. Deployment and related execution remain disabled until the manifest blocker is resolved."}</dd>
@@ -265,11 +276,17 @@ export function NetworksView({
       .sort((left, right) => left.slot - right.slot)
       .slice(0, 10)
       .map((slot) => ({ slot, deployment: verified.find((record) => record.architectureSlot === slot.slot) }));
-    return { network, total: verified.length, slots, standalone };
+    const futureResearchSlots = slots.filter(({ slot }) => slot.slot < MVP_ARCHITECTURE_SLOT_RANGE.first);
+    const mvpSlots = slots.filter(({ slot }) => slot.slot >= MVP_ARCHITECTURE_SLOT_RANGE.first && slot.slot <= MVP_ARCHITECTURE_SLOT_RANGE.last);
+    const deployedMvpSlots = mvpSlots.filter(({ deployment }) => Boolean(deployment));
+    const undeployedMvpSlots = mvpSlots.filter(({ deployment }) => !deployment);
+    return { network, standalone, futureResearchSlots, deployedMvpSlots, undeployedMvpSlots };
   });
-  const hasVerifiedRoadmapDeployments = deploymentGroups.some((group) => group.total > 0);
+  const hasVerifiedMvpDeployments = deploymentGroups.some((group) => group.deployedMvpSlots.length > 0);
   const hasStandaloneDeployments = deploymentGroups.some((group) => group.standalone.length > 0);
-  const hasArchitectureSlots = deploymentGroups.some((group) => group.slots.length > 0);
+  const hasArchitectureSlots = deploymentGroups.some((group) =>
+    group.futureResearchSlots.length + group.deployedMvpSlots.length + group.undeployedMvpSlots.length > 0,
+  );
   const wallet = model.mode === "live" ? model.wallet.connection : undefined;
   const walletConnection = model.mode !== "live"
     ? "Preview only"
@@ -410,42 +427,74 @@ export function NetworksView({
             </div>
             <p className="ne-registry-caption">Follows the network selected above · manifest-verified on-chain records only · wallet addresses are excluded</p>
           </header>
-          {!hasVerifiedRoadmapDeployments && !hasStandaloneDeployments && !hasArchitectureSlots ? (
+          {!hasVerifiedMvpDeployments && !hasStandaloneDeployments && !hasArchitectureSlots ? (
             <div className="ne-registry-empty">
-              <strong>No verified {PROJECT_NAME} deployments.</strong>
+              <strong>No verified {PROJECT_NAME} MVP deployments.</strong>
               <p>Phase 0B remains SECURITY NO-GO. Deployment and custody are disabled.</p>
             </div>
           ) : null}
-          {!hasVerifiedRoadmapDeployments && hasStandaloneDeployments && !hasArchitectureSlots ? (
+          {!hasVerifiedMvpDeployments && hasStandaloneDeployments && !hasArchitectureSlots ? (
             <div className="ne-registry-empty">
-              <strong>No verified roadmap contracts.</strong>
-              <p>The standalone research utility below does not count toward the ten architecture slots. Phase 0B remains SECURITY NO-GO.</p>
+              <strong>No verified MVP contracts.</strong>
+              <p>The standalone research utility below is separate from the five-contract MVP. Phase 0B remains SECURITY NO-GO.</p>
             </div>
           ) : null}
           <div className="ne-registry-networks">
-            {deploymentGroups.map(({ network, total, slots, standalone }) => {
-              const progress = Math.min(total, 10);
+            {deploymentGroups.map(({ network, standalone, futureResearchSlots, deployedMvpSlots, undeployedMvpSlots }) => {
+              const progress = Math.min(deployedMvpSlots.length, MVP_ARCHITECTURE_SLOT_COUNT);
+              const networkName = network.id === "testnet" ? "Testnet" : "Mainnet";
               return (
                 <section className="ne-registry-network" key={network.id} aria-labelledby={`h-ne-registry-${network.id}`}>
                   <header className="ne-registry-network-head">
-                    <h3 id={`h-ne-registry-${network.id}`}>{network.label}</h3>
-                    <span>Chain ID {network.chainId}</span>
-                    <span className="ne-registry-meter" aria-label={`${progress} of 10 architecture contracts deployed based on verified on-chain records`}>
-                      <strong>{progress}/10</strong> deployed
+                    <h3 id={`h-ne-registry-${network.id}`}>{networkName} MVP Deployments</h3>
+                    <span>{network.label} · Chain ID {network.chainId}</span>
+                    <span className="ne-registry-meter" aria-label={`${progress} of ${MVP_ARCHITECTURE_SLOT_COUNT} ${networkName} MVP contracts deployed based on verified on-chain records`}>
+                      <strong>{progress}/{MVP_ARCHITECTURE_SLOT_COUNT}</strong> MVP contracts deployed
                     </span>
+                    <p className="ne-registry-composition">
+                      {progress} deployed · {futureResearchSlots.length} future security-research slots outside MVP scope
+                      {undeployedMvpSlots.length > 0 ? ` · ${undeployedMvpSlots.length} MVP slots not deployed` : ""}
+                    </p>
                   </header>
-                  {slots.length > 0 ? (
+                  {deployedMvpSlots.length > 0 ? (
                     <DeploymentTable
-                      rows={slots.map(({ slot, deployment }) => ({ slot, deployment }))}
-                      label={`Architecture slot status on ${network.label}`}
+                      rows={deployedMvpSlots.map(({ slot, deployment }) => ({ slot, deployment }))}
+                      label={`${networkName} MVP architecture deployments`}
                     />
                   ) : (
                     <p className="ne-registry-network-empty">
-                      {standalone.length > 0
-                        ? `No verified roadmap contracts on ${network.label}.`
-                        : `No verified ${PROJECT_NAME} deployments on ${network.label}.`}
+                      {`No deployed ${PROJECT_NAME} MVP contracts on ${network.label}.`}
                     </p>
                   )}
+                  {deployedMvpSlots.length > 0 ? (
+                    <p className="ne-registry-network-note">
+                      Inactive means deployment is confirmed, but contracts are not enabled for real swaps or asset authorization.
+                    </p>
+                  ) : null}
+                  {futureResearchSlots.length > 0 ? (
+                    <details className="ne-architecture-details">
+                      <summary>
+                        <span>Future Architecture / Security Research</span>
+                        <small>Slots 1–5 · outside MVP scope</small>
+                      </summary>
+                      <DeploymentTable
+                        rows={futureResearchSlots.map(({ slot, deployment }) => ({ slot, deployment }))}
+                        label={`Future architecture / security research slots on ${network.label}`}
+                      />
+                    </details>
+                  ) : null}
+                  {undeployedMvpSlots.length > 0 ? (
+                    <details className="ne-architecture-details">
+                      <summary>
+                        <span>MVP Contracts Not Deployed</span>
+                        <small>{undeployedMvpSlots.length} slots · {networkName}</small>
+                      </summary>
+                      <DeploymentTable
+                        rows={undeployedMvpSlots.map(({ slot, deployment }) => ({ slot, deployment }))}
+                        label={`MVP architecture slots not deployed on ${network.label}`}
+                      />
+                    </details>
+                  ) : null}
                   {standalone.length > 0 ? (
                     <section className="ne-standalone-registry" aria-label="Standalone research utilities">
                       <header>
@@ -453,7 +502,7 @@ export function NetworksView({
                           <p className="ne-section-index">STANDALONE RESEARCH UTILITY</p>
                           <h4>Evidence Anchor</h4>
                         </div>
-                        <p>Excluded from the 10-contract roadmap progress.</p>
+                        <p>Excluded from the five-contract MVP progress.</p>
                       </header>
                       <DeploymentTable
                         rows={standalone.map((deployment) => ({ deployment, standalone: true }))}

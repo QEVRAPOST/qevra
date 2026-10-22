@@ -3,8 +3,8 @@ import { brandizeProjectName } from "@/lib/project-brand";
 
 /**
  * The three pillars the product is built around, as the landing's "three parts" section says them. The headlines and the status lines are
- * the PM's words; everything else restates approved copy and adds no claim past the evidence: nothing here says a smart account, a quote, a
- * router, a post-quantum guarantee, a live agent run or an audit exists.
+ * the PM's words; status labels reflect the demonstrated read-only wallet and three-stage research flow while retaining the explicit limits
+ * on custody, swaps, post-quantum claims and independent audit.
  */
 export type PillarId = "account" | "swap" | "swarm";
 
@@ -42,37 +42,38 @@ export const PILLARS: readonly Pillar[] = [
     number: "01",
     kicker: "Post-quantum smart account",
     headline: "An account built around stronger authorization.",
-    body: "The long-term goal is to protect control of assets with explicitly validated authorization rules, and to research post-quantum signatures for them. It is a separate account, apart from the wallet you connect.",
-    status: { label: "Security architecture under evaluation", material: "outline" },
+    body: "Connect an existing EVM wallet for public address, network and balance reads. A separate smart account and post-quantum custody remain unavailable while authorization and key-control security research continues.",
+    status: { label: "Smart-account custody unavailable", material: "dotted" },
     capabilities: [
-      { material: "dotted", label: "A separate smart account", state: "Not built" },
+      { material: "outline", label: "EVM wallet connection and public reads", state: "Available · read-only" },
+      { material: "dotted", label: "Smart-account custody", state: "Unavailable · not deployed" },
       { material: "outline", label: "Post-quantum signatures (ML-DSA)", state: "Under evaluation" },
-      { material: "dotted", label: "Deposits and recovery", state: "Not built" },
+      { material: "dotted", label: "Deposits and recovery", state: "Unavailable" },
     ],
     how: [
-      "You connect the wallet you already use. It keeps signing the way it always has, and QEVRA makes no protection claim for it.",
-      "QEVRA would open a separate smart account. What may leave it is decided by authorization rules the account itself checks.",
-      "ML-DSA (NIST FIPS 204) is the candidate for post-quantum signatures. It is under evaluation, and QEVRA makes no claim that it resists quantum attacks.",
+      "Connect your existing wallet to read public account data. Security Swarm sign-in separately requests an explicit EIP-191 message signature; it does not authorize a blockchain transaction.",
+      "A separate smart-account design is future work. No smart-account custody, deposits or recovery are available.",
+      "ML-DSA (NIST FIPS 204) is a candidate for future post-quantum authorization. It is under evaluation, and VEYRA makes no claim that it resists quantum attacks.",
       "No smart account contract, deposit path or recovery exists yet. Known issues in key registration are unresolved, so no verifier or custody is approved. Independent review is needed before any mainnet use.",
     ],
-    cta: { label: "Open the wallet preview", href: "/app/wallet" },
+    cta: { label: "Open wallet", href: "/app/wallet" },
   },
   {
     id: "swap",
     number: "02",
     kicker: "Simple swap + Intent Lock",
     headline: "Review every detail before execution.",
-    body: "A simple token swap, where you review every parameter first. Intent Lock compares what you reviewed with what would be signed: token, amount, recipient, slippage, minimum output and authorization.",
+    body: "Explore the Intent Lock parameter-comparison preview. There is no live quote, supported route or swap execution, so no trade can be made.",
     status: { label: "Interactive preview · Execution unavailable", material: "dotted" },
     capabilities: [
-      { material: "outline", label: "Intent Lock comparison", state: "Interactive preview" },
+      { material: "outline", label: "Intent Lock comparison", state: "Interactive example preview" },
       { material: "dotted", label: "Swap route and quotes", state: "Not configured" },
       { material: "dotted", label: "Execution", state: "Unavailable" },
     ],
     how: [
-      "Each detail you reviewed gets its own pin. If a detail differs from what would be signed, its pin moves out of line and the light stops.",
-      "A changed detail sends the swap back to review. Nothing is signed on the strength of an earlier review.",
-      "In this preview every value is an example. There is no price, no quote and no router, so nothing can be swapped.",
+      "Example parameters are compared in the browser. This illustrates the intended review flow; it is not a live quote or an on-chain check.",
+      "No parameter is signed or sent. A live route and quote are unavailable, and no execution contract is configured.",
+      "The preview values are examples only. There is no price, quote or configured router, so no swap can execute.",
     ],
     cta: { label: "Try the swap preview", href: "/app/swap" },
   },
@@ -81,17 +82,17 @@ export const PILLARS: readonly Pillar[] = [
     number: "03",
     kicker: "Autonomous Security Swarm",
     headline: "Research, analyze, verify.",
-    body: "Three AI agents turn public information into findings backed by quoted evidence: Research reads approved sources, Analysis weighs the claims, Verification checks each quote. A person reviews separately.",
-    status: { label: "Research integration in progress", material: "outline" },
+    body: "The VEYRA Research Engine coordinates three stages: Research reads approved public sources, Analysis weighs claims, and Verification checks quoted evidence. A wallet-authenticated run has been demonstrated; service availability can vary.",
+    status: { label: "Three-stage run demonstrated", material: "outline" },
     capabilities: [
-      { material: "outline", label: "Research → Analysis → Verification", state: "Defined" },
-      { material: "outline", label: "Live research runs", state: "No successful run yet" },
+      { material: "outline", label: "Research → Analysis → Verification", state: "Demonstrated" },
+      { material: "outline", label: "Wallet-authenticated saved reports", state: "Available when authorized service is available" },
       { material: "dotted", label: "Independent audit", state: "None yet" },
     ],
     how: [
-      "A run produces findings with quoted evidence, the sources and when they were read, and the limits of what it checked. It is a report, not a verdict.",
-      "Human review is a separate boundary. A finished run is never an approval, a passed test or an audit.",
-      "The Swarm works from public information and isolated test environments. It cannot reach private keys, sign, or move funds.",
+      "An authorized run produces findings with quoted evidence, sources and limitations. It is model-assisted research, not a verdict or security audit.",
+      "Wallet sign-in is required to access wallet-owned reports. A finished run is never an approval, passed test or audit; human review is recorded separately.",
+      "The Swarm works from approved public information and checks evidence against retrieved source text. It cannot reach private keys, sign transactions or move funds.",
     ],
     cta: { label: "Open the Security Swarm", href: "/app/security" },
   },

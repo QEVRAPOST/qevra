@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { prefersReducedMotion } from "@/lib/aperture/motion";
@@ -119,6 +120,7 @@ export function LandingNav({ projectName }: { projectName: string }) {
               {s.label}
             </a>
           ))}
+          <Link href="/app/networks">Testnet deployments</Link>
         </div>
         <div className="lnav-tools">
           <LaunchLink>Launch App</LaunchLink>
@@ -169,8 +171,16 @@ export function LandingNav({ projectName }: { projectName: string }) {
                       </a>
                     </li>
                   ))}
+                  <li style={{ ["--i" as string]: SECTIONS.length }}>
+                    <Link href="/app/networks" onClick={closeMenu}>
+                      <span>Testnet deployments</span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M5 12h14M13 6l6 6-6 6" />
+                      </svg>
+                    </Link>
+                  </li>
                 </ul>
-                <div className="lmenu-cta" style={{ ["--i" as string]: 3 }}>
+                <div className="lmenu-cta" style={{ ["--i" as string]: SECTIONS.length + 1 }}>
                   <LaunchLink className="lmenu-launch" onLaunch={closeMenu}>
                     Launch App
                   </LaunchLink>

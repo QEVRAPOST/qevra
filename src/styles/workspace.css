@@ -3239,6 +3239,47 @@
   color: var(--fg-2);
   font-weight: 500;
 }
+.ne-registry-composition {
+  flex-basis: 100%;
+  color: var(--fg-2);
+  font: 500 11px/1.45 var(--f-ui);
+}
+.ne-architecture-details {
+  min-width: 0;
+  border-top: 1px solid var(--line-2);
+}
+.ne-architecture-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 44px;
+  padding: 7px 2px;
+  color: var(--fg-2);
+  cursor: pointer;
+  list-style: disclosure-closed;
+}
+.ne-architecture-details[open] > summary { list-style: disclosure-open; }
+.ne-architecture-details > summary::marker { color: var(--exp); }
+.ne-architecture-details > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+.ne-architecture-details > summary > span {
+  font: 500 12px/1.4 var(--f-ui);
+}
+.ne-architecture-details > summary > small {
+  color: var(--muted);
+  font: 400 10px/1.4 var(--f-mono);
+  text-align: right;
+}
+.ne-architecture-details > .ne-contract-table-wrap { margin-bottom: 12px; }
+.ne-contract-details dd small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font: 400 10px/1.45 var(--f-ui);
+}
 .ne-registry-network-empty,
 .ne-registry-network-note {
   overflow-wrap: anywhere;
@@ -3535,6 +3576,12 @@
   }
   .ne-registry-meter {
     margin-left: 0;
+  }
+  .ne-architecture-details > summary {
+    align-items: flex-start;
+  }
+  .ne-architecture-details > summary > small {
+    flex: 0 1 auto;
   }
   .ne-contract-table,
   .ne-contract-table tbody {
