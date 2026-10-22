@@ -49,7 +49,7 @@ export const researchTopics: Record<ResearchTopicId, ResearchTopicDefinition> = 
     id: "robinhood-readonly-wallet",
     label: "Robinhood Chain read-only wallet integration",
     defaultQuestion:
-      "What public network and JSON-RPC information is documented for Robinhood Chain, and what can a read-only wallet integration safely display without signing or submitting transactions?",
+      "What public network, chain ID, and JSON-RPC information is documented for Robinhood Chain, and what can a read-only wallet integration safely display without signing or submitting transactions?",
     sourceIds: ["robinhood-chain-docs"],
   },
   "security-evidence": {

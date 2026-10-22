@@ -183,7 +183,7 @@ test("research run validates exact source quotes and strips private source text 
   assert.deepEqual(run.research?.claims.map((claim) => claim.id), ["fips-204-standard"]);
   assert.equal(run.findings.length, 1);
   assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
-  assert.ok(run.limitations.some((item) => /exact matches in available approved source excerpts/i.test(item)));
+  assert.ok(run.limitations.some((item) => /exact matches in both supplied passages and stored approved source text/i.test(item)));
   const detail = (await import("@/features/security/public-view")).toResearchRunDetail(run);
   assert.equal("text" in (detail.sources[0] ?? {}), false);
   assert.equal(detail.sources[0]?.excerpt, source.excerpt);
@@ -293,7 +293,9 @@ test("bounded model excerpts preserve full persisted source provenance and exact
   assert.equal(run.sources[0]?.sha256, fullSource.sha256);
   assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
   assert.equal(observedSourceInputs.length, 2, "only Research and Analysis receive the general source-input collection");
-  assert.equal(observedSourceInputs[0]?.text, fullSourceText.slice(0, 100));
+  assert.equal(typeof observedSourceInputs[0]?.text, "string");
+  assert.ok(String(observedSourceInputs[0]?.text).length <= 100);
+  assert.ok(fullSourceText.includes(String(observedSourceInputs[0]?.text)));
   assert.equal(observedSourceInputs[0]?.textIsExcerpt, true);
   assert.equal(observedSourceInputs[0]?.sha256, fullSource.sha256);
 });
@@ -998,7 +1000,7 @@ test("mocked three-agent pipeline stays within the unchanged Groq output, reques
     sha256: createHash("sha256").update(sourceText).digest("hex"),
   };
   assert.equal(longSource.text?.slice(0, 1_200).includes(unseenQuote), false);
-  const quote = source.text;
+  const quote = researchOutput.claims[0]!.evidence[0]!.quote;
   const outputs = {
     research: {
       summary: "FIPS 204 defines the signature standard.",
@@ -1088,7 +1090,7 @@ test("mocked three-agent pipeline stays within the unchanged Groq output, reques
 });
 
 test("historical-sized Verification input preserves quotes and keeps partial claims unclear within 6,000 bytes", async () => {
-  const quote = source.text ?? "";
+  const quote = researchOutput.claims[0]!.evidence[0]!.quote;
   assert.ok(quote);
   const fullText = `${source.text} ${"Additional approved publication context remains in the source excerpt. ".repeat(40)}`;
   const longSource: StoredSource = {

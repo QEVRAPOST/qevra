@@ -11,6 +11,7 @@ import {
 } from "./schemas";
 import { addRunEvent, type ResearchRunRecord, type StoredSource, type StoredTestArtifact } from "./model";
 import { ModelProviderError, type ModelProvider, type StructuredModelRequest } from "./provider";
+import { selectSourceExcerpt } from "./sources";
 import { resolveResearchTopic } from "./topics";
 
 const SYSTEM_PROMPTS = {
@@ -43,12 +44,13 @@ function usableSources(
     }
     if (
       !definition || !modelInput || source.status !== "available" || modelInput.status !== "available" ||
-      typeof modelInput.text !== "string" || !modelInput.text ||
+      typeof source.text !== "string" || !source.text || typeof modelInput.text !== "string" || !modelInput.text ||
       !SOURCE_SHA256.test(source.sha256 ?? "") || source.url !== definition.url ||
       modelInput.url !== definition.url || modelInput.sha256 !== source.sha256 ||
+      !modelInput.text.split(/\n+/).filter(Boolean).every((passage) => source.text?.includes(passage)) ||
       parsedUrl.protocol !== "https:" || parsedUrl.hostname !== definition.allowedHost || parsedUrl.username || parsedUrl.password
     ) return [];
-    return [[source.id, { ...source, text: modelInput.text }] as const];
+    return [[source.id, source] as const];
   }));
 }
 
@@ -85,13 +87,19 @@ function sanitizeAnalysisOutput(output: AnalysisAgentOutput, sources: Map<string
   };
 }
 
-function sanitizeResearchOutput(output: ResearchAgentOutput, sources: Map<string, StoredSource>) {
+function sanitizeResearchOutput(
+  output: ResearchAgentOutput,
+  sources: Map<string, StoredSource>,
+  sourceInput: Array<{ id: string; text?: string }>,
+) {
+  const excerptById = new Map(sourceInput.map((source) => [source.id, source.text ?? ""]));
   let invalidCitation = false;
   let droppedClaim = false;
   const claims = output.claims.flatMap((claim) => {
     const evidence = claim.evidence.filter((item) => {
       const source = sources.get(item.sourceId);
-      const matched = Boolean(source?.text?.includes(item.quote));
+      const suppliedExcerpt = excerptById.get(item.sourceId);
+      const matched = Boolean(source?.text?.includes(item.quote) && suppliedExcerpt?.includes(item.quote));
       if (!matched) invalidCitation = true;
       return matched;
     });
@@ -104,14 +112,14 @@ function sanitizeResearchOutput(output: ResearchAgentOutput, sources: Map<string
   const normalized = researchAgentOutputSchema.parse({
     ...output,
     summary: invalidCitation || droppedClaim
-      ? "Research claims were limited to quotations matching available approved source excerpts."
+      ? "Research claims were limited to quotations matching both supplied passages and stored approved source text."
       : output.summary,
     claims,
   });
   return {
     output: normalized,
     limitations: invalidCitation || droppedClaim
-      ? ["Research citations without exact matches in available approved source excerpts were removed."]
+      ? ["Research citations without exact matches in both supplied passages and stored approved source text were removed."]
       : [],
   };
 }
@@ -175,6 +183,7 @@ function sanitizeVerificationOutput(
   output: VerificationAgentOutput,
   research: ResearchAgentOutput,
   sources: Map<string, StoredSource>,
+  sourceInput: Array<{ id: string; text?: string }>,
   completedArtifactIds: Set<string>,
   excludedArtifactCount = 0,
 ) {
@@ -187,6 +196,7 @@ function sanitizeVerificationOutput(
   let missingClaimCheck = false;
   let unsupportedAssessmentDowngraded = false;
   let unsupportedExplorerAssociationDowngraded = false;
+  const excerptById = new Map(sourceInput.map((source) => [source.id, source.text ?? ""]));
 
   for (const check of output.claimChecks) {
     if (!claimIds.has(check.claimId)) {
@@ -200,7 +210,8 @@ function sanitizeVerificationOutput(
     seenClaimIds.add(check.claimId);
     const evidence = check.evidence.filter((item) => {
       const source = sources.get(item.sourceId);
-      const matched = Boolean(source?.text?.includes(item.quote));
+      const suppliedExcerpt = excerptById.get(item.sourceId);
+      const matched = Boolean(source?.text?.includes(item.quote) && suppliedExcerpt?.includes(item.quote));
       if (!matched) invalidSourceCitation = true;
       return matched;
     });
@@ -307,22 +318,23 @@ export function buildVerificationAgentRequest(
   research: ResearchAgentOutput,
   analysis: AnalysisAgentOutput,
   sources: Map<string, StoredSource>,
-  sourceInput: Array<{ id: string; textIsExcerpt?: boolean }>,
+  sourceInput: Array<{ id: string; text?: string; textIsExcerpt?: boolean }>,
   completedTests: StoredTestArtifact[],
 ): StructuredModelRequest<VerificationAgentOutput> {
   const referencedSourceIds = new Set([
     ...research.claims.flatMap((claim) => claim.evidence.map((item) => item.sourceId)),
     ...analysis.risks.flatMap((risk) => risk.sourceIds),
   ]);
-  const excerptById = new Map(sourceInput.map((source) => [source.id, source.textIsExcerpt === true]));
+  const excerptById = new Map(sourceInput.map((source) => [source.id, source]));
   const approvedSources = [...referencedSourceIds].flatMap((id) => {
     const source = sources.get(id);
     if (!source?.text || !source.sha256) return [];
+    const supplied = excerptById.get(id);
     return [{
       id: source.id,
       sha256: source.sha256,
-      text: source.text,
-      ...(excerptById.get(id) ? { textIsExcerpt: true } : {}),
+      text: supplied?.text ?? source.text,
+      ...(supplied?.textIsExcerpt ? { textIsExcerpt: true } : {}),
     }];
   });
   const input = {
@@ -423,7 +435,9 @@ export async function processResearchRun(run: ResearchRunRecord, dependencies: P
 
     const rawSourceInput = run.sources.map(({ id, title, url, retrievedAt, status, sha256, text, errorCode }) => {
       const modelText = status === "available" && typeof text === "string"
-        ? dependencies.maxSourceTextChars === undefined ? text : text.slice(0, dependencies.maxSourceTextChars)
+        ? dependencies.maxSourceTextChars === undefined
+          ? text
+          : selectSourceExcerpt(text, `${topic.label} ${topic.question} ${title}`, dependencies.maxSourceTextChars)
         : undefined;
       return {
         id,
@@ -438,17 +452,23 @@ export async function processResearchRun(run: ResearchRunRecord, dependencies: P
       };
     });
     const sourceRecords = usableSources(run.sources, topic.sources, rawSourceInput);
+    const modelExcerptById = new Map(rawSourceInput.map((source) => [source.id, source.text]));
     run.sources = run.sources.map((source) => {
-      if (source.status !== "available" || sourceRecords.has(source.id)) return source;
+      if (source.status !== "available") return source;
+      if (sourceRecords.has(source.id)) {
+        const excerpt = modelExcerptById.get(source.id);
+        return {
+          ...source,
+          ...(dependencies.maxSourceTextChars !== undefined && dependencies.maxSourceTextChars <= 1_200 && typeof excerpt === "string"
+            ? { excerpt }
+            : {}),
+        };
+      }
       return { ...source, status: "unavailable", text: undefined, excerpt: undefined, sha256: undefined, errorCode: "source_provenance_unavailable" };
     });
     const sourceInput = rawSourceInput.map((source) => {
       if (source.status !== "available" || sourceRecords.has(source.id)) return source;
       return { ...source, status: "unavailable", text: undefined, sha256: undefined, errorCode: "source_provenance_unavailable" };
-    });
-    run.sources = run.sources.map((source) => {
-      if (source.status !== "available" || sourceRecords.has(source.id)) return source;
-      return { ...source, status: "unavailable", text: undefined, excerpt: undefined, sha256: undefined, errorCode: "source_provenance_unavailable" };
     });
     if (sourceRecords.size === 0) {
       failRun(run, undefined, "approved_sources_unavailable");
@@ -465,7 +485,7 @@ export async function processResearchRun(run: ResearchRunRecord, dependencies: P
       input: { topic: topic.label, question: topic.question, sources: sourceInput },
       schema: researchAgentOutputSchema,
     });
-    const safeResearch = sanitizeResearchOutput(research.output, sourceRecords);
+    const safeResearch = sanitizeResearchOutput(research.output, sourceRecords, sourceInput);
     run.research = safeResearch.output;
     updateAgent(run, "research", { status: "completed", completedAt: new Date().toISOString(), usage: research.usage, output: safeResearch.output });
     run.limitations = [...new Set([...run.limitations, ...safeResearch.output.scopeLimitations, ...safeResearch.limitations])];
@@ -501,6 +521,7 @@ export async function processResearchRun(run: ResearchRunRecord, dependencies: P
       verification.output,
       safeResearch.output,
       sourceRecords,
+      sourceInput,
       completedArtifactIds,
       run.tests.length - completedTests.length,
     );

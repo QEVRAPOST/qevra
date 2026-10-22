@@ -14,6 +14,8 @@ import {
 import { GET as getCapabilities } from "@/app/api/security/capabilities/route";
 import { POST as createResearchRun } from "@/app/api/security/runs/route";
 import { GET as listResearchRuns } from "@/app/api/security/runs/route";
+import { GET as getResearchRun } from "@/app/api/security/runs/[id]/route";
+import { createUserSession, USER_SESSION_COOKIE } from "@/features/security/wallet-auth";
 
 const origin = "http://localhost:3113";
 const fakeDatabaseUrl = "postgres://mock.invalid/veyra";
@@ -39,6 +41,7 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   let challenge: { nonceHash: string; wallet_address: string; chain_id: number; message: string; expires_at: Date } | undefined;
   let consumed = false;
   let liveWorkers = 1;
+  const savedRuns = new Map<string, { ownerId: string; data: { id: string; createdAt: string; [key: string]: unknown } }>();
   const statements: Array<{ sql: string; values?: unknown[] }> = [];
 
   process.env.DATABASE_URL = fakeDatabaseUrl;
@@ -78,6 +81,22 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
       }
       consumed = true;
       return { rows: [{ nonce_hash: challenge.nonceHash }], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO qevra_research_runs")) {
+      const data = JSON.parse(String(values?.[6])) as { id: string; createdAt: string; [key: string]: unknown };
+      savedRuns.set(data.id, { ownerId: String(values?.[5]), data });
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("SELECT data FROM qevra_research_runs WHERE id = $1 AND owner_id = $2")) {
+      const saved = savedRuns.get(String(values?.[0]));
+      return saved && saved.ownerId === values?.[1] ? { rows: [{ data: saved.data }], rowCount: 1 } : { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("SELECT data, created_at, id FROM qevra_research_runs")) {
+      const ownerId = String(values?.[0]);
+      const rows = [...savedRuns.values()]
+        .filter((saved) => saved.ownerId === ownerId)
+        .map((saved) => ({ data: saved.data, created_at: new Date(saved.data.createdAt), id: saved.data.id }));
+      return { rows, rowCount: rows.length };
     }
     if (sql.includes("FROM qevra_research_runs")) return { rows: [], rowCount: 0 };
     return { rows: [], rowCount: 1 };
@@ -177,8 +196,25 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     const availableRun = await createResearchRun(runRequest());
     if (!availableRun) throw new Error("available run should return a response");
     assert.equal(availableRun.status, 202);
-    assert.equal((await availableRun.json() as { run: { status: string } }).run.status, "queued");
+    const createdRun = await availableRun.json() as { run: { id: string; status: string } };
+    assert.equal(createdRun.run.status, "queued");
     assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO qevra_research_runs")), true);
+
+    const ownedDetail = await getResearchRun(new Request(`${origin}/api/security/runs/${createdRun.run.id}`, {
+      headers: { cookie: walletCookie },
+    }), { params: Promise.resolve({ id: createdRun.run.id }) });
+    if (!ownedDetail) throw new Error("owned research run should return a response");
+    assert.equal(ownedDetail.status, 200);
+    assert.equal((await ownedDetail.json() as { run: { id: string } }).run.id, createdRun.run.id);
+
+    const otherWalletSession = createUserSession("0x0000000000000000000000000000000000000002");
+    assert.ok(otherWalletSession);
+    const foreignDetail = await getResearchRun(new Request(`${origin}/api/security/runs/${createdRun.run.id}`, {
+      headers: { cookie: `${USER_SESSION_COOKIE}=${otherWalletSession.value}` },
+    }), { params: Promise.resolve({ id: createdRun.run.id }) });
+    if (!foreignDetail) throw new Error("foreign wallet lookup should return a response");
+    assert.equal(foreignDetail.status, 404);
+    assert.equal((await foreignDetail.json() as { error: { code: string } }).error.code, "run_not_found");
 
     const replay = await completeWalletSignIn(new Request(`${origin}/api/auth/user/session`, {
       method: "POST",
