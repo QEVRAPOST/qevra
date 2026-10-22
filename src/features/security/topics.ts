@@ -1,5 +1,7 @@
 import type { ResearchTopicId } from "@/types/integrations";
 
+export const DEFAULT_RESEARCH_TOPIC_ID: ResearchTopicId = "robinhood-readonly-wallet";
+
 export interface ResearchTopicDefinition {
   id: ResearchTopicId;
   label: string;

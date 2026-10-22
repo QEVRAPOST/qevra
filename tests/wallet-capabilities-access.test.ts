@@ -93,3 +93,38 @@ test("provider credential blockers identify server configuration without suggest
   assert.match(blocker ?? "", /QEVRA_AI_MODEL/);
   assert.doesNotMatch(blocker ?? "", /QEVRA_AI_BILLING_APPROVED=true/);
 });
+
+test("the public engine label keeps provider and model identity behind technical details", () => {
+  const modelId = "openai/gpt-oss-20b";
+  const markup = renderToStaticMarkup(createElement(SwarmLaunch, {
+    live: true,
+    topicId: "security-evidence",
+    onTopic() {},
+    onStart() {},
+    canStart: true,
+    isCreating: false,
+    blocker: null,
+    capabilities: {
+      provider: "available",
+      providerName: "VEYRA Research Engine",
+      providerVendor: "Groq",
+      providerModel: modelId,
+      authentication: "available",
+      billing: "available",
+      persistence: "available",
+      worker: "available",
+      deterministicExperiments: "not_configured",
+      sourceCount: 2,
+    },
+    step: null,
+    onIllustrate() {},
+    onNext() {},
+    onStop() {},
+  }));
+
+  assert.match(markup, /<dt>Provider<\/dt><dd>VEYRA Research Engine<\/dd>/);
+  assert.match(markup, /<details[^>]*><summary>Technical details<\/summary>/);
+  assert.match(markup, /Groq/);
+  assert.match(markup, /openai\/gpt-oss-20b/);
+  assert.match(markup, /does not claim a proprietary trained model/i);
+});

@@ -108,6 +108,8 @@ function isSecurityResearchCapabilities(value: unknown): value is SecurityResear
   return requiredStatuses.every((status) => typeof status === "string" && INTEGRATION_AVAILABILITY.has(status))
     && Number.isSafeInteger(candidate.sourceCount) && (candidate.sourceCount ?? -1) >= 0
     && (candidate.providerName === undefined || (typeof candidate.providerName === "string" && candidate.providerName.length <= 160))
+    && (candidate.providerVendor === undefined || (typeof candidate.providerVendor === "string" && candidate.providerVendor.length <= 80))
+    && (candidate.providerModel === undefined || (typeof candidate.providerModel === "string" && candidate.providerModel.length <= 160))
     && (candidate.unavailableReason === undefined || (typeof candidate.unavailableReason === "string" && candidate.unavailableReason.length <= 160));
 }
 

@@ -104,18 +104,22 @@ test("unauthenticated Security API messages use the configured project name", as
 
 test("provider capability labels distinguish ready, missing credentials, and awaiting authorization", () => {
   const providerCapabilities = providerCapabilitiesModule as typeof providerCapabilitiesModule & {
-    describeProviderState?: (provider: { status: "available"; model: string } | { status: "not_configured"; reason: string }) => {
+    describeProviderState?: (provider: { status: "available"; model: string; vendor?: string } | { status: "not_configured"; reason: string }) => {
       provider: string;
       providerName: string;
+      providerVendor?: string;
+      providerModel?: string;
       unavailableReason?: string;
     };
   };
   assert.equal(typeof providerCapabilities.describeProviderState, "function");
   if (!providerCapabilities.describeProviderState) return;
 
-  assert.deepEqual(providerCapabilities.describeProviderState({ status: "available", model: "openai/gpt-oss-20b" }), {
+  assert.deepEqual(providerCapabilities.describeProviderState({ status: "available", vendor: "Groq", model: "openai/gpt-oss-20b" }), {
     provider: "available",
-    providerName: "Ready · openai/gpt-oss-20b",
+    providerName: "VEYRA Research Engine",
+    providerVendor: "Groq",
+    providerModel: "openai/gpt-oss-20b",
   });
   assert.deepEqual(providerCapabilities.describeProviderState({ status: "not_configured", reason: "model_provider_credentials_missing" }), {
     provider: "not_configured",
@@ -1639,6 +1643,7 @@ test("Groq GPT-OSS selects a bounded Free Plan profile and rejects unsafe overri
   assert.equal(resolveMaxConcurrentRuns(env), 1);
   assert.equal(resolveMaxConcurrentRuns({ NODE_ENV: "test", QEVRA_MAX_CONCURRENT_RUNS: "3" } as NodeJS.ProcessEnv), 3);
   if (configuration.status !== "available") return;
+  assert.equal(configuration.vendor, "Groq");
   assert.deepEqual(configuration.profile, {
     maxOutputTokens: 400,
     maxRequestBytes: 6_000,

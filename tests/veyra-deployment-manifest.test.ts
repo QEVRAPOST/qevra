@@ -238,6 +238,22 @@ test("server loader reads only validated records from the checked-in chain manif
       runtimeBytecodeHash: "0xeeefe9013d19f884798ce7e33b7165b2c43a5c534706d0f9a312d789c27547bf",
       sourceVerification: "not_verified",
     },
+    {
+      name: "VeyraResearchAttestationRegistry",
+      purpose: "Digest-only research attestation registry; deployed on Testnet with the deployer as sole initial attestor and no asset custody.",
+      architectureSlot: 10,
+      networkId: "testnet",
+      chainId: 46_630,
+      address: "0x61c3DC95B31977e6F3a3373eC5BAb52477E96Ba2",
+      deploymentStatus: "verified",
+      observedChainId: 46_630,
+      deployerAddress: "0xfA142bF0383782Caa349C5C56A7B7D565eEFA562",
+      transactionHash: "0xec84bb25a1633c37f52f17a68342534133df4eb773a14df9da3611dc1722ff43",
+      receiptStatus: "success",
+      blockNumber: "140541816",
+      runtimeBytecodeHash: "0x64c6a2bd59738f2bb18dabd9fd94be5797aca98c829d41e6877deabae222844f",
+      sourceVerification: "not_verified",
+    },
   ]);
   assert.deepEqual(registry.roadmapContracts.filter((record) => record.networkId === "mainnet"), []);
   assert.deepEqual(registry.standaloneResearchEvidenceAnchors, [{

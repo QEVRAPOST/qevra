@@ -3,9 +3,14 @@ import type { SecurityResearchCapabilities } from "@/types/integrations";
 
 export function describeProviderState(
   provider: ProviderConfiguration,
-): Pick<SecurityResearchCapabilities, "provider" | "providerName" | "unavailableReason"> {
+): Pick<SecurityResearchCapabilities, "provider" | "providerName" | "providerVendor" | "providerModel" | "unavailableReason"> {
   if (provider.status === "available") {
-    return { provider: "available", providerName: `Ready · ${provider.model}` };
+    return {
+      provider: "available",
+      providerName: "VEYRA Research Engine",
+      providerVendor: provider.vendor ?? "OpenAI-compatible endpoint",
+      providerModel: provider.model,
+    };
   }
   const providerName = provider.reason === "model_provider_credentials_missing"
     ? "Credentials missing"

@@ -67,9 +67,15 @@ test("wallet-owned run queries include the owner predicate and one-time challeng
     },
   };
   const store = new PostgresResearchStore("postgres://mock.invalid/veyra", fakePool as never);
+  const runId = "e96c5c05-ec19-4de6-983c-153de508c1cb";
+  const walletOwner = "0x0000000000000000000000000000000000000001";
   await store.listRuns(10, undefined, "0x0000000000000000000000000000000000000001");
   assert.ok(statements.some(({ sql, values }) => sql.includes("WHERE owner_id = $1")
     && values?.[0] === "0x0000000000000000000000000000000000000001"));
+  assert.equal(await store.getRun(runId, walletOwner), undefined);
+  assert.ok(statements.some(({ sql, values }) => sql.includes("WHERE id = $1 AND owner_id = $2")
+    && values?.[0] === runId
+    && values?.[1] === walletOwner));
   assert.equal(await store.consumeWalletAuthChallenge("a".repeat(64)), true);
   assert.equal(await store.consumeWalletAuthChallenge("a".repeat(64)), false);
   await store.close();

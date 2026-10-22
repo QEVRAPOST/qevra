@@ -71,6 +71,22 @@
       "blockNumber": "140283772",
       "runtimeBytecodeHash": "0xeeefe9013d19f884798ce7e33b7165b2c43a5c534706d0f9a312d789c27547bf",
       "sourceVerification": "not_verified"
+    },
+    {
+      "architectureSlot": 10,
+      "solidityName": "VeyraResearchAttestationRegistry",
+      "purpose": "Digest-only research attestation registry; deployed on Testnet with the deployer as sole initial attestor and no asset custody.",
+      "networkId": "testnet",
+      "chainId": 46630,
+      "observedChainId": 46630,
+      "deploymentStatus": "verified",
+      "address": "0x61c3DC95B31977e6F3a3373eC5BAb52477E96Ba2",
+      "deployerAddress": "0xfA142bF0383782Caa349C5C56A7B7D565eEFA562",
+      "transactionHash": "0xec84bb25a1633c37f52f17a68342534133df4eb773a14df9da3611dc1722ff43",
+      "receiptStatus": "success",
+      "blockNumber": "140541816",
+      "runtimeBytecodeHash": "0x64c6a2bd59738f2bb18dabd9fd94be5797aca98c829d41e6877deabae222844f",
+      "sourceVerification": "not_verified"
     }
   ],
   "architectureSlots": [
@@ -140,9 +156,9 @@
     {
       "slot": 10,
       "solidityName": "VeyraResearchAttestationRegistry",
-      "readiness": "blocked",
-      "reason": "Digest-only implementation and tests exist, but public attestor authority, privacy policy, and on-chain usefulness have not been approved.",
-      "address": ""
+      "readiness": "restricted_testnet",
+      "reason": "Deployed dormant with the deployer as sole initial attestor; digest-only and non-custodial, with additional publishers remaining owner-controlled.",
+      "address": "0x61c3DC95B31977e6F3a3373eC5BAb52477E96Ba2"
     }
   ],
   "standaloneResearchEvidenceAnchor": {

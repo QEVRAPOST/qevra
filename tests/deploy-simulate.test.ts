@@ -6,38 +6,6 @@ import testnetManifest from "../contracts/deployments/robinhood-testnet.json";
 
 const jsonRpc = (id: number, result: string) => Response.json({ jsonrpc: "2.0", id, result });
 
-const architectureNames = [
-  "VeyraKeyRegistrationValidator",
-  "VeyraKeyRegistry",
-  "VeyraRecoveryPolicy",
-  "VeyraAccount",
-  "VeyraAccountFactory",
-  "VeyraTokenPolicyRegistry",
-  "VeyraRouterRegistry",
-  "VeyraSwapIntentGuard",
-  "VeyraSwapExecutor",
-  "VeyraResearchAttestationRegistry",
-];
-
-function verifiedTestnetContract(slot: number) {
-  return {
-    solidityName: architectureNames[slot - 1],
-    architectureSlot: slot,
-    purpose: `Verified architecture fixture ${slot}.`,
-    networkId: "testnet",
-    chainId: 46_630,
-    observedChainId: 46_630,
-    address: `0x${slot.toString(16).padStart(40, "0")}`,
-    deploymentStatus: "verified",
-    deployerAddress: `0x${"1".repeat(39)}${slot.toString(16)}`,
-    transactionHash: `0x${slot.toString(16).padStart(64, "0")}`,
-    receiptStatus: "success",
-    blockNumber: String(1000 + slot),
-    runtimeBytecodeHash: `0x${"a".repeat(63)}${slot.toString(16)}`,
-    sourceVerification: "not_verified",
-  };
-}
-
 test("prints a read-only Testnet preflight using the configured chain and RPC", async () => {
   const calls: Array<{ url: string; method: string }> = [];
   const result = await simulateDeployment("testnet", {
@@ -229,18 +197,23 @@ test("renders both registries only for explicit all-network selection", async ()
   assert.ok(calls.some((call) => call.startsWith("https://robinhood.rpc.pinax.network:")));
 });
 
-test("renders four verified swap slots as deployed but inactive and keeps Mainnet empty", async () => {
-  const verifiedContracts = [6, 7, 8, 9].map(verifiedTestnetContract);
-  const testnetWithDeployments = {
-    ...structuredClone(testnetManifest),
-    contracts: verifiedContracts,
-  };
+test("renders validated Testnet deployments dynamically and keeps Mainnet empty", async () => {
+  const testnetDeployments = testnetManifest.contracts.filter((contract) => contract.deploymentStatus === "verified");
+  const mainnetManifestContracts = mainnetManifest.contracts as Array<{ deploymentStatus?: string }>;
+  const mainnetDeployments = mainnetManifestContracts.filter((contract) => contract.deploymentStatus === "verified");
+  const testnetDeploymentCount = testnetDeployments.length;
+  const mainnetDeploymentCount = mainnetDeployments.length;
+  const slotTen = testnetDeployments.find((contract) => contract.architectureSlot === 10);
+  assert.equal(testnetDeploymentCount, 5, "the current Testnet manifest has five verified architecture deployments");
+  assert.equal(mainnetDeploymentCount, 0, "the current Mainnet manifest remains empty");
+  assert.equal(slotTen?.address, "0x61c3DC95B31977e6F3a3373eC5BAb52477E96Ba2");
+
   const result = await simulateDeployment("all", {
     color: true,
     colorDepth: "16",
     columns: 120,
     deploymentManifests: {
-      testnet: testnetWithDeployments,
+      testnet: structuredClone(testnetManifest),
       mainnet: structuredClone(mainnetManifest),
     },
     fetchImpl: async (_url, init) => {
@@ -251,15 +224,15 @@ test("renders four verified swap slots as deployed but inactive and keeps Mainne
   });
 
   assert.equal(result.exitCode, 0);
-  assert.match(result.output, /TESTNET ARCHITECTURE\s+│\s+4\/10 manifest-verified/);
-  assert.match(result.output, /MAINNET ARCHITECTURE\s+│\s+0\/10 manifest-verified/);
+  assert.match(result.output, new RegExp(`TESTNET ARCHITECTURE\\s+│\\s+${testnetDeploymentCount}/10 manifest-verified`));
+  assert.match(result.output, new RegExp(`MAINNET ARCHITECTURE\\s+│\\s+${mainnetDeploymentCount}/10 manifest-verified`));
   assert.match(result.output, /DEPLOYED · INACTIVE/);
   assert.match(result.output, /\u001b\[32mDEPLOYMENT STATUS[^\u001b]+DEPLOYED · INACTIVE/);
   assert.match(result.output, /MANIFEST EVIDENCE\s+│\s+VERIFIED/);
   assert.match(result.output, /SECURITY READINESS\s+│\s+SECURITY NO-GO/);
   assert.match(result.output, /\u001b\[31mSECURITY READINESS[^\u001b]+SECURITY NO-GO/);
-  for (const contract of verifiedContracts) {
-    assert.ok(result.output.includes(contract.solidityName!), `${contract.solidityName} should be listed`);
+  for (const contract of testnetDeployments) {
+    assert.ok(result.output.includes(contract.solidityName), `${contract.solidityName} should be listed`);
     assert.ok(result.output.includes(contract.address), `${contract.address} should come from the supplied manifest`);
   }
   assert.match(result.output, /STANDALONE TESTNET EVIDENCE ANCHOR/);

@@ -98,6 +98,8 @@ export function SwarmLaunch({ live, capabilities, topicId, onTopic, onStart, can
     : capabilities.unavailableReason === "ai_billing_not_approved"
       ? "Billing approval required"
       : capabilities.providerName ?? (capabilities.provider === "available" ? "Available" : "Unavailable");
+  const showTechnicalProviderDetails = capabilities?.provider === "available"
+    && (capabilities.providerVendor || capabilities.providerModel);
   const billingStatus = !capabilities
     ? uncheckedStatus
     : capabilities.billing === "available"
@@ -118,13 +120,22 @@ export function SwarmLaunch({ live, capabilities, topicId, onTopic, onStart, can
         ))}
       </div>
       {live ? (
-        <dl className="kv sw-launch-availability" aria-label="Research service availability">
-          <div><dt>Provider</dt><dd>{providerStatus}</dd></div>
-          <div><dt>AI billing approval</dt><dd>{billingStatus}</dd></div>
-          <div><dt>Worker</dt><dd>{capabilities?.worker ?? uncheckedStatus}</dd></div>
-          <div><dt>Persistence</dt><dd>{capabilities?.persistence ?? uncheckedStatus}</dd></div>
-          <div><dt>Approved sources</dt><dd>{capabilities?.sourceCount ?? uncheckedStatus}</dd></div>
-        </dl>
+        <>
+          <dl className="kv sw-launch-availability" aria-label="Research service availability">
+            <div><dt>Provider</dt><dd>{providerStatus}</dd></div>
+            <div><dt>AI billing approval</dt><dd>{billingStatus}</dd></div>
+            <div><dt>Worker</dt><dd>{capabilities?.worker ?? uncheckedStatus}</dd></div>
+            <div><dt>Persistence</dt><dd>{capabilities?.persistence ?? uncheckedStatus}</dd></div>
+            <div><dt>Approved sources</dt><dd>{capabilities?.sourceCount ?? uncheckedStatus}</dd></div>
+          </dl>
+          {showTechnicalProviderDetails ? (
+            <details>
+              <summary>Technical details</summary>
+              <p>{capabilities.providerVendor ?? "External model provider"}{capabilities.providerModel ? ` · ${capabilities.providerModel}` : ""}</p>
+              <p>VEYRA coordinates this provider; it does not claim a proprietary trained model.</p>
+            </details>
+          ) : null}
+        </>
       ) : null}
       <div className="sw-go">
         <h2 className="ov-h">2 · Start</h2>

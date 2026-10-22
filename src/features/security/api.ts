@@ -3,6 +3,7 @@ import "server-only";
 import { hashRateLimitKey, readCookie, verifySessionCookie } from "./auth";
 import { USER_SESSION_COOKIE, verifyUserSessionCookie } from "./wallet-auth";
 import { getResearchStore, StoreNotConfiguredError } from "./store";
+import { resolveResearchRateLimit } from "./rate-limit-policy";
 import { getProjectName } from "@/lib/project-brand";
 
 export function apiError(status: number, code: string, message: string, headers?: HeadersInit): Response {
@@ -19,14 +20,16 @@ export async function requireResearchAccess(request: Request, limit = 60, window
   const sessionKey = operatorSession ?? userSession?.sessionKey;
   if (!sessionKey) return { response: apiError(401, "authentication_required", `A valid ${getProjectName()} session is required.`) } as const;
   const principalKey = role === "user" ? userSession?.address.toLowerCase() ?? sessionKey : sessionKey;
-  const effectiveLimit = role === "user" && bucket === "create-run" ? Math.min(limit, 3) : limit;
+  const effectiveLimit = resolveResearchRateLimit(role, bucket, limit);
 
   try {
     const store = getResearchStore();
     const rate = await store.takeRateLimit(hashRateLimitKey(`${bucket}:${principalKey}`), effectiveLimit, windowMs);
     if (!rate.allowed) {
       return {
-        response: apiError(429, "rate_limit_exceeded", "Too many requests. Try again later.", {
+        response: apiError(429, "rate_limit_exceeded", role === "user" && bucket === "create-run"
+          ? "Only one research run per wallet may be created in a 60-minute window."
+          : "Too many requests. Try again later.", {
           "retry-after": String(Math.ceil(windowMs / 1_000)),
         }),
       } as const;

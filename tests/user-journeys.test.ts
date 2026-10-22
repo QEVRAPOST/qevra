@@ -12,6 +12,7 @@ import { SecurityApiClientError } from "@/features/security/client";
 import { startBlocker, SwarmLaunch } from "@/components/dashboard/SwarmLaunch";
 import { SwapView } from "@/components/dashboard/SwapView";
 import { buildLiveAppModel } from "@/features/dashboard/live-model";
+import { DEFAULT_RESEARCH_TOPIC_ID } from "@/features/security/topics";
 import type { AppModelValue } from "@/types";
 
 function renderWithLiveModel(Component: ComponentType): string {
@@ -31,6 +32,10 @@ function renderWithLiveModel(Component: ComponentType): string {
   } as unknown as AppModelValue;
   return renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(Component)));
 }
+
+test("Security Swarm starts with the read-only Robinhood research topic selected", () => {
+  assert.equal(DEFAULT_RESEARCH_TOPIC_ID, "robinhood-readonly-wallet");
+});
 
 test("Security entry leads with wallet sign-in and keeps the separate operator form secondary", () => {
   const gate = createElement(LiveAccessGate, {

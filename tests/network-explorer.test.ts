@@ -247,12 +247,13 @@ test("contract rows expose a keyboard-operable details toggle and retain full de
   }
 });
 
-test("four deployed Testnet manifest entries render as 4/10 without a Mainnet registry", () => {
+test("deployed Testnet fixture records render from their actual count without a Mainnet registry", () => {
   const names = [
     "VeyraTokenPolicyRegistry",
     "VeyraRouterRegistry",
     "VeyraSwapIntentGuard",
     "VeyraSwapExecutor",
+    "VeyraResearchAttestationRegistry",
   ];
   const records = names.map((name, index) => {
     const slot = index + 6;
@@ -274,14 +275,18 @@ test("four deployed Testnet manifest entries render as 4/10 without a Mainnet re
     };
   });
   const markup = renderNetworks("testnet", { status: "loading" }, records);
+  const deploymentCount = records.length;
+  const inactiveCount = records.filter((record) => record.architectureSlot >= 6 && record.architectureSlot <= 9).length;
+  const blockedCount = deploymentCount - inactiveCount;
 
-  assert.match(markup, /<strong>4\/10<\/strong> deployed/);
+  assert.match(markup, new RegExp(`<strong>${deploymentCount}\\/10<\\/strong> deployed`));
   assert.doesNotMatch(markup, /<strong>0\/10<\/strong> deployed/);
   assert.doesNotMatch(markup, /id="h-ne-registry-mainnet"/);
-  assert.equal((markup.match(/>DEPLOYED<\/span>/g) ?? []).length, 4);
-  assert.equal((markup.match(/<dd>NOT VERIFIED<\/dd>/g) ?? []).length, 4);
-  assert.equal((markup.match(/>INACTIVE<\/span>/g) ?? []).length, 4);
-  assert.equal((markup.match(/<dd>Verified on-chain record<\/dd>/g) ?? []).length, 4);
+  assert.equal((markup.match(/>DEPLOYED<\/span>/g) ?? []).length, deploymentCount);
+  assert.equal((markup.match(/<dd>NOT VERIFIED<\/dd>/g) ?? []).length, deploymentCount);
+  assert.equal((markup.match(/>INACTIVE<\/span>/g) ?? []).length, inactiveCount);
+  assert.equal((markup.match(/>SECURITY BLOCKED<\/span>/g) ?? []).length, blockedCount);
+  assert.equal((markup.match(/<dd>Verified on-chain record<\/dd>/g) ?? []).length, deploymentCount);
   for (const record of records) {
     assert.match(markup, new RegExp(record.name));
     assert.match(markup, new RegExp(record.address));
@@ -318,34 +323,58 @@ test("Networks renders all ten slots for only the selected network and keeps thr
   const testnetTable = tableFor(testnetMarkup, "Robinhood Testnet");
   const mainnetTable = tableFor(mainnetMarkup, "Robinhood Mainnet");
   const rowCount = (table: string) => (table.match(/class="ne-contract"/g) ?? []).length;
-
-  assert.equal(registry.architectureSlots.filter((slot) => slot.networkId === "testnet").length, 10);
-  assert.equal(registry.architectureSlots.filter((slot) => slot.networkId === "mainnet").length, 10);
-  assert.equal(rowCount(testnetTable), 10);
-  assert.equal(rowCount(mainnetTable), 10);
-  assert.match(testnetMarkup, /<strong>4\/10<\/strong> deployed/);
-  assert.match(mainnetMarkup, /<strong>0\/10<\/strong> deployed/);
-  assert.match(testnetMarkup, /aria-label="4 of 10 architecture contracts deployed based on verified on-chain records"/);
+  const testnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "testnet");
+  const mainnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "mainnet");
+  const testnetSlots = registry.architectureSlots.filter((slot) => slot.networkId === "testnet");
+  const mainnetSlots = registry.architectureSlots.filter((slot) => slot.networkId === "mainnet");
+  const readinessCounts = (networkId: "testnet" | "mainnet") => {
+    const slots = registry.architectureSlots.filter((slot) => slot.networkId === networkId);
+    const records = registry.roadmapContracts.filter((record) => record.networkId === networkId);
+    return slots.reduce<Record<string, number>>((counts, slot) => {
+      const deployed = records.some((record) => record.architectureSlot === slot.slot);
+      const readiness = (slot.readiness ?? "").toLowerCase();
+      const status = deployed && slot.slot >= 6 && slot.slot <= 9
+        ? "INACTIVE"
+        : readiness === "active" || readiness === "ready"
+          ? "ACTIVE"
+          : readiness === "blocked" || readiness === "hard_no_go"
+            ? "SECURITY BLOCKED"
+            : "INACTIVE";
+      counts[status] = (counts[status] ?? 0) + 1;
+      return counts;
+    }, {});
+  };
+  assert.equal(testnetSlots.length, 10);
+  assert.equal(mainnetSlots.length, 10);
+  assert.equal(rowCount(testnetTable), testnetSlots.length);
+  assert.equal(rowCount(mainnetTable), mainnetSlots.length);
+  assert.equal(testnetRecords.length, 5, "the validated Testnet manifest currently contains five architecture deployments");
+  assert.equal(mainnetRecords.length, 0, "the validated Mainnet manifest currently contains no architecture deployments");
+  assert.match(testnetMarkup, new RegExp(`<strong>${testnetRecords.length}\\/10<\\/strong> deployed`));
+  assert.match(mainnetMarkup, new RegExp(`<strong>${mainnetRecords.length}\\/10<\\/strong> deployed`));
+  assert.match(testnetMarkup, new RegExp(`aria-label="${testnetRecords.length} of 10 architecture contracts deployed based on verified on-chain records"`));
   assert.match(testnetMarkup, /manifest-verified on-chain records only/i);
   assert.doesNotMatch(testnetMarkup, /Architecture slot status on Robinhood Mainnet/);
   assert.doesNotMatch(mainnetMarkup, /Architecture slot status on Robinhood Testnet/);
   assert.doesNotMatch(testnetTable, new RegExp("<th scope=\"col\">Source Verification</th>"));
   assert.match(testnetTable, new RegExp("<dt>Source verification</dt><dd>NOT VERIFIED</dd>"));
-  assert.equal((testnetTable.match(/>DEPLOYED<\/span>/g) ?? []).length, 4);
-  assert.equal((testnetTable.match(/>NOT DEPLOYED<\/span>/g) ?? []).length, 6);
-  assert.equal((testnetTable.match(/<dd>NOT VERIFIED<\/dd>/g) ?? []).length, 4);
-  assert.equal((testnetTable.match(/<dd>NOT APPLICABLE<\/dd>/g) ?? []).length, 6);
-  assert.equal((testnetTable.match(/>INACTIVE<\/span>/g) ?? []).length, 4);
-  assert.equal((testnetTable.match(/>SECURITY BLOCKED<\/span>/g) ?? []).length, 6);
-  assert.equal((mainnetTable.match(/>NOT DEPLOYED<\/span>/g) ?? []).length, 10);
-  assert.equal((mainnetTable.match(/<dd>NOT APPLICABLE<\/dd>/g) ?? []).length, 10);
-  assert.equal((mainnetTable.match(/>SECURITY BLOCKED<\/span>/g) ?? []).length, 10);
+  assert.equal((testnetTable.match(/>DEPLOYED<\/span>/g) ?? []).length, testnetRecords.length);
+  assert.equal((testnetTable.match(/aria-label="Copy address"/g) ?? []).length, testnetRecords.length);
+  assert.equal((testnetTable.match(/>NOT DEPLOYED<\/span>/g) ?? []).length, testnetSlots.length - testnetRecords.length);
+  assert.equal((testnetTable.match(/<dd>NOT VERIFIED<\/dd>/g) ?? []).length, testnetRecords.filter((record) => record.sourceVerification === "not_verified").length);
+  assert.equal((testnetTable.match(/<dd>NOT APPLICABLE<\/dd>/g) ?? []).length, testnetSlots.length - testnetRecords.length);
+  assert.equal((testnetTable.match(/>INACTIVE<\/span>/g) ?? []).length, readinessCounts("testnet").INACTIVE ?? 0);
+  assert.equal((testnetTable.match(/>SECURITY BLOCKED<\/span>/g) ?? []).length, readinessCounts("testnet")["SECURITY BLOCKED"] ?? 0);
+  assert.equal((mainnetTable.match(/>NOT DEPLOYED<\/span>/g) ?? []).length, mainnetSlots.length - mainnetRecords.length);
+  assert.equal((mainnetTable.match(/<dd>NOT APPLICABLE<\/dd>/g) ?? []).length, mainnetSlots.length - mainnetRecords.length);
+  assert.equal((mainnetTable.match(/>SECURITY BLOCKED<\/span>/g) ?? []).length, readinessCounts("mainnet")["SECURITY BLOCKED"] ?? 0);
 
   for (const slot of registry.architectureSlots.filter((item) => item.networkId === "testnet")) {
     assert.ok(testnetTable.includes(slot.solidityName));
     assert.ok(testnetTable.includes(slot.reason ?? ""));
   }
   for (const record of registry.roadmapContracts.filter((item) => item.networkId === "testnet")) {
+    assert.ok(testnetTable.includes(`<code>${record.address}</code>`));
     assert.match(testnetTable, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${record.address}"`));
     assert.match(testnetTable, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/tx/${record.transactionHash}"`));
   }
@@ -357,10 +386,12 @@ test("Networks renders all ten slots for only the selected network and keeps thr
   assert.match(standaloneTable, /<dd>NOT VERIFIED<\/dd>/);
 });
 
-test("all four validated Testnet addresses are fully visible in their Contract Address cells", () => {
+test("all validated Testnet addresses are fully visible in their Contract Address cells", () => {
   const registry = loadVerifiedVeyraDeployments();
   const records = registry.roadmapContracts.filter((record) => record.networkId === "testnet");
-  assert.equal(records.length, 4, "the current validated Testnet manifest should provide four architecture deployments");
+  const slotTen = records.find((record) => record.architectureSlot === 10);
+  assert.ok(slotTen, "the validated Testnet manifest should include architecture slot 10");
+  assert.equal(slotTen.address, "0x61c3DC95B31977e6F3a3373eC5BAb52477E96Ba2");
 
   const markup = renderNetworks(
     "testnet",

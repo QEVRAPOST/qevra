@@ -15,6 +15,7 @@ import {
 } from "@/lib/content/copy-lock";
 import { useIllustration } from "@/lib/use-illustration";
 import { illustrationModel, JOURNEY, journeyPhase, pipelineFor } from "@/lib/swarm-view";
+import { DEFAULT_RESEARCH_TOPIC_ID } from "@/features/security/topics";
 import type { ResearchTopicId } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
@@ -56,7 +57,7 @@ function SecurityResearchView() {
   const requestedRunId = useRef<string | null>(null);
   /* a run the service has just persisted is shown at once: adjusted during render, once per new id */
   const [seenPreferred, setSeenPreferred] = useState<string | undefined>(undefined);
-  const [topicId, setTopicId] = useState<ResearchTopicId>("security-evidence");
+  const [topicId, setTopicId] = useState<ResearchTopicId>(DEFAULT_RESEARCH_TOPIC_ID);
   const loadResearchRun = researchAccess?.loadResearchRun;
   if (wanted !== seenWanted) {
     setSeenWanted(wanted);

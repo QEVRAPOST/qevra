@@ -486,6 +486,7 @@ export type ProviderConfiguration =
   | {
       status: "available";
       provider: ModelProvider;
+      vendor?: string;
       model: string;
       profile: {
         maxOutputTokens: number;
@@ -567,6 +568,7 @@ export function getModelProvider(env: NodeJS.ProcessEnv = process.env, runtime: 
 
   return {
     status: "available",
+    vendor: groqGptOss ? "Groq" : "OpenAI-compatible endpoint",
     model,
     profile: {
       maxOutputTokens,

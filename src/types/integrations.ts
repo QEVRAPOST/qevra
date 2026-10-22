@@ -130,6 +130,9 @@ export interface DeterministicTestSummary {
 export interface SecurityResearchCapabilities {
   provider: IntegrationAvailability;
   providerName?: string;
+  /** Safe provider identity for optional technical disclosure; never a credential or endpoint URL. */
+  providerVendor?: string;
+  providerModel?: string;
   authentication: IntegrationAvailability;
   /** Explicit owner approval gate for billable model requests. */
   billing: IntegrationAvailability;

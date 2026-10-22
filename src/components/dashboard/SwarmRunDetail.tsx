@@ -268,7 +268,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
                 </div>
               ) : null}
             </dl>
-            {run.zeroFindings ? <EmptyState title="No findings recorded.">This is not a statement that none exist. It only says no finding has been recorded.</EmptyState> : null}
+            {run.zeroFindings ? <EmptyState title="Completed with no substantiated findings.">This run completed without recording substantiated findings. It does not establish that the subject is secure or that no issues exist. Review the available sources and limitations before relying on this report.</EmptyState> : null}
             {run.withheld ? <div className="withheld">Detail withheld. A real finding links to its responsible disclosure path here, not a blank.</div> : null}
             {live && run.detailUnavailable ? (
               <p className="dnote" role="status">

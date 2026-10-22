@@ -141,6 +141,53 @@ test("the explorer caveat appears beside the unchanged saved finding", () => {
   assert.match(markup, /Verification<\/span><span>Completed/);
 });
 
+test("a completed zero-finding report says no substantiated findings without implying safety", () => {
+  const run: SwarmRun = {
+    origin: "live",
+    id: "77777777-7777-4777-8777-777777777777",
+    role: "Research",
+    goal: "Review the approved source evidence.",
+    status: { label: "Research completed", tone: "neutral", material: "outline" },
+    shows: "The persisted research workflow completed.",
+    how: "Three recorded stages processed approved sources.",
+    notShown: "No independent security assessment.",
+    limitation: "Only one approved source was available.",
+    evidence: "One of two sources.",
+    zeroFindings: true,
+    humanReview: { recorded: false },
+    liveDetail: {
+      id: "77777777-7777-4777-8777-777777777777",
+      topicId: "security-evidence",
+      topic: "Approved source evidence",
+      status: "completed",
+      currentStage: "completed",
+      createdAt: "2026-10-22T05:18:35.044Z",
+      updatedAt: "2026-10-22T05:20:45.818Z",
+      agents: [
+        { role: "research", status: "completed" },
+        { role: "analysis", status: "completed" },
+        { role: "verification", status: "completed" },
+      ],
+      sourceCount: 2,
+      availableSourceCount: 1,
+      findingCount: 0,
+      events: [],
+      sources: [],
+      findings: [],
+      assumptions: [],
+      limitations: ["Only one of two approved sources was available."],
+      recommendations: [],
+      deterministicTests: [],
+      humanReview: { status: "not_reviewed" },
+    },
+  };
+
+  const markup = render("src/components/dashboard/SwarmRunDetail", "SwarmRunDetail", JSON.stringify({ run, headingId: "report-heading" }));
+  assert.match(markup, /Completed with no substantiated findings/);
+  assert.match(markup, /does not establish that the subject is secure or that no issues exist/i);
+  assert.doesNotMatch(markup, /assessment passed|proves the system is secure/i);
+});
+
 test("saved run history truncates the selectable row and discloses complete question and metadata on demand", async () => {
   const historyUiModule = await import("@/components/dashboard/RunHistoryItem").catch(() => ({}));
   const historyUi = historyUiModule as unknown as Record<string, unknown>;
