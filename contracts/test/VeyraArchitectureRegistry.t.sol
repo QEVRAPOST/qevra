@@ -8,8 +8,19 @@ import {VeyraAccessManaged} from "../src/access/VeyraAccessManaged.sol";
 
 interface VmVeyraRegistry {
     function expectRevert(bytes calldata revertData) external;
+    function expectEmit(bool checkTopic1, bool checkTopic2, bool checkTopic3, bool checkData, address emitter) external;
     function prank(address sender) external;
+    function deal(address account, uint256 newBalance) external;
 }
+
+event AttestationRecorded(
+    bytes32 indexed attestationId,
+    bytes32 indexed reportDigest,
+    bytes32 indexed runId,
+    bytes32 manifestDigest,
+    address attestor,
+    uint256 attestedAt
+);
 
 contract RegistryTokenMock {
     function decimals() external pure returns (uint8) {
@@ -95,8 +106,10 @@ contract VeyraArchitectureRegistryTest {
         require(value.attestor == ATTESTOR, "attestor should be recorded");
         require(value.attestedAt == block.timestamp, "timestamp should be recorded");
 
+        address secondAttestor = address(0xA771);
+        registry.grantRole(registry.ATTESTOR_ROLE(), secondAttestor);
         vm.expectRevert(abi.encodeWithSelector(VeyraResearchAttestationRegistry.DuplicateRun.selector, runId));
-        vm.prank(ATTESTOR);
+        vm.prank(secondAttestor);
         registry.attest(keccak256("other report"), manifestDigest, runId);
     }
 
@@ -113,5 +126,94 @@ contract VeyraArchitectureRegistryTest {
 
         vm.expectRevert(abi.encodeWithSelector(VeyraResearchAttestationRegistry.ZeroDigest.selector));
         registry.attest(bytes32(0), digest, runId);
+    }
+
+    function test_attestationRegistryRejectsZeroInitialAttestor() public {
+        vm.expectRevert(abi.encodeWithSelector(VeyraAccessManaged.ZeroAddress.selector));
+        new VeyraResearchAttestationRegistry(address(0));
+    }
+
+    function test_attestationRegistryStartsWithOnlyTheSelectedAttestor() public {
+        address selectedAttestor = 0xfA142bF0383782Caa349C5C56A7B7D565eEFA562;
+        VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(selectedAttestor);
+        bytes32 attestorRole = registry.ATTESTOR_ROLE();
+
+        require(registry.hasRole(attestorRole, selectedAttestor), "selected publisher must be authorized");
+        require(!registry.hasRole(attestorRole, NON_OWNER), "unlisted publisher must remain unauthorized");
+        require(!registry.hasRole(attestorRole, address(0)), "zero address must not be authorized");
+    }
+
+    function test_attestationRegistryOwnerCanGrantAndRevokePublisher() public {
+        VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+        address additionalAttestor = address(0xA771);
+        bytes32 attestorRole = registry.ATTESTOR_ROLE();
+
+        vm.expectRevert(abi.encodeWithSelector(VeyraAccessManaged.Unauthorized.selector, NON_OWNER));
+        vm.prank(NON_OWNER);
+        registry.grantRole(attestorRole, additionalAttestor);
+
+        registry.grantRole(attestorRole, additionalAttestor);
+        require(registry.hasRole(attestorRole, additionalAttestor), "owner grant should authorize publisher");
+
+        vm.expectRevert(abi.encodeWithSelector(VeyraAccessManaged.Unauthorized.selector, NON_OWNER));
+        vm.prank(NON_OWNER);
+        registry.revokeRole(attestorRole, additionalAttestor);
+
+        registry.revokeRole(attestorRole, additionalAttestor);
+        require(!registry.hasRole(attestorRole, additionalAttestor), "revocation should remove publisher");
+        vm.expectRevert(
+            abi.encodeWithSelector(VeyraResearchAttestationRegistry.UnauthorizedAttestor.selector, additionalAttestor)
+        );
+        vm.prank(additionalAttestor);
+        registry.attest(bytes32(uint256(1)), bytes32(uint256(2)), bytes32(uint256(3)));
+    }
+
+    function test_attestationRegistryRejectsZeroManifestAndRunDigests() public {
+        VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+        bytes32 reportDigest = bytes32(uint256(1));
+        bytes32 manifestDigest = bytes32(uint256(2));
+        bytes32 runId = bytes32(uint256(3));
+
+        vm.expectRevert(abi.encodeWithSelector(VeyraResearchAttestationRegistry.ZeroDigest.selector));
+        vm.prank(ATTESTOR);
+        registry.attest(reportDigest, bytes32(0), runId);
+
+        vm.expectRevert(abi.encodeWithSelector(VeyraResearchAttestationRegistry.ZeroDigest.selector));
+        vm.prank(ATTESTOR);
+        registry.attest(reportDigest, manifestDigest, bytes32(0));
+    }
+
+    function test_attestationRegistryEmitsExactDigestOnlyEvidence() public {
+        VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+        // Test-only commitments; production publishers need high-entropy secret salts.
+        bytes32 reportDigest = keccak256(abi.encode(bytes32(uint256(0x51a7)), "private report"));
+        bytes32 manifestDigest = keccak256(abi.encode(bytes32(uint256(0x91c3)), "private manifest"));
+        bytes32 runId = keccak256(abi.encode(bytes32(uint256(0x2e11)), "private run"));
+        bytes32 expectedId = keccak256(
+            abi.encode(block.chainid, address(registry), ATTESTOR, reportDigest, manifestDigest, runId)
+        );
+
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit AttestationRecorded(expectedId, reportDigest, runId, manifestDigest, ATTESTOR, block.timestamp);
+        vm.prank(ATTESTOR);
+        bytes32 actualId = registry.attest(reportDigest, manifestDigest, runId);
+
+        require(actualId == expectedId, "attestation id must bind the domain and digest fields");
+        VeyraResearchAttestationRegistry.Attestation memory value = registry.getAttestation(actualId);
+        require(value.reportDigest == reportDigest, "report content must be represented by its digest");
+        require(value.manifestDigest == manifestDigest, "manifest content must be represented by its digest");
+        require(value.runId == runId, "run content must be represented by its digest");
+        require(value.attestor == ATTESTOR && value.exists, "authorized publisher must be attributable");
+        require(value.attestedAt == block.timestamp, "event and stored timestamp must match");
+    }
+
+    function test_attestationRegistryCannotReceiveEther() public {
+        VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+        vm.deal(address(this), 1 wei);
+
+        (bool accepted,) = address(registry).call{value: 1 wei}("");
+
+        require(!accepted, "registry must not accept Ether");
+        require(address(registry).balance == 0, "registry must not custody Ether");
     }
 }

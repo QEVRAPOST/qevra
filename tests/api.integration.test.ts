@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { toLiveDashboardSnapshot } from "@/features/dashboard/live-adapters";
-import type { ReadOnlyWalletState, ResearchRunDetail, SecurityResearchCapabilities } from "@/types/integrations";
+import type { SecurityResearchCapabilities } from "@/types/integrations";
 
 const baseUrl = process.env.QEVRA_API_INTEGRATION_URL?.replace(/\/+$/, "");
 const accessToken = process.env.QEVRA_ACCESS_TOKEN;
@@ -20,7 +19,7 @@ async function postJson(path: string, body: unknown, cookie?: string) {
   });
 }
 
-test("local authenticated API creates, processes, and retrieves a failed no-provider run safely", { skip: !enabled }, async () => {
+test("local authenticated API refuses new research runs while provider execution is unavailable", { skip: !enabled }, async () => {
   const unauthorized = await postJson("/api/security/runs", { topicId: "security-evidence" });
   assert.equal(unauthorized.status, 401);
   const unauthorizedCapabilities = await fetch(`${baseUrl}/api/security/capabilities`);
@@ -53,15 +52,23 @@ test("local authenticated API creates, processes, and retrieves a failed no-prov
   assert.equal(capabilities.persistence, "available");
   assert.equal(capabilities.worker, "available");
   assert.equal(capabilities.provider, "not_configured");
+  assert.notEqual(capabilities.unavailableReason, undefined);
+
+  const historyBeforeResponse = await fetch(`${baseUrl}/api/security/runs?limit=50`, {
+    headers: { cookie },
+    signal: AbortSignal.timeout(10_000),
+  });
+  assert.equal(historyBeforeResponse.status, 200);
+  const historyBefore = await historyBeforeResponse.json() as { runs: Array<{ id: string }> };
 
   const invalid = await postJson("/api/security/runs", { topicId: "security-evidence", command: "not allowed" }, cookie);
   assert.equal(invalid.status, 400);
 
-  const created = await postJson("/api/security/runs", { topicId: "security-evidence" }, cookie);
-  assert.equal(created.status, 202);
-  const createdBody = await created.json() as { run: { id: string; status: string } };
-  assert.equal(createdBody.run.status, "queued");
-  assert.match(createdBody.run.id, /^[0-9a-f-]{36}$/i);
+  const unavailable = await postJson("/api/security/runs", { topicId: "security-evidence" }, cookie);
+  assert.equal(unavailable.status, 503);
+  const unavailableBody = await unavailable.json() as { error: { code: string } };
+  assert.equal(unavailableBody.error.code, capabilities.unavailableReason);
+  assert.equal(unavailable.headers.get("location"), null, "an unavailable run must not be queued");
 
   for (let index = 0; index < 6; index++) {
     const malformed = await postJson("/api/security/runs", { topicId: "unknown-topic" }, cookie);
@@ -70,36 +77,12 @@ test("local authenticated API creates, processes, and retrieves a failed no-prov
   const overQuota = await postJson("/api/security/runs", { topicId: "security-evidence" }, cookie);
   assert.equal(overQuota.status, 429);
 
-  let finalRun: ResearchRunDetail | undefined;
-  const deadline = Date.now() + 8_000;
-  while (Date.now() < deadline) {
-    const detail = await fetch(`${baseUrl}/api/security/runs/${createdBody.run.id}`, {
-      headers: { cookie },
-      signal: AbortSignal.timeout(5_000),
-    });
-    assert.equal(detail.status, 200);
-    const body = await detail.json() as { run: ResearchRunDetail };
-    finalRun = body.run;
-    if (finalRun?.status === "failed") break;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  assert.equal(finalRun?.status, "failed", "worker must persist the missing-provider failure");
-  assert.equal(finalRun?.errorCode, "model_provider_credentials_missing");
-  assert.ok(finalRun?.agents.every((agent) => agent.status === "blocked"));
-
-  const wallet: ReadOnlyWalletState = { status: "disconnected" };
-  const liveSnapshot = toLiveDashboardSnapshot({ capabilities, wallet, runs: [finalRun!] });
-  assert.equal(liveSnapshot.origin, "live");
-  assert.equal(liveSnapshot.security.runs[0]?.status, "failed");
-  assert.equal("exampleTag" in (liveSnapshot.security.runs[0] ?? {}), false);
-  assert.equal(liveSnapshot.wallet.qevraAccount.status, "not_built");
-
   const historyResponse = await fetch(`${baseUrl}/api/security/runs?limit=50`, {
     headers: { cookie },
     signal: AbortSignal.timeout(10_000),
   });
   assert.equal(historyResponse.status, 200);
   const history = await historyResponse.json() as { runs: Array<{ id: string }> };
-  assert.ok(history.runs.some((run) => run.id === createdBody.run.id));
-  process.stdout.write(`verified local run ${createdBody.run.id}: queued -> failed without provider call\n`);
+  assert.deepEqual(history.runs.map((run) => run.id), historyBefore.runs.map((run) => run.id), "no new history row is created when live execution prerequisites are absent");
+  process.stdout.write("verified authenticated API reports unavailable and does not queue a run\n");
 });

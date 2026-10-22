@@ -12,6 +12,7 @@ import {
   POST as completeWalletSignIn,
 } from "@/app/api/auth/user/session/route";
 import { GET as getCapabilities } from "@/app/api/security/capabilities/route";
+import { POST as createResearchRun } from "@/app/api/security/runs/route";
 import { GET as listResearchRuns } from "@/app/api/security/runs/route";
 
 const origin = "http://localhost:3113";
@@ -37,6 +38,7 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   const userSessionSecret = "test-only-wallet-session-secret-0123456789";
   let challenge: { nonceHash: string; wallet_address: string; chain_id: number; message: string; expires_at: Date } | undefined;
   let consumed = false;
+  let liveWorkers = 1;
   const statements: Array<{ sql: string; values?: unknown[] }> = [];
 
   process.env.DATABASE_URL = fakeDatabaseUrl;
@@ -54,7 +56,7 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   }).query = async function (sql: string, values?: unknown[]) {
     statements.push({ sql, values });
     if (sql.includes("INSERT INTO qevra_rate_limits")) return { rows: [{ request_count: 1 }], rowCount: 1 };
-    if (sql.includes("SELECT count(*)::text AS count FROM qevra_security_workers")) return { rows: [{ count: "1" }], rowCount: 1 };
+    if (sql.includes("SELECT count(*)::text AS count FROM qevra_security_workers")) return { rows: [{ count: String(liveWorkers) }], rowCount: 1 };
     if (sql.includes("INSERT INTO veyra_user_auth_challenges")) {
       challenge = {
         nonceHash: String(values?.[0]),
@@ -147,6 +149,36 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     assert.equal(historyResponse.status, 200);
     assert.ok(statements.some(({ sql, values }) => sql.includes("WHERE owner_id = $1")
       && values?.[0] === wallet.address.toLowerCase()));
+
+    const runRequest = () => new Request(`${origin}/api/security/runs`, {
+      method: "POST",
+      headers: { origin, host: "localhost:3113", cookie: walletCookie, "content-type": "application/json" },
+      body: JSON.stringify({ topicId: "security-evidence" }),
+    });
+    const billingBlocked = await createResearchRun(runRequest());
+    if (!billingBlocked) throw new Error("billing gate should return a response");
+    assert.equal(billingBlocked.status, 503);
+    const billingError = await billingBlocked.json() as { error: { code: string; message: string } };
+    assert.equal(billingError.error.code, "ai_billing_not_approved");
+    assert.match(billingError.error.message, /QEVRA_AI_BILLING_APPROVED=true/);
+    assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO qevra_research_runs")), false);
+
+    process.env.QEVRA_AI_BILLING_APPROVED = "true";
+    liveWorkers = 0;
+    const workerBlocked = await createResearchRun(runRequest());
+    if (!workerBlocked) throw new Error("worker gate should return a response");
+    assert.equal(workerBlocked.status, 503);
+    const workerError = await workerBlocked.json() as { error: { code: string; message: string } };
+    assert.equal(workerError.error.code, "security_worker_not_running");
+    assert.match(workerError.error.message, /bun --env-file=\.qevra-data\/phase2\.env run security:worker/);
+    assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO qevra_research_runs")), false);
+
+    liveWorkers = 1;
+    const availableRun = await createResearchRun(runRequest());
+    if (!availableRun) throw new Error("available run should return a response");
+    assert.equal(availableRun.status, 202);
+    assert.equal((await availableRun.json() as { run: { status: string } }).run.status, "queued");
+    assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO qevra_research_runs")), true);
 
     const replay = await completeWalletSignIn(new Request(`${origin}/api/auth/user/session`, {
       method: "POST",

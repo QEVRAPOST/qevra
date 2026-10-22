@@ -15,6 +15,9 @@ export interface VeyraArchitectureSlot {
   address?: string;
 }
 
+/** Validated presentation metadata for one of the ten manifest architecture slots. */
+export type VeyraArchitectureSlotDefinition = Pick<VeyraArchitectureSlot, "slot" | "solidityName" | "readiness" | "reason">;
+
 export interface VeyraDeploymentManifest {
   schema: "veyra-contract-manifest-v1";
   project: "VEYRA";
@@ -51,6 +54,8 @@ export interface VeyraDeploymentManifestContract {
 }
 
 export interface ParsedVeyraDeploymentManifest {
+  /** Validated per-slot names and readiness reasons from this network's manifest. */
+  architectureSlots: VeyraArchitectureSlotDefinition[];
   /** Verified records mapped by Solidity name to one of the ten architecture slots. */
   roadmapContracts: VerifiedVeyraDeployment[];
   /** The standalone Testnet evidence anchor, kept outside roadmap progress. */
@@ -145,9 +150,36 @@ function getArchitectureSlotByName(input: unknown): Map<string, number> {
   return slots;
 }
 
+function getArchitectureSlotDefinitions(input: unknown): VeyraArchitectureSlotDefinition[] {
+  if (!Array.isArray(input)) return [];
+  const definitions: VeyraArchitectureSlotDefinition[] = [];
+  const usedNumbers = new Set<number>();
+  const usedNames = new Set<string>();
+  for (const raw of input) {
+    if (!isRecord(raw)
+      || !Number.isInteger(raw.slot)
+      || (raw.slot as number) < 1
+      || (raw.slot as number) > 10) continue;
+    const solidityName = nonEmptyText(raw.solidityName, 120);
+    const slot = raw.slot as number;
+    if (!solidityName || usedNumbers.has(slot) || usedNames.has(solidityName)) continue;
+    const readiness = nonEmptyText(raw.readiness, 80);
+    const reason = nonEmptyText(raw.reason, 1000);
+    definitions.push({
+      slot,
+      solidityName,
+      ...(readiness ? { readiness } : {}),
+      ...(reason ? { reason } : {}),
+    });
+    usedNumbers.add(slot);
+    usedNames.add(solidityName);
+  }
+  return definitions.sort((left, right) => left.slot - right.slot);
+}
+
 /** Normalize verified deployments from the versioned manifest while keeping the standalone anchor separate. */
 export function parseVerifiedVeyraManifest(networkId: NetworkId, input: unknown): ParsedVeyraDeploymentManifest {
-  const empty: ParsedVeyraDeploymentManifest = { roadmapContracts: [] };
+  const empty: ParsedVeyraDeploymentManifest = { architectureSlots: [], roadmapContracts: [] };
   if (!isRecord(input)) return empty;
   const network = NETWORKS.find((candidate) => candidate.id === networkId && candidate.available);
   if (!network
@@ -160,7 +192,8 @@ export function parseVerifiedVeyraManifest(networkId: NetworkId, input: unknown)
     return empty;
   }
 
-  const slotByName = getArchitectureSlotByName(input.architectureSlots);
+  const architectureSlots = getArchitectureSlotDefinitions(input.architectureSlots);
+  const slotByName = getArchitectureSlotByName(architectureSlots);
   const roadmapCandidates: VerifiedVeyraDeployment[] = [];
   for (const rawContract of input.contracts) {
     const evidence = parseVerifiedEvidence(networkId, network.chainId, rawContract);
@@ -179,6 +212,7 @@ export function parseVerifiedVeyraManifest(networkId: NetworkId, input: unknown)
     : undefined;
 
   return {
+    architectureSlots,
     roadmapContracts: getVerifiedVeyraDeployments(networkId, roadmapCandidates),
     ...(standalone ? { standaloneResearchEvidenceAnchor: standalone } : {}),
   };

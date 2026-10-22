@@ -10,6 +10,7 @@ export default function Page() {
     <NetworksView
       deploymentRecords={registry.roadmapContracts}
       standaloneResearchEvidenceAnchors={registry.standaloneResearchEvidenceAnchors}
+      architectureSlots={registry.architectureSlots}
     />
   );
 }

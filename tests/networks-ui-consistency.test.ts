@@ -28,16 +28,39 @@ function deployment(networkId: "testnet" | "mainnet", index: number): VerifiedVe
   };
 }
 
-function renderNetworks(records: readonly VerifiedVeyraDeployment[], standaloneResearchEvidenceAnchor?: VerifiedVeyraStandaloneDeployment): string {
+function renderNetworks(
+  records: readonly VerifiedVeyraDeployment[],
+  selectedNetwork: "testnet" | "mainnet" = "testnet",
+  standaloneResearchEvidenceAnchor?: VerifiedVeyraStandaloneDeployment,
+): string {
+  const slotsByNetworkAndNumber = new Map<string, {
+    networkId: VerifiedVeyraDeployment["networkId"];
+    slot: number;
+    solidityName: string;
+    readiness: string;
+    reason: string;
+  }>();
+  for (const record of records) {
+    const key = `${record.networkId}:${record.architectureSlot}`;
+    if (slotsByNetworkAndNumber.has(key)) continue;
+    slotsByNetworkAndNumber.set(key, {
+      networkId: record.networkId,
+      slot: record.architectureSlot,
+      solidityName: record.name,
+      readiness: "blocked",
+      reason: record.purpose ?? "Fixture blocker.",
+    });
+  }
+  const architectureSlots = [...slotsByNetworkAndNumber.values()];
   const source = [
     'import { createElement } from "react"',
     'import { renderToStaticMarkup } from "react-dom/server"',
     'import { ModelContext } from "./src/components/dashboard/AppModelContext.tsx"',
     'import { NetworksView } from "./src/components/dashboard/NetworksView.tsx"',
     'import { buildLiveAppModel } from "./src/features/dashboard/live-model.ts"',
-    'const model = buildLiveAppModel({ wallet: { status: "disconnected" }, selectedNetwork: "testnet", networkRpc: { status: "available", chainId: 46630, latestBlock: "123", observedAt: "2026-10-21T00:00:00.000Z" }, runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false })',
+    `const model = buildLiveAppModel({ wallet: { status: "disconnected" }, selectedNetwork: ${JSON.stringify(selectedNetwork)}, networkRpc: { status: "available", chainId: ${selectedNetwork === "testnet" ? 46630 : 4663}, latestBlock: "123", observedAt: "2026-10-21T00:00:00.000Z" }, runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false })`,
     'const value = { model, actions: { setNetwork() {}, setAmount() {}, pressSwapButton() {}, pressWalletButton() {}, pressLedgerAction() {}, refreshWallet() {}, refreshNetwork() {}, createSecurityRun() {}, logout() {} } }',
-    `process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(NetworksView, { deploymentRecords: ${JSON.stringify(records)}, standaloneResearchEvidenceAnchors: ${JSON.stringify(standaloneResearchEvidenceAnchor ? [standaloneResearchEvidenceAnchor] : [])} }))))`,
+    `process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(NetworksView, { deploymentRecords: ${JSON.stringify(records)}, standaloneResearchEvidenceAnchors: ${JSON.stringify(standaloneResearchEvidenceAnchor ? [standaloneResearchEvidenceAnchor] : [])}, architectureSlots: ${JSON.stringify(architectureSlots)} }))))`,
   ].join(";\n");
   return execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", source], {
     cwd: process.cwd(),
@@ -101,38 +124,42 @@ test("watch-only balance controls keep their action labels and shared button typ
   assert.doesNotMatch(markup, /font-mono/);
 });
 
-test("deployment registry groups verified records by chain, caps each network at ten, and exposes provenance", () => {
+test("deployment registry follows the selected network, caps slots at ten, and exposes provenance", () => {
   const records = [
     ...Array.from({ length: 11 }, (_, index) => deployment("testnet", index + 1)),
     deployment("mainnet", 101),
   ];
-  const markup = renderNetworks(records);
+  const testnetMarkup = renderNetworks(records);
+  const mainnetMarkup = renderNetworks(records, "mainnet");
 
-  assert.match(markup, /Robinhood Testnet/);
-  assert.match(markup, /Robinhood Mainnet/);
-  assert.equal((markup.match(/class="ne-contract"/g) ?? []).length, 11);
-  assert.match(markup, /testnet contract 10/);
-  assert.doesNotMatch(markup, /testnet contract 11/);
-  assert.match(markup, /mainnet contract 101/);
-  assert.match(markup, /Purpose for testnet contract 1\./);
-  assert.match(markup, /Full contract address/);
-  assert.match(markup, /10\/10/);
-  assert.match(markup, /1\/10/);
-  assert.match(markup, /Deployer/);
-  assert.match(markup, /Block number/);
-  assert.match(markup, /Manifest verified/);
-  assert.match(markup, /Not reported/);
-  assert.match(markup, /aria-label="View transaction"/);
-  assert.match(markup, /\/tx\/0x/);
-  assert.match(markup, /aria-label="View contract"/);
+  assert.match(testnetMarkup, /Robinhood Testnet/);
+  assert.doesNotMatch(testnetMarkup, /id="h-ne-registry-mainnet"/);
+  assert.equal((testnetMarkup.match(/class="ne-contract"/g) ?? []).length, 10);
+  assert.match(testnetMarkup, /testnet contract 10/);
+  assert.doesNotMatch(testnetMarkup, /testnet contract 11/);
+  assert.doesNotMatch(testnetMarkup, /mainnet contract 101/);
+  assert.match(testnetMarkup, /Purpose for testnet contract 1\./);
+  assert.match(testnetMarkup, /Full contract address/);
+  assert.match(testnetMarkup, /10\/10/);
+  assert.match(testnetMarkup, /Deployer/);
+  assert.match(testnetMarkup, /Block number/);
+  assert.match(testnetMarkup, /Verified on-chain record/);
+  assert.match(testnetMarkup, /NOT REPORTED/);
+  assert.match(testnetMarkup, /aria-label="View transaction"/);
+  assert.match(testnetMarkup, /\/tx\/0x/);
+  assert.match(testnetMarkup, /aria-label="View contract"/);
+  assert.equal((mainnetMarkup.match(/class="ne-contract"/g) ?? []).length, 1);
+  assert.match(mainnetMarkup, /mainnet contract 101/);
+  assert.doesNotMatch(mainnetMarkup, /testnet contract 1/);
+  assert.match(mainnetMarkup, /1\/10/);
 });
 
 test("empty deployment manifests show independent zero-of-ten progress", () => {
   const markup = renderNetworks([]);
   assert.match(markup, /No verified VEYRA deployments\./);
-  assert.equal((markup.match(/0\/10/g) ?? []).length, 2);
+  assert.equal((markup.match(/0\/10/g) ?? []).length, 1);
   assert.match(markup, /No verified VEYRA deployments on Robinhood Testnet\./);
-  assert.match(markup, /No verified VEYRA deployments on Robinhood Mainnet\./);
+  assert.doesNotMatch(markup, /No verified VEYRA deployments on Robinhood Mainnet\./);
 });
 
 test("standalone Evidence Anchor is displayed separately and excluded from roadmap progress", () => {
@@ -150,7 +177,7 @@ test("standalone Evidence Anchor is displayed separately and excluded from roadm
     blockNumber: "1",
     runtimeBytecodeHash: `0x${"b".repeat(64)}`,
   };
-  const markup = renderNetworks([], anchor);
+  const markup = renderNetworks([], "testnet", anchor);
 
   assert.match(markup, /VeyraResearchEvidenceAnchor/);
   assert.match(markup, /Standalone research utility/i);

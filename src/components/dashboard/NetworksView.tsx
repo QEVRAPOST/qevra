@@ -16,6 +16,7 @@ import {
   type VerifiedVeyraDeployment,
   type VerifiedVeyraStandaloneDeployment,
 } from "@/lib/config/veyra-deployments";
+import type { VeyraArchitectureSlotDefinition } from "@/lib/config/veyra-deployment-manifest";
 import { PROJECT_NAME } from "@/lib/project-brand";
 import type { NetworkId, NetworkRpcState } from "@/types/network";
 import { useAppModel } from "./DemoAppProvider";
@@ -84,28 +85,51 @@ function RegistryLinkAction({
   );
 }
 
+type NetworkArchitectureSlot = VeyraArchitectureSlotDefinition & { networkId: NetworkId };
+
 function DeploymentTableRow({
   deployment,
+  slot,
   standalone = false,
 }: {
-  deployment: VerifiedVeyraDeploymentEvidence;
+  deployment?: VerifiedVeyraDeploymentEvidence;
+  slot?: NetworkArchitectureSlot;
   standalone?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
-  const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
-  const transactionUrl = getExplorerTransactionUrl(deployment.networkId, deployment.transactionHash);
-  const swapInactive = !standalone
-    && "architectureSlot" in deployment
-    && typeof deployment.architectureSlot === "number"
-    && isSwapExecutionInactiveSlot(deployment.architectureSlot);
-  const sourceStatus = deployment.sourceVerification === "verified"
-    ? "Source verified"
-    : deployment.sourceVerification === "not_verified"
-      ? "Not verified"
-      : "Not reported";
-  const shortAddress = `${deployment.address.slice(0, 6)}…${deployment.address.slice(-4)}`;
-  const purpose = deployment.purpose ?? "Purpose not provided in the deployment manifest.";
+  const networkId = slot?.networkId ?? deployment?.networkId ?? "testnet";
+  const name = slot?.solidityName ?? deployment?.name ?? "Unknown contract";
+  const reason = slot?.reason;
+  const addressUrl = deployment ? getExplorerAddressUrl(networkId, deployment.address) : undefined;
+  const transactionUrl = deployment ? getExplorerTransactionUrl(networkId, deployment.transactionHash) : undefined;
+  const swapInactive = Boolean(deployment && slot && isSwapExecutionInactiveSlot(slot.slot));
+  const sourceStatus = !deployment
+    ? "NOT APPLICABLE"
+    : deployment.sourceVerification === "verified"
+      ? "VERIFIED"
+      : deployment.sourceVerification === "not_verified"
+        ? "NOT VERIFIED"
+        : "NOT REPORTED";
+  const readiness = slot?.readiness?.toLowerCase();
+  const operationalStatus = standalone
+    ? "NOT APPLICABLE"
+    : swapInactive
+      ? "INACTIVE"
+      : deployment && (readiness === "active" || readiness === "ready")
+        ? "ACTIVE"
+        : readiness === "blocked" || readiness === "hard_no_go"
+          ? "SECURITY BLOCKED"
+          : "INACTIVE";
+  const summary = reason ?? deployment?.purpose ?? "No readiness reason provided by the manifest.";
+  const networkLabel = networkId === "testnet" ? "Robinhood Testnet" : "Robinhood Mainnet";
+  const operationalClass = operationalStatus === "ACTIVE"
+    ? "active"
+    : operationalStatus === "SECURITY BLOCKED"
+      ? "blocked"
+      : operationalStatus === "INACTIVE"
+        ? "inactive"
+        : "na";
 
   return (
     <>
@@ -116,53 +140,62 @@ function DeploymentTableRow({
             type="button"
             aria-expanded={expanded}
             aria-controls={detailsId}
-            aria-label={`${expanded ? "Hide" : "Show"} details for ${deployment.name}`}
+            aria-label={`${expanded ? "Hide" : "Show"} details for ${name}`}
             onClick={() => setExpanded((current) => !current)}
           >
             <ChevronDown aria-hidden="true" className="ne-row-chevron" />
             <span className="ne-contract-title">
-              <strong>{deployment.name}</strong>
-              <small>{purpose}</small>
+              <strong>{name}</strong>
+              <small>{summary}</small>
             </span>
           </button>
         </th>
-        <td data-label="Network">{deployment.networkId === "testnet" ? "Robinhood Testnet" : "Robinhood Mainnet"}</td>
-        <td className="ne-deployment-status" data-label="Deployment">
-          <span>{swapInactive ? "DEPLOYED · INACTIVE" : "DEPLOYED · VERIFIED"}</span>
-          {swapInactive ? <small>Swap execution disabled</small> : null}
+        <td className={`ne-status-cell ne-deployment-status ${deployment ? "ne-status-deployed" : "ne-status-not-deployed"}`} data-label="Deployment">
+          <span>{deployment ? "DEPLOYED" : "NOT DEPLOYED"}</span>
         </td>
         <td className="ne-address-cell" data-label="Contract Address">
-          <code title={deployment.address} aria-label={deployment.address}>{shortAddress}</code>
+            {deployment ? addressUrl ? (
+            <a className="ne-address-link" href={addressUrl} target="_blank" rel="noopener noreferrer" title={deployment.address} aria-label={`View deployed address ${deployment.address} on ${networkLabel}`}>
+                <code>{deployment.address}</code>
+            </a>
+            ) : <code>{deployment.address}</code> : <span className="ne-no-address" aria-label="No verified deployed address">—</span>}
         </td>
-        <td data-label="Source">{sourceStatus}</td>
+        <td className={`ne-status-cell ne-operational-status ne-status-${operationalClass}`} data-label="Readiness">
+          <span>{operationalStatus}</span>
+        </td>
         <td className="ne-contract-actions" data-label="Actions">
-          <RegistryCopyAction address={deployment.address} />
-          {addressUrl ? (
-            <RegistryLinkAction href={addressUrl} label="View contract"><ExternalLink aria-hidden="true" /></RegistryLinkAction>
-          ) : null}
-          {transactionUrl ? (
-            <RegistryLinkAction href={transactionUrl} label="View transaction"><FileText aria-hidden="true" /></RegistryLinkAction>
-          ) : null}
+          {deployment ? (
+            <>
+              <RegistryCopyAction address={deployment.address} />
+              {addressUrl ? <RegistryLinkAction href={addressUrl} label="View contract"><ExternalLink aria-hidden="true" /></RegistryLinkAction> : null}
+              {transactionUrl ? <RegistryLinkAction href={transactionUrl} label="View transaction"><FileText aria-hidden="true" /></RegistryLinkAction> : null}
+            </>
+          ) : <span className="ne-no-actions" aria-label="No deployment actions">—</span>}
         </td>
       </tr>
       <tr className="ne-detail-row" id={detailsId} hidden={!expanded}>
-        <td colSpan={6}>
+        <td colSpan={5}>
           <dl className="ne-contract-details">
-            <div><dt>Full contract address</dt><dd><code>{deployment.address}</code></dd></div>
-            <div><dt>Full transaction hash</dt><dd><code>{deployment.transactionHash}</code></dd></div>
-            <div><dt>Deployer address</dt><dd><code>{deployment.deployerAddress}</code></dd></div>
-            <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div>
-            <div><dt>Manifest verification</dt><dd>Manifest verified</dd></div>
+            <div><dt>On-chain deployment</dt><dd>{deployment ? "Deployed and bytecode checked" : "No verified deployment record"}</dd></div>
+            {deployment && addressUrl ? <div><dt>Full contract address</dt><dd><a className="ne-evidence-link" href={addressUrl} target="_blank" rel="noopener noreferrer"><code>{deployment.address}</code></a></dd></div> : null}
+            {deployment && transactionUrl ? <div><dt>Full transaction hash</dt><dd><a className="ne-evidence-link" href={transactionUrl} target="_blank" rel="noopener noreferrer"><code>{deployment.transactionHash}</code></a></dd></div> : null}
+            {deployment ? <div><dt>Deployer address</dt><dd><code>{deployment.deployerAddress}</code></dd></div> : null}
+            {deployment ? <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div> : null}
+            <div><dt>Manifest deployment verification</dt><dd>{deployment ? "Verified on-chain record" : "Not applicable"}</dd></div>
             <div><dt>Source verification</dt><dd>{sourceStatus}</dd></div>
-            {deployment.runtimeBytecodeHash ? <div><dt>Runtime bytecode hash</dt><dd><code>{deployment.runtimeBytecodeHash}</code></dd></div> : null}
-            <div className="ne-detail-purpose"><dt>Purpose</dt><dd>{purpose}</dd></div>
+            <div><dt>Operational readiness</dt><dd>{operationalStatus}</dd></div>
+            {deployment?.runtimeBytecodeHash ? <div><dt>Runtime bytecode hash</dt><dd><code>{deployment.runtimeBytecodeHash}</code></dd></div> : null}
+            {deployment?.purpose ? <div className="ne-detail-purpose"><dt>Contract purpose</dt><dd>{deployment.purpose}</dd></div> : null}
+            {reason ? <div className="ne-detail-purpose"><dt>Manifest readiness reason</dt><dd>{reason}</dd></div> : null}
             <div className="ne-detail-restrictions">
               <dt>Operational restrictions</dt>
-              <dd>{swapInactive
-                ? "Swap execution is disabled. Deployment does not mean a live route or executable swap is available."
-                : standalone
-                  ? "Standalone research utility; excluded from architecture progress. Registry actions are read-only."
-                  : "Deployment evidence only. The registry does not initiate contract actions."}</dd>
+              <dd>{standalone
+                ? "Standalone research utility; excluded from architecture progress. Registry actions are read-only."
+                : swapInactive
+                  ? "Deployed and bytecode checked, but operationally inactive. Swap execution is disabled."
+                  : deployment
+                    ? "Deployment evidence is separate from operational readiness. The registry does not initiate contract actions."
+                    : "This contract has not been deployed. Deployment and related execution remain disabled until the manifest blocker is resolved."}</dd>
             </div>
           </dl>
         </td>
@@ -172,33 +205,31 @@ function DeploymentTableRow({
 }
 
 function DeploymentTable({
-  deployments,
+  rows,
   label,
-  standalone = false,
 }: {
-  deployments: readonly VerifiedVeyraDeploymentEvidence[];
+  rows: readonly { deployment?: VerifiedVeyraDeploymentEvidence; slot?: NetworkArchitectureSlot; standalone?: boolean }[];
   label: string;
-  standalone?: boolean;
 }) {
   return (
     <div className="ne-contract-table-wrap">
       <table className="ne-contract-table" aria-label={label}>
-        <caption className="sr">Verified contract deployment evidence. Expand a row for full manifest details.</caption>
+        <caption className="sr">Deployment, source verification, and operational readiness. Expand a row for full manifest details.</caption>
         <thead>
           <tr>
             <th scope="col">Contract</th>
-            <th scope="col">Network</th>
             <th scope="col">Deployment</th>
             <th scope="col">Contract Address</th>
-            <th scope="col">Source</th>
+            <th scope="col">Readiness</th>
             <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {deployments.map((deployment) => (
+          {rows.map(({ deployment, slot, standalone }, index) => (
             <DeploymentTableRow
-              key={`${deployment.networkId}:${deployment.address}`}
+              key={`${slot?.networkId ?? deployment?.networkId ?? "network"}:${slot?.slot ?? deployment?.address ?? index}`}
               deployment={deployment}
+              slot={slot}
               standalone={standalone}
             />
           ))}
@@ -211,9 +242,11 @@ function DeploymentTable({
 export function NetworksView({
   deploymentRecords,
   standaloneResearchEvidenceAnchors = [],
+  architectureSlots = [],
 }: {
   deploymentRecords?: readonly VerifiedVeyraDeployment[];
   standaloneResearchEvidenceAnchors?: readonly VerifiedVeyraStandaloneDeployment[];
+  architectureSlots?: readonly NetworkArchitectureSlot[];
 }) {
   const { model, actions } = useAppModel();
   const [previewRpc, setPreviewRpc] = useState<{ networkId: NetworkId; attempt: number; state: NetworkRpcState }>({
@@ -224,13 +257,19 @@ export function NetworksView({
   const [previewRetry, setPreviewRetry] = useState(0);
   const selected = model.network.options.find((network) => network.id === model.network.selected);
   const deploymentNetworks = model.network.options.filter((network) => network.available);
-  const deploymentGroups = deploymentNetworks.map((network) => {
+  const deploymentGroups = deploymentNetworks.filter((network) => network.id === model.network.selected).map((network) => {
     const verified = getVerifiedVeyraDeployments(network.id, deploymentRecords ?? []);
     const standalone = standaloneResearchEvidenceAnchors.filter((record) => record.networkId === network.id);
-    return { network, total: verified.length, deployments: verified.slice(0, 10), standalone };
+    const slots = architectureSlots
+      .filter((slot) => slot.networkId === network.id)
+      .sort((left, right) => left.slot - right.slot)
+      .slice(0, 10)
+      .map((slot) => ({ slot, deployment: verified.find((record) => record.architectureSlot === slot.slot) }));
+    return { network, total: verified.length, slots, standalone };
   });
   const hasVerifiedRoadmapDeployments = deploymentGroups.some((group) => group.total > 0);
   const hasStandaloneDeployments = deploymentGroups.some((group) => group.standalone.length > 0);
+  const hasArchitectureSlots = deploymentGroups.some((group) => group.slots.length > 0);
   const wallet = model.mode === "live" ? model.wallet.connection : undefined;
   const walletConnection = model.mode !== "live"
     ? "Preview only"
@@ -369,36 +408,36 @@ export function NetworksView({
               <p className="ne-section-index">03 · CONTRACT REGISTRY</p>
               <h2 id="h-ne-contracts" className="ov-h">{PROJECT_NAME} deployments</h2>
             </div>
-            <p className="ne-registry-caption">Verified deployments only · connected and watch-only addresses are excluded</p>
+            <p className="ne-registry-caption">Follows the network selected above · manifest-verified on-chain records only · wallet addresses are excluded</p>
           </header>
-          {!hasVerifiedRoadmapDeployments && !hasStandaloneDeployments ? (
+          {!hasVerifiedRoadmapDeployments && !hasStandaloneDeployments && !hasArchitectureSlots ? (
             <div className="ne-registry-empty">
               <strong>No verified {PROJECT_NAME} deployments.</strong>
               <p>Phase 0B remains SECURITY NO-GO. Deployment and custody are disabled.</p>
             </div>
           ) : null}
-          {!hasVerifiedRoadmapDeployments && hasStandaloneDeployments ? (
+          {!hasVerifiedRoadmapDeployments && hasStandaloneDeployments && !hasArchitectureSlots ? (
             <div className="ne-registry-empty">
               <strong>No verified roadmap contracts.</strong>
               <p>The standalone research utility below does not count toward the ten architecture slots. Phase 0B remains SECURITY NO-GO.</p>
             </div>
           ) : null}
           <div className="ne-registry-networks">
-            {deploymentGroups.map(({ network, total, deployments, standalone }) => {
+            {deploymentGroups.map(({ network, total, slots, standalone }) => {
               const progress = Math.min(total, 10);
               return (
                 <section className="ne-registry-network" key={network.id} aria-labelledby={`h-ne-registry-${network.id}`}>
                   <header className="ne-registry-network-head">
                     <h3 id={`h-ne-registry-${network.id}`}>{network.label}</h3>
                     <span>Chain ID {network.chainId}</span>
-                    <span className="ne-registry-meter" aria-label={`${progress} of 10 verified deployment slots used`}>
-                      <strong>{progress}/10</strong> verified
+                    <span className="ne-registry-meter" aria-label={`${progress} of 10 architecture contracts deployed based on verified on-chain records`}>
+                      <strong>{progress}/10</strong> deployed
                     </span>
                   </header>
-                  {deployments.length > 0 ? (
+                  {slots.length > 0 ? (
                     <DeploymentTable
-                      deployments={deployments}
-                      label={`Verified architecture deployments on ${network.label}`}
+                      rows={slots.map(({ slot, deployment }) => ({ slot, deployment }))}
+                      label={`Architecture slot status on ${network.label}`}
                     />
                   ) : (
                     <p className="ne-registry-network-empty">
@@ -407,7 +446,6 @@ export function NetworksView({
                         : `No verified ${PROJECT_NAME} deployments on ${network.label}.`}
                     </p>
                   )}
-                  {total > deployments.length ? <p className="ne-registry-network-note">Showing the first {deployments.length} of {total} verified deployments on this network.</p> : null}
                   {standalone.length > 0 ? (
                     <section className="ne-standalone-registry" aria-label="Standalone research utilities">
                       <header>
@@ -418,8 +456,7 @@ export function NetworksView({
                         <p>Excluded from the 10-contract roadmap progress.</p>
                       </header>
                       <DeploymentTable
-                        deployments={standalone}
-                        standalone
+                        rows={standalone.map((deployment) => ({ deployment, standalone: true }))}
                         label={`Standalone research utility deployments on ${network.label}`}
                       />
                     </section>

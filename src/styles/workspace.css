@@ -3265,12 +3265,11 @@
   letter-spacing: 0.055em;
   text-transform: uppercase;
 }
-.ne-contract-table thead th:nth-child(1) { width: 25%; }
+.ne-contract-table thead th:nth-child(1) { width: 29%; }
 .ne-contract-table thead th:nth-child(2) { width: 13%; }
-.ne-contract-table thead th:nth-child(3) { width: 17%; }
-.ne-contract-table thead th:nth-child(4) { width: 17%; }
-.ne-contract-table thead th:nth-child(5) { width: 13%; }
-.ne-contract-table thead th:nth-child(6) { width: 15%; }
+.ne-contract-table thead th:nth-child(3) { width: 31%; }
+.ne-contract-table thead th:nth-child(4) { width: 16%; }
+.ne-contract-table thead th:nth-child(5) { width: 11%; }
 .ne-contract-table tbody > tr.ne-contract > th,
 .ne-contract-table tbody > tr.ne-contract > td {
   padding: 11px;
@@ -3335,27 +3334,52 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.ne-contract-table td[data-label="Network"] {
-  color: var(--fg-2);
-  font: 400 10px/1.45 var(--f-mono);
-}
-.ne-deployment-status > span {
+.ne-status-cell > span {
   display: block;
-  color: var(--pass);
-  font: 500 10px/1.45 var(--f-mono);
+  color: var(--fg-2);
+  font: 500 9px/1.45 var(--f-mono);
   letter-spacing: 0.015em;
 }
-.ne-deployment-status small {
-  display: block;
-  margin-top: 3px;
-  color: var(--exp);
-  font: 400 10px/1.4 var(--f-ui);
+.ne-status-deployed > span,
+.ne-status-active > span { color: var(--pass); }
+.ne-status-not-deployed > span,
+.ne-status-inactive > span,
+.ne-status-not-verified > span { color: var(--exp); }
+.ne-status-blocked > span { color: var(--fail); }
+.ne-status-na > span { color: var(--muted); }
+.ne-status-cell > span { overflow-wrap: anywhere; }
+.ne-no-address,
+.ne-no-actions {
+  color: var(--muted);
+  font: 400 11px/1.45 var(--f-mono);
 }
 .ne-address-cell code {
+  display: inline-block;
+  max-width: 100%;
   color: var(--fg-2);
-  font: 400 11px/1.45 var(--f-mono);
-  white-space: nowrap;
-  cursor: help;
+  font: 400 10px/1.5 var(--f-mono);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  cursor: pointer;
+}
+.ne-address-link,
+.ne-evidence-link {
+  color: inherit;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+.ne-address-link:hover,
+.ne-address-link:focus-visible,
+.ne-evidence-link:hover,
+.ne-evidence-link:focus-visible {
+  color: var(--fg);
+  text-decoration-color: var(--exp);
+}
+.ne-address-link:focus-visible,
+.ne-evidence-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
 }
 .ne-contract-actions {
   white-space: nowrap;
@@ -3470,16 +3494,11 @@
   .ne-status-facts {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   }
-  .ne-contract-table thead th:nth-child(2),
-  .ne-contract-table tbody tr > td[data-label="Network"],
-  .ne-contract-table thead th:nth-child(5),
-  .ne-contract-table tbody tr > td[data-label="Source"] {
-    display: none;
-  }
-  .ne-contract-table thead th:nth-child(1) { width: 32%; }
-  .ne-contract-table thead th:nth-child(3) { width: 20%; }
-  .ne-contract-table thead th:nth-child(4) { width: 27%; }
-  .ne-contract-table thead th:nth-child(6) { width: 21%; }
+  .ne-contract-table thead th:nth-child(1) { width: 24%; }
+  .ne-contract-table thead th:nth-child(2) { width: 13%; }
+  .ne-contract-table thead th:nth-child(3) { width: 31%; }
+  .ne-contract-table thead th:nth-child(4) { width: 19%; }
+  .ne-contract-table thead th:nth-child(5) { width: 13%; }
 }
 @media (max-width: 640px) {
   .ne-section,
@@ -3552,8 +3571,6 @@
   .ne-contract-table tbody > tr.ne-contract > td[data-label="Actions"] {
     grid-column: 1 / -1;
   }
-  .ne-contract-table tbody > tr.ne-contract > td[data-label="Network"] { display: grid; }
-  .ne-contract-table tbody > tr.ne-contract > td[data-label="Source"] { display: grid; }
   .ne-contract-actions { display: flex !important; align-items: center; }
   .ne-icon-action { width: 44px; height: 44px; margin-right: 7px; }
   .ne-detail-row { display: block; }
@@ -3567,6 +3584,10 @@
   .ne-section-actions > .btn,
   .ne-address-form > .btn,
   .ne-icon-action { min-width: 44px; min-height: 44px; }
+}
+@media (pointer: coarse) and (min-width: 641px) {
+  .ne-contract-actions { white-space: normal; }
+  .ne-icon-action { margin-right: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ne-row-chevron,

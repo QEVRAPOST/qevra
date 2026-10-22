@@ -30,10 +30,12 @@ test("fetches the approved NIST FIPS 204 source and records provenance", { skip:
 
   const quote = "This standard specifies ML-DSA, a set of algorithms that can be used to generate and verify digital signatures.";
   assert.ok(source.text?.includes(quote), "the NIST quotation must exactly match the fetched page text");
+  const agentCalls: string[] = [];
   const provider: ModelProvider = {
     name: "mock-live-source-verification",
     async completeJson<T>(request: StructuredModelRequest<T>) {
-      assert.match(request.systemPrompt, /untrusted data/i);
+      agentCalls.push(request.agent);
+      assert.match(request.systemPrompt, /untrusted (?:evidence )?data/i);
       assert.match(request.systemPrompt, /never (follow instructions|as instructions)/i);
       const output = request.agent === "research"
         ? researchAgentOutputSchema.parse({
@@ -59,7 +61,12 @@ test("fetches the approved NIST FIPS 204 source and records provenance", { skip:
     runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
     persist: async () => undefined,
   });
-  assert.equal(run.status, "completed");
+  assert.equal(run.status, "completed", JSON.stringify({
+    errorCode: run.errorCode,
+    agentStatuses: run.agents.map(({ role, status, errorCode }) => ({ role, status, errorCode })),
+    agentCalls,
+  }));
+  assert.deepEqual(agentCalls, ["research", "analysis", "verification"]);
   assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
   assert.equal(run.sources[0]?.sha256, source.sha256);
 });

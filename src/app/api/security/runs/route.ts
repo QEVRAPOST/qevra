@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { apiError, requireResearchAccess } from "@/features/security/api";
 import { hashRateLimitKey, readJsonBody, requireJsonContentType, sameOrigin } from "@/features/security/auth";
 import { createQueuedRun } from "@/features/security/model";
+import { getModelProvider } from "@/features/security/provider";
 import { toResearchRunSummary } from "@/features/security/public-view";
 import { createResearchRunRequestSchema, runListQuerySchema } from "@/features/security/schemas";
 import { resolveResearchTopic } from "@/features/security/topics";
@@ -43,6 +44,25 @@ export async function POST(request: Request) {
   }
   const parsed = createResearchRunRequestSchema.safeParse(raw);
   if (!parsed.success) return apiError(400, "invalid_research_request", "Choose an approved topic and provide a bounded research question.");
+
+  const provider = getModelProvider();
+  if (provider.status !== "available") {
+    const message = provider.reason === "ai_billing_not_approved"
+      ? "AI billing is disabled. The project owner must explicitly authorize a bounded research run before an operator may set QEVRA_AI_BILLING_APPROVED=true for that run."
+      : provider.reason === "model_provider_credentials_missing"
+        ? "Model provider credentials are missing. An operator must configure the credential and model in the private server and worker environment."
+        : `The model provider is not ready (${provider.reason}). An operator must correct the private provider configuration before a run can be queued.`;
+    return apiError(503, provider.reason, message);
+  }
+
+  try {
+    if (await access.store.countLiveWorkers() === 0) {
+      return apiError(503, "security_worker_not_running", "No live Security Swarm worker is registered. Start it with `bun --env-file=.qevra-data/phase2.env run security:worker` using the same private environment as the server.");
+    }
+  } catch (error) {
+    const code = error instanceof StoreNotConfiguredError ? "persistence_not_configured" : "persistence_unavailable";
+    return apiError(503, code, "Security research persistence is currently unavailable.");
+  }
 
   try {
     const globalRate = await access.store.takeRateLimit(hashRateLimitKey("qevra:research-run-global"), 20, 60 * 60_000);
