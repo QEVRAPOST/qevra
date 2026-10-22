@@ -9,6 +9,7 @@ import { getExplorerAddressUrl, getExplorerTransactionUrl } from "@/lib/config/n
 import { PublicAddressInspector } from "@/components/dashboard/PublicAddressInspector";
 import {
   getVerifiedVeyraDeployments,
+  isSwapExecutionInactiveSlot,
   type VerifiedVeyraDeployment,
   type VerifiedVeyraStandaloneDeployment,
 } from "@/lib/config/veyra-deployments";
@@ -209,13 +210,16 @@ export function NetworksView({
                       {deployments.map((deployment) => {
                         const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
                         const transactionUrl = getExplorerTransactionUrl(deployment.networkId, deployment.transactionHash);
+                        const swapInactive = isSwapExecutionInactiveSlot(deployment.architectureSlot);
                         return (
                           <li key={`${deployment.networkId}:${deployment.address}`} className="ne-contract">
                             <h4>{deployment.name}</h4>
                             <p className="ne-contract-purpose">{deployment.purpose ?? "Purpose not provided in the deployment manifest."}</p>
                             <dl className="kv">
                               <div><dt>Verified deployed address</dt><dd><code>{deployment.address}</code></dd></div>
-                              <div><dt>Deployment status</dt><dd>Verified deployment</dd></div>
+                              <div><dt>Deployment status</dt><dd>{swapInactive ? "DEPLOYED · INACTIVE" : "DEPLOYED · MANIFEST VERIFIED"}</dd></div>
+                              <div><dt>Manifest evidence</dt><dd>Manifest verified</dd></div>
+                              {swapInactive ? <div><dt>Operational status</dt><dd>Swap execution disabled</dd></div> : null}
                               <div><dt>Deployer</dt><dd><code>{deployment.deployerAddress}</code></dd></div>
                               <div><dt>Transaction hash</dt><dd><code>{deployment.transactionHash}</code></dd></div>
                               <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div>

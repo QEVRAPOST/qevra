@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { keccak256, type Hex } from "viem";
 import { parseVerifiedVeyraManifest, type VeyraDeploymentManifest } from "@/lib/config/veyra-deployment-manifest";
-import type { VerifiedVeyraDeployment, VerifiedVeyraStandaloneDeployment } from "@/lib/config/veyra-deployments";
+import { isSwapExecutionInactiveSlot, type VerifiedVeyraDeployment, type VerifiedVeyraStandaloneDeployment } from "@/lib/config/veyra-deployments";
 import { resolveRobinhoodNetwork } from "./robinhood";
 import type { NetworkId, NetworkOption } from "@/types/network";
 
@@ -43,7 +43,7 @@ type SimulationOptions = {
   onProgress?: ProgressHandler;
 };
 
-type DeploymentStatus = "DEPLOYED · MANIFEST VERIFIED" | "ADDRESS PRESENT · NOT VERIFIED" | "NOT DEPLOYED" | "REGISTRY UNAVAILABLE";
+type DeploymentStatus = "DEPLOYED · MANIFEST VERIFIED" | "DEPLOYED · INACTIVE" | "ADDRESS PRESENT · NOT VERIFIED" | "NOT DEPLOYED" | "REGISTRY UNAVAILABLE";
 
 type ArchitectureRow = {
   slot: number;
@@ -207,9 +207,14 @@ function readinessLabel(value: unknown): string {
 }
 
 function deploymentTone(status: DeploymentStatus): "good" | "warn" | "bad" {
-  if (status === "DEPLOYED · MANIFEST VERIFIED") return "good";
+  if (status === "DEPLOYED · MANIFEST VERIFIED" || status === "DEPLOYED · INACTIVE") return "good";
   if (status === "REGISTRY UNAVAILABLE") return "bad";
   return "warn";
+}
+
+function verifiedDeploymentStatusForSlot(slot: number): DeploymentStatus {
+  // Swap infrastructure can be deployed while swap execution remains disabled.
+  return isSwapExecutionInactiveSlot(slot) ? "DEPLOYED · INACTIVE" : "DEPLOYED · MANIFEST VERIFIED";
 }
 
 function readinessTone(readiness: string): "good" | "warn" | "bad" | "muted" {
@@ -282,7 +287,7 @@ function buildRegistrySnapshot(networkId: NetworkId, input: unknown): RegistrySn
       return {
         slot: slotNumber,
         name,
-        status: "DEPLOYED · MANIFEST VERIFIED",
+        status: verifiedDeploymentStatusForSlot(slotNumber),
         readiness,
         address: verified.address,
         sourceVerification: sourceLabel(verified.sourceVerification),
@@ -472,10 +477,11 @@ function formatRegistry(
   const { addBorder, section, row, note } = frame;
   section(sectionNumber, `${registry.network.label.toUpperCase()} 10-CONTRACT ARCHITECTURE REGISTRY · CHAIN ${registry.network.chainId}`);
   if (!registry.available) note("Deployment manifest failed schema, network, or chain identity checks.");
-  row("Architecture slots", `${registry.slots.filter((slot) => slot.status === "DEPLOYED · MANIFEST VERIFIED").length}/10 manifest-verified`, "muted");
+  row("Architecture slots", `${registry.verifiedDeployments.length}/10 manifest-verified`, "muted");
   for (const slot of registry.slots) {
     frame.boxLine(`SLOT ${String(slot.slot).padStart(2, "0")} · ${slot.name}`, "left", "plain");
     row("Deployment status", slot.status, deploymentTone(slot.status));
+    if (slot.verifiedRecord) row("Manifest evidence", "VERIFIED", "good");
     row("Security readiness", slot.readiness, readinessTone(slot.readiness));
     if (slot.address) row("Verified address", slot.address, "good");
     if (slot.sourceVerification) row("Source verification", slot.sourceVerification, slot.sourceVerification === "VERIFIED" ? "good" : "warn");
@@ -485,7 +491,7 @@ function formatRegistry(
       if (liveCheck.status.includes("LIVE CHECK UNAVAILABLE")) {
         note("Manifest evidence remains intact; live verification is temporarily unavailable.");
       }
-    } else if (slot.status === "DEPLOYED · MANIFEST VERIFIED") {
+    } else if (slot.verifiedRecord) {
       row("Live RPC check", "NOT RECHECKED THIS RUN", "muted");
     }
   }
@@ -584,7 +590,7 @@ function formatReadiness(
 
   const verifiedByNetwork = new Map(selectedRegistries.map((registry) => [
     registry.networkId,
-    registry.slots.filter((slot) => slot.status === "DEPLOYED · MANIFEST VERIFIED").length,
+    registry.verifiedDeployments.length,
   ]));
   section(String(sectionNumber++).padStart(2, "0"), "THREE CORE PRODUCT PILLARS");
   row("A · Post-Quantum Smart Account", "BLOCKED — ML-DSA security remains NO-GO; the EVM wallet remains read-only.", "bad");

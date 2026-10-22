@@ -1,9 +1,42 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDeploymentArgs, simulateDeployment } from "../scripts/deploy-simulate";
+import mainnetManifest from "../contracts/deployments/robinhood-mainnet.json";
 import testnetManifest from "../contracts/deployments/robinhood-testnet.json";
 
 const jsonRpc = (id: number, result: string) => Response.json({ jsonrpc: "2.0", id, result });
+
+const architectureNames = [
+  "VeyraKeyRegistrationValidator",
+  "VeyraKeyRegistry",
+  "VeyraRecoveryPolicy",
+  "VeyraAccount",
+  "VeyraAccountFactory",
+  "VeyraTokenPolicyRegistry",
+  "VeyraRouterRegistry",
+  "VeyraSwapIntentGuard",
+  "VeyraSwapExecutor",
+  "VeyraResearchAttestationRegistry",
+];
+
+function verifiedTestnetContract(slot: number) {
+  return {
+    solidityName: architectureNames[slot - 1],
+    architectureSlot: slot,
+    purpose: `Verified architecture fixture ${slot}.`,
+    networkId: "testnet",
+    chainId: 46_630,
+    observedChainId: 46_630,
+    address: `0x${slot.toString(16).padStart(40, "0")}`,
+    deploymentStatus: "verified",
+    deployerAddress: `0x${"1".repeat(39)}${slot.toString(16)}`,
+    transactionHash: `0x${slot.toString(16).padStart(64, "0")}`,
+    receiptStatus: "success",
+    blockNumber: String(1000 + slot),
+    runtimeBytecodeHash: `0x${"a".repeat(63)}${slot.toString(16)}`,
+    sourceVerification: "not_verified",
+  };
+}
 
 test("prints a read-only Testnet preflight using the configured chain and RPC", async () => {
   const calls: Array<{ url: string; method: string }> = [];
@@ -194,6 +227,43 @@ test("renders both registries only for explicit all-network selection", async ()
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+4663/);
   assert.ok(calls.some((call) => call.startsWith("https://rpc.testnet.chain.robinhood.com:")));
   assert.ok(calls.some((call) => call.startsWith("https://robinhood.rpc.pinax.network:")));
+});
+
+test("renders four verified swap slots as deployed but inactive and keeps Mainnet empty", async () => {
+  const verifiedContracts = [6, 7, 8, 9].map(verifiedTestnetContract);
+  const testnetWithDeployments = {
+    ...structuredClone(testnetManifest),
+    contracts: verifiedContracts,
+  };
+  const result = await simulateDeployment("all", {
+    color: true,
+    colorDepth: "16",
+    columns: 120,
+    deploymentManifests: {
+      testnet: testnetWithDeployments,
+      mainnet: structuredClone(mainnetManifest),
+    },
+    fetchImpl: async (_url, init) => {
+      const request = JSON.parse(String(init?.body)) as { id: number; method: string };
+      const chainId = String(_url).includes("testnet") ? "0xb626" : "0x1237";
+      return jsonRpc(request.id, request.method === "eth_chainId" ? chainId : "0x2a");
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /TESTNET ARCHITECTURE\s+│\s+4\/10 manifest-verified/);
+  assert.match(result.output, /MAINNET ARCHITECTURE\s+│\s+0\/10 manifest-verified/);
+  assert.match(result.output, /DEPLOYED · INACTIVE/);
+  assert.match(result.output, /\u001b\[32mDEPLOYMENT STATUS[^\u001b]+DEPLOYED · INACTIVE/);
+  assert.match(result.output, /MANIFEST EVIDENCE\s+│\s+VERIFIED/);
+  assert.match(result.output, /SECURITY READINESS\s+│\s+SECURITY NO-GO/);
+  assert.match(result.output, /\u001b\[31mSECURITY READINESS[^\u001b]+SECURITY NO-GO/);
+  for (const contract of verifiedContracts) {
+    assert.ok(result.output.includes(contract.solidityName!), `${contract.solidityName} should be listed`);
+    assert.ok(result.output.includes(contract.address), `${contract.address} should come from the supplied manifest`);
+  }
+  assert.match(result.output, /STANDALONE TESTNET EVIDENCE ANCHOR/);
+  assert.match(result.output, /STANDALONE MAINNET EVIDENCE ANCHOR/);
 });
 
 test("emits real validation steps in a fixed order without delays", async () => {
@@ -422,6 +492,8 @@ test("renders newly validated manifest addresses dynamically and hides unverifie
   assert.match(result.output, /1\/10 manifest-verified/);
   assert.match(result.output, new RegExp(verifiedAddress));
   assert.doesNotMatch(result.output, new RegExp(unverifiedAddress));
+  assert.match(result.output, /DEPLOYED · INACTIVE/);
+  assert.match(result.output, /MANIFEST EVIDENCE\s+│\s+VERIFIED/);
   assert.match(result.output, /ADDRESS PRESENT · NOT VERIFIED/);
 });
 

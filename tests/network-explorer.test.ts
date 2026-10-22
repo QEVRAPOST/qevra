@@ -166,6 +166,48 @@ test("network explorer renders a controlled verified entry without merging walle
   assert.match(markup, /href="https:\/\/explorer\.testnet\.chain\.robinhood\.com\/tx\/0x[a]{64}"/);
 });
 
+test("four verified Testnet manifest entries render as 4/10 while Mainnet stays empty", () => {
+  const names = [
+    "VeyraTokenPolicyRegistry",
+    "VeyraRouterRegistry",
+    "VeyraSwapIntentGuard",
+    "VeyraSwapExecutor",
+  ];
+  const records = names.map((name, index) => {
+    const slot = index + 6;
+    return {
+      name,
+      purpose: `Verified Testnet fixture for ${name}.`,
+      networkId: "testnet",
+      chainId: 46_630,
+      architectureSlot: slot,
+      address: `0x${slot.toString(16).padStart(40, "0")}`,
+      deploymentStatus: "verified",
+      observedChainId: 46_630,
+      deployerAddress: "0x0000000000000000000000000000000000000001",
+      transactionHash: `0x${slot.toString(16).padStart(64, "0")}`,
+      receiptStatus: "success",
+      blockNumber: String(2000 + slot),
+      runtimeBytecodeHash: `0x${"a".repeat(63)}${slot.toString(16)}`,
+      sourceVerification: "not_verified",
+    };
+  });
+  const markup = renderNetworks("testnet", { status: "loading" }, records);
+
+  assert.match(markup, /<strong>4\/10<\/strong>/);
+  assert.match(markup, /<strong>0\/10<\/strong>/);
+  assert.equal((markup.match(/<dd>DEPLOYED · INACTIVE<\/dd>/g) ?? []).length, 4);
+  assert.equal((markup.match(/<dd>Swap execution disabled<\/dd>/g) ?? []).length, 4);
+  assert.equal((markup.match(/<dd>Manifest verified<\/dd>/g) ?? []).length, 4);
+  for (const record of records) {
+    assert.match(markup, new RegExp(record.name));
+    assert.match(markup, new RegExp(record.address));
+    assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${record.address}"`));
+    assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/tx/${record.transactionHash}"`));
+    assert.doesNotMatch(markup, new RegExp(`href="https://robinhoodchain\\.blockscout\\.com/(?:address/${record.address}|tx/${record.transactionHash})"`));
+  }
+});
+
 test("registry keeps Testnet and Mainnet contract and transaction links on their own explorers", () => {
   const testnetAddress = "0x0000000000000000000000000000000000000011";
   const mainnetAddress = "0x0000000000000000000000000000000000000022";

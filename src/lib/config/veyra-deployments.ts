@@ -29,6 +29,11 @@ export interface VerifiedVeyraDeployment extends VerifiedVeyraDeploymentEvidence
 /** Separately listed research utility; it does not consume one of the ten architecture slots. */
 export type VerifiedVeyraStandaloneDeployment = VerifiedVeyraDeploymentEvidence;
 
+/** Swap infrastructure slots remain inactive while route validation and execution are disabled. */
+export function isSwapExecutionInactiveSlot(architectureSlot: number): boolean {
+  return architectureSlot >= 6 && architectureSlot <= 9;
+}
+
 /** Require a successful deployment receipt and matching on-chain identity/code observations. */
 export function getVerifiedVeyraDeployments(
   networkId: NetworkId,
