@@ -27,17 +27,19 @@ test("prints a read-only Testnet preflight using the configured chain and RPC", 
   assert.match(result.output, /01\s+\/\s+ROBINHOOD TESTNET LIVE NETWORK VALIDATION/);
   assert.match(result.output, /RPC CONNECTIVITY\s+│\s+AVAILABLE/);
   assert.match(result.output, /LATEST BLOCK\s+│\s+42/);
-  assert.match(result.output, /10-CONTRACT ARCHITECTURE/);
+  assert.match(result.output, /FIVE-CONTRACT MVP/);
+  assert.match(result.output, /5\/5 MVP contracts deployed/i);
+  assert.match(result.output, /FUTURE ARCHITECTURE \/ SECURITY RESEARCH/);
   assert.match(result.output, /VeyraResearchEvidenceAnchor/);
   assert.match(result.output, /0x10A47a16A6A903574Ed4058B67750073cC992632/);
   assert.match(result.output, /0xb512a881c0bfa01d33786a6726c40db9b31f64f2598f02022f10a752e0b2ebae/);
   assert.doesNotMatch(result.output, /ROBINHOOD MAINNET 10-CONTRACT ARCHITECTURE REGISTRY/);
   assert.doesNotMatch(result.output, /STANDALONE MAINNET EVIDENCE ANCHOR/);
-  assert.match(result.output, /02\s+\/\s+ROBINHOOD TESTNET 10-CONTRACT ARCHITECTURE REGISTRY/);
-  assert.match(result.output, /04\s+\/\s+THREE CORE PRODUCT PILLARS/);
+  assert.match(result.output, /02\s+\/\s+ROBINHOOD TESTNET FIVE-CONTRACT MVP REGISTRY/);
+  assert.match(result.output, /05\s+\/\s+THREE CORE PRODUCT PILLARS/);
   assert.match(result.output, /HISTORICAL THREE-AGENT REPORT\s+│\s+COMPLETED/i);
   assert.match(result.output, /NEW RESEARCH RUNS\s+│\s+READINESS CHECK REQUIRED/i);
-  assert.match(result.output, /05\s+\/\s+FINAL READINESS SUMMARY/);
+  assert.match(result.output, /06\s+\/\s+FINAL READINESS SUMMARY/);
   assert.match(result.output, /ML-DSA security remains NO-GO/i);
   assert.match(result.output, /BROADCAST\s+│\s+DISABLED/);
   assert.match(result.output, /NO PRIVATE KEY LOADED · NO SIGNATURE REQUESTED · NO TRANSACTION BROADCAST/);
@@ -62,7 +64,8 @@ test("shows Mainnet deployment readiness through configured chain and RPC reads"
   assert.equal(result.exitCode, 0);
   assert.match(result.output, /ROBINHOOD MAINNET/);
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+4663/);
-  assert.match(result.output, /ROBINHOOD MAINNET 10-CONTRACT ARCHITECTURE REGISTRY/);
+  assert.match(result.output, /ROBINHOOD MAINNET FIVE-CONTRACT MVP REGISTRY/);
+  assert.match(result.output, /0\/5 MVP contracts deployed/i);
   assert.doesNotMatch(result.output, /TESTNET/);
   assert.doesNotMatch(result.output, /0x10A47a16A6A903574Ed4058B67750073cC992632/);
 });
@@ -145,7 +148,7 @@ test("showcase respects narrow terminal widths and plain output has no ANSI esca
   assert.ok(result.output.split("\n").every((line) => line.length <= 44), "each line should fit the selected terminal width");
 });
 
-test("renders only Testnet slots and keeps its Evidence Anchor outside the ten slots", async () => {
+test("renders the five-contract MVP and future slots separately from its Evidence Anchor", async () => {
   const result = await simulateDeployment("testnet", {
     color: false,
     columns: 100,
@@ -167,7 +170,8 @@ test("renders only Testnet slots and keeps its Evidence Anchor outside the ten s
     "VeyraResearchAttestationRegistry",
   ];
 
-  assert.match(result.output, /TESTNET 10-CONTRACT ARCHITECTURE REGISTRY/);
+  assert.match(result.output, /TESTNET FIVE-CONTRACT MVP REGISTRY/);
+  assert.match(result.output, /FUTURE ARCHITECTURE \/ SECURITY RESEARCH/);
   assert.doesNotMatch(result.output, /MAINNET/);
   for (const name of names) assert.ok(result.output.includes(name), `${name} should be shown`);
   assert.match(result.output, /STANDALONE TESTNET EVIDENCE ANCHOR/);
@@ -189,8 +193,8 @@ test("renders both registries only for explicit all-network selection", async ()
   });
 
   assert.equal(result.exitCode, 0);
-  assert.match(result.output, /ROBINHOOD TESTNET 10-CONTRACT ARCHITECTURE REGISTRY/);
-  assert.match(result.output, /ROBINHOOD MAINNET 10-CONTRACT ARCHITECTURE REGISTRY/);
+  assert.match(result.output, /ROBINHOOD TESTNET FIVE-CONTRACT MVP REGISTRY/);
+  assert.match(result.output, /ROBINHOOD MAINNET FIVE-CONTRACT MVP REGISTRY/);
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+46630/);
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+4663/);
   assert.ok(calls.some((call) => call.startsWith("https://rpc.testnet.chain.robinhood.com:")));
@@ -224,8 +228,8 @@ test("renders validated Testnet deployments dynamically and keeps Mainnet empty"
   });
 
   assert.equal(result.exitCode, 0);
-  assert.match(result.output, new RegExp(`TESTNET ARCHITECTURE\\s+│\\s+${testnetDeploymentCount}/10 manifest-verified`));
-  assert.match(result.output, new RegExp(`MAINNET ARCHITECTURE\\s+│\\s+${mainnetDeploymentCount}/10 manifest-verified`));
+  assert.match(result.output, new RegExp(`${testnetDeploymentCount}/5 MVP contracts deployed`));
+  assert.match(result.output, new RegExp(`${mainnetDeploymentCount}/5 MVP contracts deployed`));
   assert.match(result.output, /DEPLOYED · INACTIVE/);
   assert.match(result.output, /\u001b\[32mDEPLOYMENT STATUS[^\u001b]+DEPLOYED · INACTIVE/);
   assert.match(result.output, /MANIFEST EVIDENCE\s+│\s+VERIFIED/);
@@ -237,6 +241,41 @@ test("renders validated Testnet deployments dynamically and keeps Mainnet empty"
   }
   assert.match(result.output, /STANDALONE TESTNET EVIDENCE ANCHOR/);
   assert.match(result.output, /STANDALONE MAINNET EVIDENCE ANCHOR/);
+});
+
+test("reports only slots 6-10 as the MVP and labels slots 1-5 as future research", async () => {
+  const result = await simulateDeployment("all", {
+    color: false,
+    deploymentManifests: {
+      testnet: structuredClone(testnetManifest),
+      mainnet: structuredClone(mainnetManifest),
+    },
+    fetchImpl: async (url, init) => {
+      const request = JSON.parse(String(init?.body)) as { id: number; method: string };
+      const chainId = String(url).includes("testnet") ? "0xb626" : "0x1237";
+      return jsonRpc(request.id, request.method === "eth_chainId" ? chainId : "0x2a");
+    },
+  });
+
+  assert.match(result.output, /5\/5 MVP contracts deployed/);
+  assert.match(result.output, /0\/5 MVP contracts deployed/);
+  const testnetFutureStart = result.output.indexOf("FUTURE ARCHITECTURE / SECURITY RESEARCH");
+  const testnetAnchorStart = result.output.indexOf("STANDALONE TESTNET EVIDENCE ANCHOR");
+  assert.ok(testnetFutureStart >= 0 && testnetAnchorStart > testnetFutureStart);
+  const futureSection = result.output.slice(testnetFutureStart, testnetAnchorStart);
+  for (const name of [
+    "VeyraKeyRegistrationValidator",
+    "VeyraKeyRegistry",
+    "VeyraRecoveryPolicy",
+    "VeyraAccount",
+    "VeyraAccountFactory",
+  ]) {
+    assert.ok(futureSection.includes(name), `${name} should remain in the future research section`);
+  }
+  assert.match(futureSection, /NOT DEPLOYED/);
+  assert.match(result.output, /STANDALONE TESTNET EVIDENCE ANCHOR/);
+  assert.match(result.output, /SOURCE VERIFICATION\s+│\s+NOT VERIFIED/i);
+  assert.match(result.output, /SECURITY READINESS\s+│\s+SECURITY NO-GO/);
 });
 
 test("emits real validation steps in a fixed order without delays", async () => {
@@ -462,7 +501,7 @@ test("renders newly validated manifest addresses dynamically and hides unverifie
     },
   });
 
-  assert.match(result.output, /1\/10 manifest-verified/);
+  assert.match(result.output, /1\/5 MVP contracts deployed/);
   assert.match(result.output, new RegExp(verifiedAddress));
   assert.doesNotMatch(result.output, new RegExp(unverifiedAddress));
   assert.match(result.output, /DEPLOYED · INACTIVE/);

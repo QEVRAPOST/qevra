@@ -88,6 +88,7 @@ const providerResponseSchema = z.object({
 }).passthrough();
 const MAX_PROVIDER_RESPONSE_BYTES = 400_000;
 const MAX_MODEL_REQUEST_BYTES = 64_000;
+const GROQ_GPT_OSS_MAX_COMPLETION_TOKENS = 800;
 
 function parseResetMilliseconds(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -541,9 +542,9 @@ export function getModelProvider(env: NodeJS.ProcessEnv = process.env, runtime: 
   if (model === GROQ_GPT_OSS_MODEL && !groqGptOss) {
     return { status: "not_configured", reason: "groq_gpt_oss_endpoint_invalid" };
   }
-  const maxOutputTokens = readBoundedInteger(env.QEVRA_AI_MAX_OUTPUT_TOKENS, groqGptOss ? 400 : 1_200, 128, 1_200);
+  const maxOutputTokens = readBoundedInteger(env.QEVRA_AI_MAX_OUTPUT_TOKENS, groqGptOss ? GROQ_GPT_OSS_MAX_COMPLETION_TOKENS : 1_200, 128, 1_200);
   if (maxOutputTokens === undefined) return { status: "not_configured", reason: "model_output_limit_invalid" };
-  if (groqGptOss && maxOutputTokens > 400) {
+  if (groqGptOss && maxOutputTokens > GROQ_GPT_OSS_MAX_COMPLETION_TOKENS) {
     return { status: "not_configured", reason: "free_plan_output_limit_invalid" };
   }
   const maxRequestBytes = readBoundedInteger(env.QEVRA_AI_MAX_REQUEST_BYTES, groqGptOss ? 6_000 : MAX_MODEL_REQUEST_BYTES, 1_024, MAX_MODEL_REQUEST_BYTES);

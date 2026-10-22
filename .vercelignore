@@ -1,0 +1,41 @@
+.env*
+.qevra-data/
+.git/
+.vercel/
+.next/
+node_modules/
+
+# Local credentials and signing material
+.npmrc
+.netrc
+.git-credentials
+.ssh/
+.aws/
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.keystore
+**/*.mnemonic
+**/*.seed
+**/keystore/
+**/keystores/
+**/credentials*
+**/*secret*
+
+# Foundry artifacts and broadcast records
+out/
+cache/
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+**/broadcast/
+
+# Local databases and exports
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.dump

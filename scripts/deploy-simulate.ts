@@ -475,10 +475,9 @@ function formatRegistry(
   networkResult: NetworkResult,
 ): void {
   const { addBorder, section, row, note } = frame;
-  section(sectionNumber, `${registry.network.label.toUpperCase()} 10-CONTRACT ARCHITECTURE REGISTRY · CHAIN ${registry.network.chainId}`);
-  if (!registry.available) note("Deployment manifest failed schema, network, or chain identity checks.");
-  row("Architecture slots", `${registry.verifiedDeployments.length}/10 manifest-verified`, "muted");
-  for (const slot of registry.slots) {
+  const sectionIndex = Number(sectionNumber);
+
+  const renderSlot = (slot: ArchitectureRow) => {
     frame.boxLine(`SLOT ${String(slot.slot).padStart(2, "0")} · ${slot.name}`, "left", "plain");
     row("Deployment status", slot.status, deploymentTone(slot.status));
     if (slot.verifiedRecord) row("Manifest evidence", "VERIFIED", "good");
@@ -494,10 +493,26 @@ function formatRegistry(
     } else if (slot.verifiedRecord) {
       row("Live RPC check", "NOT RECHECKED THIS RUN", "muted");
     }
+  };
+
+  const mvpSlots = registry.slots.filter((slot) => slot.slot >= 6 && slot.slot <= 10);
+  const verifiedMvpCount = registry.verifiedDeployments.filter((record) => record.architectureSlot >= 6 && record.architectureSlot <= 10).length;
+  section(sectionNumber, `${registry.network.label.toUpperCase()} FIVE-CONTRACT MVP REGISTRY · CHAIN ${registry.network.chainId}`);
+  if (!registry.available) note("Deployment manifest failed schema, network, or chain identity checks.");
+  row("MVP contracts", `${verifiedMvpCount}/5 MVP contracts deployed`, verifiedMvpCount === 5 ? "good" : "warn");
+  row("MVP manifest records", `${verifiedMvpCount}/5 manifest-verified`, "muted");
+  note("The MVP is architecture slots 6-10. Manifest deployment evidence does not imply active execution, source verification, or an audit.");
+  for (const slot of mvpSlots) renderSlot(slot);
+  addBorder();
+
+  section(String(sectionIndex + 1).padStart(2, "0"), "FUTURE ARCHITECTURE / SECURITY RESEARCH");
+  note("Original architecture slots 1-5 remain separate future research; no deployment is inferred from the MVP.");
+  for (const slot of registry.slots.filter((candidate) => candidate.slot >= 1 && candidate.slot <= 5)) {
+    renderSlot(slot);
   }
   addBorder();
 
-  section(`${Number(sectionNumber) + 1}`.padStart(2, "0"), `STANDALONE ${registry.networkId.toUpperCase()} EVIDENCE ANCHOR · CHAIN ${registry.network.chainId}`);
+  section(String(sectionIndex + 2).padStart(2, "0"), `STANDALONE ${registry.networkId.toUpperCase()} EVIDENCE ANCHOR · CHAIN ${registry.network.chainId}`);
   row("Contract", "VeyraResearchEvidenceAnchor");
   row("Deployment status", registry.anchor.status, deploymentTone(registry.anchor.status));
   if (registry.anchor.address) row("Verified address", registry.anchor.address, "good");
@@ -585,12 +600,12 @@ function formatReadiness(
     if (result.detail) note(result.detail);
     addBorder();
     formatRegistry(frame, registry, String(sectionNumber + 1).padStart(2, "0"), result);
-    sectionNumber += 3;
+    sectionNumber += 4;
   }
 
-  const verifiedByNetwork = new Map(selectedRegistries.map((registry) => [
+  const verifiedMvpByNetwork = new Map(selectedRegistries.map((registry) => [
     registry.networkId,
-    registry.verifiedDeployments.length,
+    registry.verifiedDeployments.filter((record) => record.architectureSlot >= 6 && record.architectureSlot <= 10).length,
   ]));
   section(String(sectionNumber++).padStart(2, "0"), "THREE CORE PRODUCT PILLARS");
   row("A · Post-Quantum Smart Account", "BLOCKED — ML-DSA security remains NO-GO; the EVM wallet remains read-only.", "bad");
@@ -602,8 +617,8 @@ function formatReadiness(
 
   section(String(sectionNumber).padStart(2, "0"), "FINAL READINESS SUMMARY");
   for (const registry of selectedRegistries) {
-    const verifiedSlots = verifiedByNetwork.get(registry.networkId) ?? 0;
-    row(`${registry.network.short} architecture`, `${verifiedSlots}/10 manifest-verified`, verifiedSlots === 10 ? "good" : "warn");
+    const verifiedSlots = verifiedMvpByNetwork.get(registry.networkId) ?? 0;
+    row(`${registry.network.short} MVP`, `${verifiedSlots}/5 MVP contracts deployed`, verifiedSlots === 5 ? "good" : "warn");
     row(`${registry.network.short} Evidence Anchor`, registry.anchor.status, deploymentTone(registry.anchor.status));
   }
   row("Transaction signing", "NOT PERFORMED", "muted");

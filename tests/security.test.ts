@@ -679,7 +679,8 @@ test("Analysis and Verification prompts enumerate their strict JSON contracts an
   assert.match(analysis, /sourceIds.*exact.*available.*source/i);
   assert.match(analysis, /1-5/);
   assert.match(analysis, /do not add|no extra keys|no additional keys/i);
-  assert.match(analysis, /400[- ]completion[- ]token/i);
+  assert.match(analysis, /800[- ]completion[- ]token/i);
+  assert.ok(analysis.length <= 1_100, `Analysis instructions should stay concise (got ${analysis.length} chars)`);
 
   const verification = prompts.verification ?? "";
   for (const field of ['"summary"', '"claimChecks"', '"testArtifactChecks"', '"limitations"', '"claimId"', '"assessment"', '"evidence"', '"sourceId"', '"quote"', '"rationale"', '"artifactId"']) {
@@ -1252,6 +1253,103 @@ test("oversized Verification evidence fails explicitly before provider network a
   assert.equal(fetchCalls, 0);
 });
 
+test("Groq Analysis truncation is persisted and Verification remains blocked", async () => {
+  const groqAnalysis = new OpenAICompatibleProvider({
+    apiKey: "offline-fixture-key",
+    model: "openai/gpt-oss-20b",
+    baseUrl: "https://api.groq.com/openai/v1",
+    maxOutputTokens: 400,
+    timeoutMs: 1_000,
+    fetchImpl: async () => Response.json({
+      choices: [{ finish_reason: "length", message: { content: JSON.stringify({ summary: "The available evidence is limited." }) } }],
+      usage: { prompt_tokens: 1_142, completion_tokens: 400, total_tokens: 1_542, completion_tokens_details: { reasoning_tokens: 115 } },
+    }, { headers: { "x-request-id": "offline-analysis-truncation-fixture" } }),
+  });
+  const fallback = mockProvider();
+  const stages: string[] = [];
+  const provider: ModelProvider = {
+    name: "offline-groq-truncation-fixture",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      stages.push(request.agent);
+      return request.agent === "analysis" ? groqAnalysis.completeJson(request) : fallback.completeJson(request);
+    },
+  };
+  const run = createQueuedRun("88888883-8888-4888-8888-888888888883", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  const detail = await toResearchRunDetail(run);
+  const failedAgent = detail.agents.find((agent) => agent.role === "analysis");
+  assert.deepEqual(stages, ["research", "analysis"]);
+  assert.equal(run.status, "failed");
+  assert.equal(run.errorCode, "provider_output_invalid");
+  assert.equal(failedAgent?.errorCode, "provider_output_invalid");
+  assert.equal(failedAgent?.providerReportedUsage?.completionTokens, 400);
+  assert.equal(failedAgent?.providerReportedUsage?.reasoningTokens, 115);
+  assert.equal(failedAgent?.providerReportedUsage?.outputDiagnostics?.finishReason, "length");
+  assert.equal(failedAgent?.providerReportedUsage?.outputDiagnostics?.validationCategory, "truncated");
+  assert.deepEqual(
+    failedAgent?.providerReportedUsage?.outputDiagnostics?.validationIssues?.map((issue) => issue.path[0]),
+    ["assumptions", "risks", "unknowns", "recommendations"],
+  );
+  assert.equal(detail.agents.find((agent) => agent.role === "verification")?.status, "blocked");
+});
+
+test("bounded Groq Analysis output completes Research, Analysis, and Verification in order", async () => {
+  let analysisRequestBody: Record<string, unknown> | undefined;
+  const groqAnalysis = new OpenAICompatibleProvider({
+    apiKey: "offline-fixture-key",
+    model: "openai/gpt-oss-20b",
+    baseUrl: "https://api.groq.com/openai/v1",
+    maxOutputTokens: 800,
+    maxRequestBytes: 6_000,
+    expectedTokensPerMinute: 8_000,
+    requireRateLimitHeaders: true,
+    timeoutMs: 1_000,
+    fetchImpl: async (_input, init) => {
+      analysisRequestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify(analysisOutput) } }],
+        usage: { prompt_tokens: 1_142, completion_tokens: 520, total_tokens: 1_662, completion_tokens_details: { reasoning_tokens: 115 } },
+      }, { headers: {
+        "x-request-id": "offline-analysis-complete-fixture",
+        "x-ratelimit-limit-tokens": "8000",
+        "x-ratelimit-remaining-tokens": "6338",
+        "x-ratelimit-reset-tokens": "10s",
+      } });
+    },
+  });
+  const fallback = mockProvider();
+  const stages: string[] = [];
+  const provider: ModelProvider = {
+    name: "offline-bounded-groq-analysis",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      stages.push(request.agent);
+      return request.agent === "analysis" ? groqAnalysis.completeJson(request) : fallback.completeJson(request);
+    },
+  };
+  const run = createQueuedRun("88888882-8888-4888-8888-888888888882", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  assert.deepEqual(stages, ["research", "analysis", "verification"]);
+  assert.equal(analysisRequestBody?.max_completion_tokens, 800);
+  assert.equal(analysisRequestBody?.reasoning_effort, "low");
+  assert.equal(run.status, "completed");
+  assert.deepEqual(run.agents.map((agent) => agent.status), ["completed", "completed", "completed"]);
+  assert.equal(run.analysis?.summary, analysisOutput.summary);
+  assert.equal(run.verification?.claimChecks.length, 1);
+  assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
+});
+
 test("Analysis schema diagnostics survive pipeline persistence without raw provider output", async () => {
   const researchProvider = mockProvider();
   const invalidAnalysis = new OpenAICompatibleProvider({
@@ -1647,14 +1745,15 @@ test("Groq GPT-OSS selects a bounded Free Plan profile and rejects unsafe overri
   if (configuration.status !== "available") return;
   assert.equal(configuration.vendor, "Groq");
   assert.deepEqual(configuration.profile, {
-    maxOutputTokens: 400,
+    maxOutputTokens: 800,
     maxRequestBytes: 6_000,
     minimumRequestIntervalMs: 61_000,
     maxModelSourceChars: 1_200,
     expectedTokensPerMinute: 8_000,
   });
 
-  assert.deepEqual(getModelProvider({ ...env, QEVRA_AI_MAX_OUTPUT_TOKENS: "401" } as NodeJS.ProcessEnv), {
+  assert.equal(getModelProvider({ ...env, QEVRA_AI_MAX_OUTPUT_TOKENS: "800" } as NodeJS.ProcessEnv).status, "available");
+  assert.deepEqual(getModelProvider({ ...env, QEVRA_AI_MAX_OUTPUT_TOKENS: "801" } as NodeJS.ProcessEnv), {
     status: "not_configured",
     reason: "free_plan_output_limit_invalid",
   });
