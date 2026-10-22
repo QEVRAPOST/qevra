@@ -155,15 +155,63 @@ test("network explorer renders a controlled verified entry without merging walle
   };
   const markup = renderNetworks("testnet", { status: "loading" }, [deployment]);
 
+  assert.match(markup, /<table class="ne-contract-table" aria-label="Verified architecture deployments on Robinhood Testnet">/);
+  for (const column of ["Contract", "Network", "Deployment", "Contract Address", "Source", "Actions"]) {
+    assert.match(markup, new RegExp(`<th scope="col">${column}<\\/th>`));
+  }
   assert.match(markup, /PQ Smart Account/);
-  assert.match(markup, /0x0000000000000000000000000000000000000009/);
+  assert.match(markup, /0x0000…0009/);
+  assert.match(markup, /title="0x0000000000000000000000000000000000000009"/);
   assert.match(markup, /Source verified/);
-  assert.match(markup, /Copy address/);
-  assert.match(markup, /Open in Explorer/);
+  assert.match(markup, /aria-label="Copy address"/);
+  assert.match(markup, /data-tooltip="Copy address"/);
+  assert.match(markup, /aria-label="View contract"/);
+  assert.match(markup, /data-tooltip="View contract"/);
+  assert.match(markup, /aria-label="View transaction"/);
+  assert.match(markup, /data-tooltip="View transaction"/);
+  assert.match(markup, /aria-live="polite"/);
+  for (const label of ["Copy address", "View contract", "View transaction"]) {
+    const action = markup.match(new RegExp(`aria-label="${label}" aria-describedby="([^"]+)" data-tooltip="${label}"`));
+    assert.ok(action, `${label} should expose an accessible description`);
+    assert.ok(markup.includes(`id="${action[1]}" role="tooltip">${label}</span>`), `${label} tooltip should be linked for keyboard and screen reader users`);
+  }
   assert.match(markup, /target="_blank"/);
   assert.match(markup, /rel="noopener noreferrer"/);
   assert.match(markup, /href="https:\/\/explorer\.testnet\.chain\.robinhood\.com\/address\/0x0000000000000000000000000000000000000009"/);
   assert.match(markup, /href="https:\/\/explorer\.testnet\.chain\.robinhood\.com\/tx\/0x[a]{64}"/);
+  assert.doesNotMatch(markup, />Open in Explorer</);
+  assert.doesNotMatch(markup, />View deployment transaction</);
+});
+
+test("contract rows expose a keyboard-operable details toggle and retain full deployment evidence", () => {
+  const address = "0x0000000000000000000000000000000000000009";
+  const tx = `0x${"a".repeat(64)}`;
+  const hash = `0x${"b".repeat(64)}`;
+  const markup = renderNetworks("testnet", { status: "loading" }, [{
+    name: "VeyraTokenPolicyRegistry",
+    purpose: "Registers approved Robinhood tokens for read-only policy checks.",
+    networkId: "testnet",
+    chainId: 46_630,
+    architectureSlot: 6,
+    address,
+    deploymentStatus: "verified",
+    observedChainId: 46_630,
+    deployerAddress: "0x0000000000000000000000000000000000000001",
+    transactionHash: tx,
+    receiptStatus: "success",
+    blockNumber: "12345",
+    runtimeBytecodeHash: hash,
+    sourceVerification: "not_verified",
+  }]);
+
+  assert.match(markup, /aria-label="Show details for VeyraTokenPolicyRegistry"/);
+  assert.match(markup, /aria-expanded="false"/);
+  assert.match(markup, /aria-controls="[^\"]+"/);
+  assert.match(markup, /class="ne-detail-row" id="[^"]+" hidden=""/);
+  for (const value of [address, tx, "0x0000000000000000000000000000000000000001", "12345", hash,
+    "Manifest verified", "Not verified", "Registers approved Robinhood tokens for read-only policy checks.", "Swap execution is disabled"]) {
+    assert.ok(markup.includes(value), `${value} should remain available in contract details`);
+  }
 });
 
 test("four verified Testnet manifest entries render as 4/10 while Mainnet stays empty", () => {
@@ -196,8 +244,8 @@ test("four verified Testnet manifest entries render as 4/10 while Mainnet stays 
 
   assert.match(markup, /<strong>4\/10<\/strong>/);
   assert.match(markup, /<strong>0\/10<\/strong>/);
-  assert.equal((markup.match(/<dd>DEPLOYED · INACTIVE<\/dd>/g) ?? []).length, 4);
-  assert.equal((markup.match(/<dd>Swap execution disabled<\/dd>/g) ?? []).length, 4);
+  assert.equal((markup.match(/DEPLOYED · INACTIVE/g) ?? []).length, 4);
+  assert.equal((markup.match(/Swap execution disabled/g) ?? []).length, 4);
   assert.equal((markup.match(/<dd>Manifest verified<\/dd>/g) ?? []).length, 4);
   for (const record of records) {
     assert.match(markup, new RegExp(record.name));

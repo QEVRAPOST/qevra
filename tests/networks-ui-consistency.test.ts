@@ -115,16 +115,16 @@ test("deployment registry groups verified records by chain, caps each network at
   assert.doesNotMatch(markup, /testnet contract 11/);
   assert.match(markup, /mainnet contract 101/);
   assert.match(markup, /Purpose for testnet contract 1\./);
-  assert.match(markup, /Verified deployed address/);
+  assert.match(markup, /Full contract address/);
   assert.match(markup, /10\/10/);
   assert.match(markup, /1\/10/);
   assert.match(markup, /Deployer/);
   assert.match(markup, /Block number/);
-  assert.match(markup, /Verified deployment/);
-  assert.match(markup, /Not independently verified/);
-  assert.match(markup, /View deployment transaction/);
+  assert.match(markup, /Manifest verified/);
+  assert.match(markup, /Not reported/);
+  assert.match(markup, /aria-label="View transaction"/);
   assert.match(markup, /\/tx\/0x/);
-  assert.match(markup, /Open in Explorer/);
+  assert.match(markup, /aria-label="View contract"/);
 });
 
 test("empty deployment manifests show independent zero-of-ten progress", () => {
@@ -156,10 +156,10 @@ test("standalone Evidence Anchor is displayed separately and excluded from roadm
   assert.match(markup, /Standalone research utility/i);
   assert.match(markup, /excluded from the 10-contract roadmap progress/i);
   assert.match(markup, /0\/10/);
-  assert.match(markup, /Verified deployed address/);
+  assert.match(markup, /Full contract address/);
   assert.match(markup, /Deployer/);
   assert.match(markup, /Block number/);
-  assert.match(markup, /View deployment transaction/);
+  assert.match(markup, /aria-label="View transaction"/);
 });
 
 test("transaction explorer URLs accept only hashes for configured public networks", () => {

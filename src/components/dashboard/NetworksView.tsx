@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
+import { Check, ChevronDown, Copy, ExternalLink, FileText } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Button, buttonVariants } from "@/components/ui/Button";
+import { copyTextToClipboard } from "@/features/wallet/clipboard";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { getExplorerAddressUrl, getExplorerTransactionUrl } from "@/lib/config/networks";
 import { PublicAddressInspector } from "@/components/dashboard/PublicAddressInspector";
 import {
   getVerifiedVeyraDeployments,
   isSwapExecutionInactiveSlot,
+  type VerifiedVeyraDeploymentEvidence,
   type VerifiedVeyraDeployment,
   type VerifiedVeyraStandaloneDeployment,
 } from "@/lib/config/veyra-deployments";
@@ -17,6 +20,193 @@ import { PROJECT_NAME } from "@/lib/project-brand";
 import type { NetworkId, NetworkRpcState } from "@/types/network";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
+
+function RegistryCopyAction({ address }: { address: string }) {
+  const tooltipId = useId();
+  const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [result, setResult] = useState<"idle" | "copied" | "failed">("idle");
+
+  useEffect(() => () => {
+    if (timeout.current) clearTimeout(timeout.current);
+  }, []);
+
+  const copy = async () => {
+    if (timeout.current) clearTimeout(timeout.current);
+    const copied = await copyTextToClipboard(address);
+    setResult(copied ? "copied" : "failed");
+    timeout.current = setTimeout(() => setResult("idle"), 1800);
+  };
+  const tooltip = result === "copied" ? "Address copied" : result === "failed" ? "Copy unavailable" : "Copy address";
+
+  return (
+    <button
+      className="ne-icon-action"
+      type="button"
+      aria-label="Copy address"
+      aria-describedby={tooltipId}
+      data-tooltip={tooltip}
+      title={tooltip}
+      onClick={() => void copy()}
+    >
+      {result === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+      <span className="sr" id={tooltipId} role="tooltip">{tooltip}</span>
+      <span className="sr" role="status" aria-live="polite">
+        {result === "copied" ? "Address copied to clipboard." : result === "failed" ? "Address could not be copied." : ""}
+      </span>
+    </button>
+  );
+}
+
+function RegistryLinkAction({
+  href,
+  label,
+  children,
+}: {
+  href: string;
+  label: "View contract" | "View transaction";
+  children: ReactNode;
+}) {
+  const tooltipId = useId();
+  return (
+    <a
+      className="ne-icon-action"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={label}
+      aria-describedby={tooltipId}
+      data-tooltip={label}
+      title={label}
+    >
+      {children}
+      <span className="sr" id={tooltipId} role="tooltip">{label}</span>
+    </a>
+  );
+}
+
+function DeploymentTableRow({
+  deployment,
+  standalone = false,
+}: {
+  deployment: VerifiedVeyraDeploymentEvidence;
+  standalone?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
+  const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
+  const transactionUrl = getExplorerTransactionUrl(deployment.networkId, deployment.transactionHash);
+  const swapInactive = !standalone
+    && "architectureSlot" in deployment
+    && typeof deployment.architectureSlot === "number"
+    && isSwapExecutionInactiveSlot(deployment.architectureSlot);
+  const sourceStatus = deployment.sourceVerification === "verified"
+    ? "Source verified"
+    : deployment.sourceVerification === "not_verified"
+      ? "Not verified"
+      : "Not reported";
+  const shortAddress = `${deployment.address.slice(0, 6)}…${deployment.address.slice(-4)}`;
+  const purpose = deployment.purpose ?? "Purpose not provided in the deployment manifest.";
+
+  return (
+    <>
+      <tr className="ne-contract">
+        <th className="ne-contract-name" scope="row" data-label="Contract">
+          <button
+            className="ne-row-expand"
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={detailsId}
+            aria-label={`${expanded ? "Hide" : "Show"} details for ${deployment.name}`}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            <ChevronDown aria-hidden="true" className="ne-row-chevron" />
+            <span className="ne-contract-title">
+              <strong>{deployment.name}</strong>
+              <small>{purpose}</small>
+            </span>
+          </button>
+        </th>
+        <td data-label="Network">{deployment.networkId === "testnet" ? "Robinhood Testnet" : "Robinhood Mainnet"}</td>
+        <td className="ne-deployment-status" data-label="Deployment">
+          <span>{swapInactive ? "DEPLOYED · INACTIVE" : "DEPLOYED · VERIFIED"}</span>
+          {swapInactive ? <small>Swap execution disabled</small> : null}
+        </td>
+        <td className="ne-address-cell" data-label="Contract Address">
+          <code title={deployment.address} aria-label={deployment.address}>{shortAddress}</code>
+        </td>
+        <td data-label="Source">{sourceStatus}</td>
+        <td className="ne-contract-actions" data-label="Actions">
+          <RegistryCopyAction address={deployment.address} />
+          {addressUrl ? (
+            <RegistryLinkAction href={addressUrl} label="View contract"><ExternalLink aria-hidden="true" /></RegistryLinkAction>
+          ) : null}
+          {transactionUrl ? (
+            <RegistryLinkAction href={transactionUrl} label="View transaction"><FileText aria-hidden="true" /></RegistryLinkAction>
+          ) : null}
+        </td>
+      </tr>
+      <tr className="ne-detail-row" id={detailsId} hidden={!expanded}>
+        <td colSpan={6}>
+          <dl className="ne-contract-details">
+            <div><dt>Full contract address</dt><dd><code>{deployment.address}</code></dd></div>
+            <div><dt>Full transaction hash</dt><dd><code>{deployment.transactionHash}</code></dd></div>
+            <div><dt>Deployer address</dt><dd><code>{deployment.deployerAddress}</code></dd></div>
+            <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div>
+            <div><dt>Manifest verification</dt><dd>Manifest verified</dd></div>
+            <div><dt>Source verification</dt><dd>{sourceStatus}</dd></div>
+            {deployment.runtimeBytecodeHash ? <div><dt>Runtime bytecode hash</dt><dd><code>{deployment.runtimeBytecodeHash}</code></dd></div> : null}
+            <div className="ne-detail-purpose"><dt>Purpose</dt><dd>{purpose}</dd></div>
+            <div className="ne-detail-restrictions">
+              <dt>Operational restrictions</dt>
+              <dd>{swapInactive
+                ? "Swap execution is disabled. Deployment does not mean a live route or executable swap is available."
+                : standalone
+                  ? "Standalone research utility; excluded from architecture progress. Registry actions are read-only."
+                  : "Deployment evidence only. The registry does not initiate contract actions."}</dd>
+            </div>
+          </dl>
+        </td>
+      </tr>
+    </>
+  );
+}
+
+function DeploymentTable({
+  deployments,
+  label,
+  standalone = false,
+}: {
+  deployments: readonly VerifiedVeyraDeploymentEvidence[];
+  label: string;
+  standalone?: boolean;
+}) {
+  return (
+    <div className="ne-contract-table-wrap">
+      <table className="ne-contract-table" aria-label={label}>
+        <caption className="sr">Verified contract deployment evidence. Expand a row for full manifest details.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Contract</th>
+            <th scope="col">Network</th>
+            <th scope="col">Deployment</th>
+            <th scope="col">Contract Address</th>
+            <th scope="col">Source</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {deployments.map((deployment) => (
+            <DeploymentTableRow
+              key={`${deployment.networkId}:${deployment.address}`}
+              deployment={deployment}
+              standalone={standalone}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function NetworksView({
   deploymentRecords,
@@ -206,34 +396,10 @@ export function NetworksView({
                     </span>
                   </header>
                   {deployments.length > 0 ? (
-                    <ul className="ne-contracts">
-                      {deployments.map((deployment) => {
-                        const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
-                        const transactionUrl = getExplorerTransactionUrl(deployment.networkId, deployment.transactionHash);
-                        const swapInactive = isSwapExecutionInactiveSlot(deployment.architectureSlot);
-                        return (
-                          <li key={`${deployment.networkId}:${deployment.address}`} className="ne-contract">
-                            <h4>{deployment.name}</h4>
-                            <p className="ne-contract-purpose">{deployment.purpose ?? "Purpose not provided in the deployment manifest."}</p>
-                            <dl className="kv">
-                              <div><dt>Verified deployed address</dt><dd><code>{deployment.address}</code></dd></div>
-                              <div><dt>Deployment status</dt><dd>{swapInactive ? "DEPLOYED · INACTIVE" : "DEPLOYED · MANIFEST VERIFIED"}</dd></div>
-                              <div><dt>Manifest evidence</dt><dd>Manifest verified</dd></div>
-                              {swapInactive ? <div><dt>Operational status</dt><dd>Swap execution disabled</dd></div> : null}
-                              <div><dt>Deployer</dt><dd><code>{deployment.deployerAddress}</code></dd></div>
-                              <div><dt>Transaction hash</dt><dd><code>{deployment.transactionHash}</code></dd></div>
-                              <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div>
-                              <div><dt>Source verification</dt><dd>{deployment.sourceVerification === "verified" ? "Source verified" : "Not independently verified"}</dd></div>
-                            </dl>
-                            <div className="ne-actions">
-                              <CopyAddressButton address={deployment.address} />
-                              {addressUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={addressUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
-                              {transactionUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={transactionUrl} target="_blank" rel="noopener noreferrer">View deployment transaction</a> : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <DeploymentTable
+                      deployments={deployments}
+                      label={`Verified architecture deployments on ${network.label}`}
+                    />
                   ) : (
                     <p className="ne-registry-network-empty">
                       {standalone.length > 0
@@ -242,31 +408,22 @@ export function NetworksView({
                     </p>
                   )}
                   {total > deployments.length ? <p className="ne-registry-network-note">Showing the first {deployments.length} of {total} verified deployments on this network.</p> : null}
-                  {standalone.map((deployment) => {
-                    const addressUrl = getExplorerAddressUrl(deployment.networkId, deployment.address);
-                    const transactionUrl = getExplorerTransactionUrl(deployment.networkId, deployment.transactionHash);
-                    return (
-                      <article className="ne-contract ne-contract-standalone" key={`standalone:${deployment.networkId}:${deployment.address}`}>
-                        <p className="ne-section-index">STANDALONE RESEARCH UTILITY</p>
-                        <h4>{deployment.name}</h4>
-                        <p className="ne-registry-network-note">Excluded from the 10-contract roadmap progress.</p>
-                        {deployment.purpose ? <p className="ne-contract-purpose">{deployment.purpose}</p> : null}
-                        <dl className="kv">
-                          <div><dt>Verified deployed address</dt><dd><code>{deployment.address}</code></dd></div>
-                          <div><dt>Deployment status</dt><dd>Verified deployment</dd></div>
-                          <div><dt>Deployer</dt><dd><code>{deployment.deployerAddress}</code></dd></div>
-                          <div><dt>Transaction hash</dt><dd><code>{deployment.transactionHash}</code></dd></div>
-                          <div><dt>Block number</dt><dd><code>{deployment.blockNumber}</code></dd></div>
-                          <div><dt>Source verification</dt><dd>{deployment.sourceVerification === "verified" ? "Source verified" : "Not independently verified"}</dd></div>
-                        </dl>
-                        <div className="ne-actions">
-                          <CopyAddressButton address={deployment.address} />
-                          {addressUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={addressUrl} target="_blank" rel="noopener noreferrer">Open in Explorer</a> : null}
-                          {transactionUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={transactionUrl} target="_blank" rel="noopener noreferrer">View deployment transaction</a> : null}
+                  {standalone.length > 0 ? (
+                    <section className="ne-standalone-registry" aria-label="Standalone research utilities">
+                      <header>
+                        <div>
+                          <p className="ne-section-index">STANDALONE RESEARCH UTILITY</p>
+                          <h4>Evidence Anchor</h4>
                         </div>
-                      </article>
-                    );
-                  })}
+                        <p>Excluded from the 10-contract roadmap progress.</p>
+                      </header>
+                      <DeploymentTable
+                        deployments={standalone}
+                        standalone
+                        label={`Standalone research utility deployments on ${network.label}`}
+                      />
+                    </section>
+                  ) : null}
                 </section>
               );
             })}
