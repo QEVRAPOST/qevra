@@ -6,9 +6,9 @@ export { DEFAULT_PROJECT_NAME } from "@/lib/project-brand";
 /** Landing copy (docs/QEVRA_DESIGN_DIRECTION.md section 5.3). Sentence case, active voice, no claims past the evidence. */
 
 export const HERO = {
-  eyebrow: "Read-only wallet and security research on Robinhood Chain",
+  eyebrow: "Building the future of post-quantum DeFi on Robinhood Chain",
   headline: "Read the network. Review the evidence.",
-  lede: "Connect an EVM wallet for public address, network and balance reads. Sign in to the VEYRA Research Engine to use the three-stage Security Swarm when service is available. Smart-account custody and swap execution are unavailable.",
+  lede: "Explore post-quantum wallet research, intent-aware transaction design, and autonomous security research. Public wallet reads and a demonstrated three-stage research workflow are available; smart-account custody and swap execution are not.",
   note: "Public Testnet deployment evidence is open to everyone. Wallet connection is read-only; research sign-in uses a separate, explicit message signature.",
 } as const;
 

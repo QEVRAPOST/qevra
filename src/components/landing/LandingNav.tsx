@@ -8,6 +8,8 @@ import { scrollBehavior, scrollToFrame, scrollToId } from "@/lib/aperture/scroll
 import { FRAME_HOW_IT_WORKS, FRAME_SWARM } from "@/lib/content/landing";
 import { useOverlay } from "@/lib/use-overlay";
 import { WordmarkMark } from "@/components/ui/Wordmark";
+import { logoutFromSecurityService } from "@/features/security/client";
+import { getCurrentAuthSession, logoutAuthSession } from "@/features/auth/client";
 import { LaunchLink } from "./LaunchLink";
 
 type SectionId = "story" | "swarm" | "status";
@@ -18,6 +20,42 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string; top: () => number 
   { id: "swarm", label: "Security Swarm", top: () => document.querySelectorAll<HTMLElement>("[data-story-frame]")[FRAME_SWARM]?.getBoundingClientRect().top ?? null, go: (r) => scrollToFrame(FRAME_SWARM, r) },
   { id: "status", label: "Status", top: () => document.getElementById("status")?.getBoundingClientRect().top ?? null, go: (r) => scrollToId("status", r) },
 ];
+
+export type LandingSession = {
+  status: "checking" | "signed_out" | "signed_in" | "error";
+  method?: "wallet" | "operator" | "account";
+  address?: string;
+  email?: string;
+  operatorAuthenticated?: boolean;
+  message?: string;
+};
+
+export function LandingAuthAction({ session, onSignOut, onMenuClose }: { session: LandingSession; onSignOut: () => void; onMenuClose?: () => void }) {
+  if (session.status === "signed_in") {
+    return (
+      <details className="landing-account-menu">
+        <summary aria-label="Open VEYRA account menu">{session.method === "operator" ? "Operator" : session.address ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}` : session.email ?? (session.method === "account" ? "VEYRA account" : "Account")}</summary>
+        <div className="landing-account-panel">
+          <p className="landing-account-status" role="status">{session.method === "operator" ? "Operator administration session active" : session.method === "wallet" ? "Wallet research session verified" : "VEYRA account active"}</p>
+          {session.email ? <p>{session.email}</p> : null}
+          {session.address && session.method !== "operator" ? <p className="landing-account-status">Wallet research access verified</p> : session.method === "account" ? <p>This VEYRA Account is separate from a blockchain wallet. Built-in wallet setup is not available yet; external wallets are optional.</p> : null}
+          {session.address ? <code>{session.address}</code> : null}
+          <p>Signing out ends the VEYRA session. It does not disconnect your browser wallet.</p>
+          <Link href="/app">Open dashboard <span aria-hidden="true">→</span></Link>
+          <Link href="/app/wallet">Open wallet overview <span aria-hidden="true">→</span></Link>
+          <button type="button" onClick={() => { onSignOut(); onMenuClose?.(); }}>Sign out</button>
+          <Link href="/app/security">Open Security Swarm <span aria-hidden="true">→</span></Link>
+        </div>
+      </details>
+    );
+  }
+
+  return (
+    <Link className="landing-auth-link" href="/app?auth=1" onClick={onMenuClose}>
+      Sign in
+    </Link>
+  );
+}
 
 /**
  * Which section the reader is in right now: the last one whose top has passed the upper part of the screen. The Status band is the
@@ -44,15 +82,15 @@ function Burger({ open }: { open: boolean }) {
 }
 
 /**
- * The landing's header. From 1025px the three links sit in the bar. Below that they live in a menu: a compact sheet that drops from the top
- * with the same three links and Launch App as the one primary action. It closes on a link, Escape, the cross or a tap outside; the page behind
- * it does not scroll or take focus while it is open.
+ * The landing's header. From 1025px the section links sit in the bar. Below that they live in a compact sheet with sign-in and Launch App.
+ * The sheet closes on a link, Escape, the cross or a tap outside; the page behind it does not scroll or take focus while it is open.
  */
 export function LandingNav({ projectName }: { projectName: string }) {
   const uid = useId();
   const [shown, setShown] = useState(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<SectionId | null>(null);
+  const [session, setSession] = useState<LandingSession>({ status: "checking" });
   const toggle = useRef<HTMLButtonElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -69,6 +107,38 @@ export function LandingNav({ projectName }: { projectName: string }) {
   }, []);
 
   useOverlay(open, closeMenu, sheet, { inertSelector: ".landing", returnFocus: toggle });
+
+  useEffect(() => {
+    let activeRequest = true;
+    getCurrentAuthSession().then((current) => {
+      if (!activeRequest) return;
+      const identity = current.identity;
+      const verifiedAddress = current.walletSession?.authenticated ? current.walletSession.address : undefined;
+      if (current.operatorAuthenticated && !identity) setSession({ status: "signed_in", method: "operator", operatorAuthenticated: true });
+      else if (current.authenticated && identity) setSession({
+        status: "signed_in",
+        method: identity.provider === "wallet" ? "wallet" : "account",
+        ...(identity.email ? { email: identity.email } : {}),
+        ...(verifiedAddress ? { address: verifiedAddress } : {}),
+        ...(current.operatorAuthenticated ? { operatorAuthenticated: true } : {}),
+      });
+      else if (current.operatorAuthenticated) setSession({ status: "signed_in", method: "operator", operatorAuthenticated: true });
+      else setSession({ status: "signed_out" });
+    }).catch(() => {
+      if (activeRequest) setSession({ status: "error", message: "The VEYRA account session could not be checked." });
+    });
+    return () => { activeRequest = false; };
+  }, []);
+
+  const signOut = useCallback(() => {
+    setSession({ status: "checking" });
+    const requests: Promise<unknown>[] = [];
+    if (session.method === "operator" || session.operatorAuthenticated) requests.push(logoutFromSecurityService());
+    if (session.method !== "operator") requests.push(logoutAuthSession());
+    void Promise.all(requests).then(() => setSession({ status: "signed_out" })).catch(() => {
+      setSession({ status: "error", message: "The server could not confirm sign-out. Retry from the Security Swarm account menu." });
+    });
+  }, [session.method, session.operatorAuthenticated]);
 
   /* the menu belongs to small screens: if the window grows past them, it goes */
   useEffect(() => {
@@ -123,6 +193,7 @@ export function LandingNav({ projectName }: { projectName: string }) {
           <Link href="/app/networks">Testnet deployments</Link>
         </div>
         <div className="lnav-tools">
+          <LandingAuthAction session={session} onSignOut={signOut} />
           <LaunchLink>Launch App</LaunchLink>
           <button
             ref={toggle}
@@ -181,10 +252,12 @@ export function LandingNav({ projectName }: { projectName: string }) {
                   </li>
                 </ul>
                 <div className="lmenu-cta" style={{ ["--i" as string]: SECTIONS.length + 1 }}>
+                  <LandingAuthAction session={session} onSignOut={signOut} onMenuClose={closeMenu} />
                   <LaunchLink className="lmenu-launch" onLaunch={closeMenu}>
                     Launch App
                   </LaunchLink>
                   <p>Opens the app. Nothing connects to a wallet until you choose.</p>
+                  {session.status === "error" ? <p role="alert">{session.message}</p> : null}
                 </div>
               </div>
             </div>,

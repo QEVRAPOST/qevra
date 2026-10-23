@@ -138,13 +138,14 @@ function mockProvider(failAgent?: string): ModelProvider {
     name: "mock",
     async completeJson<T>(request: StructuredModelRequest<T>) {
       const input = request.input as {
-        research?: unknown;
         researchClaims?: unknown[];
-        analysis?: unknown;
-        analysisAssessments?: { risks?: unknown[]; unknowns?: unknown[] };
         approvedSources?: Array<{ id: string; text?: string }>;
+        analysisAssessments?: { risks?: unknown[]; unknowns?: unknown[] };
       };
-      if (request.agent === "analysis") assert.ok(input.research, "Analysis must receive the Research structured output");
+      if (request.agent === "analysis") {
+        assert.ok(input.researchClaims, "Analysis must receive only validated Research claims");
+        assert.ok(input.approvedSources?.length, "Analysis must receive approved source excerpts");
+      }
       if (request.agent === "verification") {
         assert.ok(input.researchClaims, "Verification must receive the validated Research claims");
         assert.ok(input.analysisAssessments, "Verification must receive compact Analysis assessments");
@@ -271,12 +272,14 @@ test("bounded model excerpts preserve full persisted source provenance and exact
   const fullSourceText = fullSource.text!;
   const run = createQueuedRun("77777778-7778-4777-8777-777777777777", "mldsa-key-registration", "FIPS evidence question");
   const observedSourceInputs: Array<Record<string, unknown>> = [];
+  const observedAnalysisSources: Array<{ id: string; title: string; text: string; textIsExcerpt?: boolean }> = [];
   const baseProvider = mockProvider();
   const capturingProvider: ModelProvider = {
     name: "mock",
     async completeJson<T>(request: StructuredModelRequest<T>) {
-      const input = request.input as { sources?: Array<Record<string, unknown>> };
+      const input = request.input as { sources?: Array<Record<string, unknown>>; approvedSources?: Array<{ id: string; title: string; text: string }> };
       if (input.sources?.[0]) observedSourceInputs.push(input.sources[0]);
+      if (request.agent === "analysis" && input.approvedSources) observedAnalysisSources.push(...input.approvedSources);
       return baseProvider.completeJson(request);
     },
   };
@@ -292,12 +295,13 @@ test("bounded model excerpts preserve full persisted source provenance and exact
   assert.equal(run.sources[0]?.text, fullSourceText);
   assert.equal(run.sources[0]?.sha256, fullSource.sha256);
   assert.equal(run.findings[0]?.evidenceStatus, "quote_matched");
-  assert.equal(observedSourceInputs.length, 2, "only Research and Analysis receive the general source-input collection");
+  assert.equal(observedSourceInputs.length, 1, "only Research receives the general source-input collection");
   assert.equal(typeof observedSourceInputs[0]?.text, "string");
   assert.ok(String(observedSourceInputs[0]?.text).length <= 100);
   assert.ok(fullSourceText.includes(String(observedSourceInputs[0]?.text)));
   assert.equal(observedSourceInputs[0]?.textIsExcerpt, true);
   assert.equal(observedSourceInputs[0]?.sha256, fullSource.sha256);
+  assert.deepEqual(observedAnalysisSources, [{ id: source.id, title: source.title, text: observedSourceInputs[0]?.text as string, textIsExcerpt: true }]);
 });
 
 test("bounded Groq profile completes three structured stages with full provenance retained", async () => {
@@ -676,9 +680,11 @@ test("Analysis and Verification prompts enumerate their strict JSON contracts an
     assert.ok(analysis.includes(field), `Analysis prompt must enumerate ${field}`);
   }
   assert.match(analysis, /severity.*critical.*high.*medium.*low.*unknown/i);
-  assert.match(analysis, /sourceIds.*exact.*available.*source/i);
+  assert.match(analysis, /1-5 exact available source IDs/i);
   assert.match(analysis, /1-5/);
-  assert.match(analysis, /do not add|no extra keys|no additional keys/i);
+  assert.match(analysis, /extra keys/i);
+  assert.match(analysis, /arrays are always arrays.*never null or omitted/i);
+  assert.match(analysis, /under 160 characters/i);
   assert.match(analysis, /800[- ]completion[- ]token/i);
   assert.ok(analysis.length <= 1_100, `Analysis instructions should stay concise (got ${analysis.length} chars)`);
 
@@ -695,7 +701,23 @@ test("Analysis and Verification prompts enumerate their strict JSON contracts an
   assert.match(verification, /context only, never proof or an audit/i);
   assert.match(verification, /empty arrays when no claims or artifacts/i);
 
-  assert.deepEqual((inputs.analysis as { research: unknown }).research, run.research);
+  const analysisInput = inputs.analysis as {
+    topic: string;
+    question: string;
+    approvedSources: Array<{ id: string; title: string; text: string }>;
+    researchClaims: unknown[];
+    completedArtifacts: unknown[];
+    sources?: unknown;
+    research?: unknown;
+    deterministicTests?: unknown;
+  };
+  assert.deepEqual(analysisInput.researchClaims, run.research?.claims);
+  assert.deepEqual(analysisInput.approvedSources, [{ id: source.id, title: source.title, text: source.text }]);
+  assert.deepEqual(analysisInput.completedArtifacts, []);
+  assert.equal("sources" in analysisInput, false);
+  assert.equal("research" in analysisInput, false);
+  assert.equal("deterministicTests" in analysisInput, false);
+  assert.ok(Buffer.byteLength(JSON.stringify(analysisInput), "utf8") < 3_000);
   assert.equal(run.research?.claims.length, 1, "Research claims without an exact approved-source quote must not flow downstream");
   const verificationInput = inputs.verification as {
     researchClaims: unknown[];
@@ -759,6 +781,10 @@ test("Analysis and Verification schemas reject missing fields, wrong types, and 
   assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, assumptions: "not-an-array" }).success, false);
   assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, risks: [{ ...validAnalysis.risks[0]!, severity: "urgent" }] }).success, false);
   assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, risks: [{ ...validAnalysis.risks[0]!, sourceIds: [7] }] }).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, assumptions: ["one", "two"] }).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, risks: [validAnalysis.risks[0]!, validAnalysis.risks[0]!] }).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, unknowns: ["one", "two", "three"] }).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, recommendations: ["one", "two"] }).success, false);
 
   const validVerification = {
     summary: "No claims or completed artifacts were returned for checking.",
@@ -1258,11 +1284,17 @@ test("Groq Analysis truncation is persisted and Verification remains blocked", a
     apiKey: "offline-fixture-key",
     model: "openai/gpt-oss-20b",
     baseUrl: "https://api.groq.com/openai/v1",
-    maxOutputTokens: 400,
+    maxOutputTokens: 800,
     timeoutMs: 1_000,
     fetchImpl: async () => Response.json({
-      choices: [{ finish_reason: "length", message: { content: JSON.stringify({ summary: "The available evidence is limited." }) } }],
-      usage: { prompt_tokens: 1_142, completion_tokens: 400, total_tokens: 1_542, completion_tokens_details: { reasoning_tokens: 115 } },
+      choices: [{ finish_reason: "length", message: { content: JSON.stringify({
+        summary: "The available evidence is limited.",
+        assumptions: "The captured page is authoritative.",
+        risks: "No risks were found.",
+        unknowns: "Application behavior was not assessed.",
+        recommendations: "Request an audit.",
+      }) } }],
+      usage: { prompt_tokens: 1_142, completion_tokens: 800, total_tokens: 1_942, completion_tokens_details: { reasoning_tokens: 318 } },
     }, { headers: { "x-request-id": "offline-analysis-truncation-fixture" } }),
   });
   const fallback = mockProvider();
@@ -1288,14 +1320,18 @@ test("Groq Analysis truncation is persisted and Verification remains blocked", a
   assert.equal(run.status, "failed");
   assert.equal(run.errorCode, "provider_output_invalid");
   assert.equal(failedAgent?.errorCode, "provider_output_invalid");
-  assert.equal(failedAgent?.providerReportedUsage?.completionTokens, 400);
-  assert.equal(failedAgent?.providerReportedUsage?.reasoningTokens, 115);
+  assert.equal(failedAgent?.providerReportedUsage?.completionTokens, 800);
+  assert.equal(failedAgent?.providerReportedUsage?.reasoningTokens, 318);
   assert.equal(failedAgent?.providerReportedUsage?.outputDiagnostics?.finishReason, "length");
   assert.equal(failedAgent?.providerReportedUsage?.outputDiagnostics?.validationCategory, "truncated");
   assert.deepEqual(
-    failedAgent?.providerReportedUsage?.outputDiagnostics?.validationIssues?.map((issue) => issue.path[0]),
+    [...new Set(failedAgent?.providerReportedUsage?.outputDiagnostics?.validationIssues?.map((issue) => issue.path[0]))],
     ["assumptions", "risks", "unknowns", "recommendations"],
   );
+  const invalidArrayIssues = failedAgent?.providerReportedUsage?.outputDiagnostics?.validationIssues ?? [];
+  for (const field of ["assumptions", "risks", "unknowns", "recommendations"]) {
+    assert.ok(invalidArrayIssues.some((issue) => issue.path[0] === field && issue.code === "invalid_type"), `${field} must remain schema-invalid when returned as a scalar`);
+  }
   assert.equal(detail.agents.find((agent) => agent.role === "verification")?.status, "blocked");
 });
 
@@ -1343,6 +1379,10 @@ test("bounded Groq Analysis output completes Research, Analysis, and Verificatio
   assert.deepEqual(stages, ["research", "analysis", "verification"]);
   assert.equal(analysisRequestBody?.max_completion_tokens, 800);
   assert.equal(analysisRequestBody?.reasoning_effort, "low");
+  const messages = analysisRequestBody?.messages as Array<{ role: string; content: string }>;
+  const analysisPayload = JSON.parse(messages[1]!.content) as { payload: Record<string, unknown> };
+  assert.deepEqual(Object.keys(analysisPayload.payload), ["topic", "question", "approvedSources", "researchClaims", "completedArtifacts"]);
+  assert.ok(Buffer.byteLength(JSON.stringify(analysisPayload.payload), "utf8") < 3_000);
   assert.equal(run.status, "completed");
   assert.deepEqual(run.agents.map((agent) => agent.status), ["completed", "completed", "completed"]);
   assert.equal(run.analysis?.summary, analysisOutput.summary);

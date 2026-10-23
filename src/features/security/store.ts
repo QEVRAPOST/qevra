@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { isGroqGptOssProfile } from "./groq-profile";
 import type { ResearchRunRecord } from "./model";
@@ -30,6 +31,54 @@ export interface WalletAuthChallenge {
   chainId: number;
   message: string;
   expiresAt: string;
+}
+
+export type AuthIdentityProvider = "wallet" | "google" | "email" | "password";
+
+export interface AuthIdentityInput {
+  provider: AuthIdentityProvider;
+  subject: string;
+  email?: string;
+  emailVerified: boolean;
+}
+
+export interface AuthIdentityRecord extends AuthIdentityInput {
+  userId: string;
+}
+
+export interface AuthSessionRecord {
+  userId: string;
+  provider: AuthIdentityProvider;
+  subject: string;
+  email?: string;
+  expiresAt: string;
+}
+
+export interface AuthPasswordCredentialRecord {
+  userId: string;
+  email: string;
+  passwordHash: string;
+  createdAt: string;
+}
+
+export interface AuthAccountProfileRecord {
+  userId: string;
+  email?: string;
+  emailVerified: boolean;
+  createdAt: string;
+}
+
+export interface AuthEmbeddedWalletRecord {
+  provider: "privy";
+  providerUserId: string;
+  providerWalletId: string;
+  address: string;
+  createdAt: string;
+  verifiedAt: string;
+}
+
+export interface WalletLinkChallenge extends WalletAuthChallenge {
+  userId: string;
 }
 
 let singleton: PostgresResearchStore | undefined;
@@ -108,7 +157,468 @@ export class PostgresResearchStore {
       );
       CREATE INDEX IF NOT EXISTS veyra_user_auth_challenges_expiry_idx
         ON veyra_user_auth_challenges (expires_at);
+      CREATE TABLE IF NOT EXISTS veyra_auth_users (
+        id uuid PRIMARY KEY,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS veyra_auth_identities (
+        provider text NOT NULL CONSTRAINT veyra_auth_identities_provider_check
+          CHECK (provider IN ('wallet', 'google', 'email', 'password')),
+        provider_subject text NOT NULL,
+        user_id uuid NOT NULL REFERENCES veyra_auth_users(id) ON DELETE CASCADE,
+        email text,
+        email_verified boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (provider, provider_subject)
+      );
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'veyra_auth_identities'::regclass
+            AND conname = 'veyra_auth_identities_provider_check'
+            AND pg_get_constraintdef(oid) LIKE '%password%'
+        ) THEN
+          ALTER TABLE veyra_auth_identities DROP CONSTRAINT IF EXISTS veyra_auth_identities_provider_check;
+          ALTER TABLE veyra_auth_identities ADD CONSTRAINT veyra_auth_identities_provider_check
+            CHECK (provider IN ('wallet', 'google', 'email', 'password'));
+        END IF;
+      END $$;
+      CREATE INDEX IF NOT EXISTS veyra_auth_identities_user_idx ON veyra_auth_identities (user_id);
+      CREATE TABLE IF NOT EXISTS veyra_auth_sessions (
+        session_hash char(64) PRIMARY KEY,
+        user_id uuid NOT NULL REFERENCES veyra_auth_users(id) ON DELETE CASCADE,
+        provider text NOT NULL CONSTRAINT veyra_auth_sessions_provider_check
+          CHECK (provider IN ('wallet', 'google', 'email', 'password')),
+        provider_subject text NOT NULL,
+        email text,
+        wallet_session_hash char(64),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        expires_at timestamptz NOT NULL,
+        revoked_at timestamptz
+      );
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'veyra_auth_sessions'::regclass
+            AND conname = 'veyra_auth_sessions_provider_check'
+            AND pg_get_constraintdef(oid) LIKE '%password%'
+        ) THEN
+          ALTER TABLE veyra_auth_sessions DROP CONSTRAINT IF EXISTS veyra_auth_sessions_provider_check;
+          ALTER TABLE veyra_auth_sessions ADD CONSTRAINT veyra_auth_sessions_provider_check
+            CHECK (provider IN ('wallet', 'google', 'email', 'password'));
+        END IF;
+      END $$;
+      ALTER TABLE veyra_auth_sessions ADD COLUMN IF NOT EXISTS wallet_session_hash char(64);
+      CREATE INDEX IF NOT EXISTS veyra_auth_sessions_user_idx ON veyra_auth_sessions (user_id, expires_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS veyra_auth_sessions_wallet_session_idx
+        ON veyra_auth_sessions (wallet_session_hash) WHERE wallet_session_hash IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS veyra_auth_wallet_revocations (
+        wallet_session_hash char(64) PRIMARY KEY,
+        revoked_at timestamptz NOT NULL DEFAULT now(),
+        expires_at timestamptz NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS veyra_auth_email_challenges (
+        email_hash char(64) PRIMARY KEY,
+        code_hash char(64) NOT NULL,
+        attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+        expires_at timestamptz NOT NULL,
+        consumed_at timestamptz
+      );
+      CREATE INDEX IF NOT EXISTS veyra_auth_email_challenges_expiry_idx ON veyra_auth_email_challenges (expires_at);
+      CREATE TABLE IF NOT EXISTS veyra_auth_google_states (
+        state_hash char(64) PRIMARY KEY,
+        expires_at timestamptz NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS veyra_auth_google_states_expiry_idx ON veyra_auth_google_states (expires_at);
+      CREATE TABLE IF NOT EXISTS veyra_auth_wallet_link_challenges (
+        nonce_hash char(64) PRIMARY KEY,
+        user_id uuid NOT NULL REFERENCES veyra_auth_users(id) ON DELETE CASCADE,
+        wallet_address text NOT NULL,
+        chain_id integer NOT NULL CHECK (chain_id IN (46630, 4663)),
+        message text NOT NULL,
+        expires_at timestamptz NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS veyra_auth_wallet_link_challenges_expiry_idx ON veyra_auth_wallet_link_challenges (expires_at);
+      CREATE TABLE IF NOT EXISTS veyra_auth_password_credentials (
+        user_id uuid PRIMARY KEY REFERENCES veyra_auth_users(id) ON DELETE CASCADE,
+        email_normalized text NOT NULL UNIQUE,
+        password_hash text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS veyra_auth_embedded_wallets (
+        user_id uuid PRIMARY KEY REFERENCES veyra_auth_users(id) ON DELETE CASCADE,
+        provider text NOT NULL CHECK (provider = 'privy'),
+        provider_user_id text NOT NULL,
+        provider_wallet_id text NOT NULL UNIQUE,
+        address text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        verified_at timestamptz NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS veyra_auth_embedded_wallets_address_idx
+        ON veyra_auth_embedded_wallets (lower(address));
     `);
+  }
+
+  async createPasswordAccount(input: {
+    email: string;
+    passwordHash: string;
+    sessionHash: string;
+    expiresAt: string;
+  }): Promise<AuthAccountProfileRecord> {
+    await this.ensureSchema();
+    const client = await this.pool.connect();
+    const userId = randomUUID();
+    try {
+      await client.query("BEGIN");
+      const user = await client.query<{ created_at: Date }>(
+        "INSERT INTO veyra_auth_users (id) VALUES ($1) RETURNING created_at",
+        [userId],
+      );
+      await client.query(
+        `INSERT INTO veyra_auth_identities (provider, provider_subject, user_id, email, email_verified)
+         VALUES ('password', $1, $2, $1, false)`,
+        [input.email, userId],
+      );
+      await client.query(
+        "INSERT INTO veyra_auth_password_credentials (user_id, email_normalized, password_hash) VALUES ($1, $2, $3)",
+        [userId, input.email, input.passwordHash],
+      );
+      await client.query(
+        `INSERT INTO veyra_auth_sessions (session_hash, user_id, provider, provider_subject, email, expires_at)
+         VALUES ($1, $2, 'password', $3, $3, $4)`,
+        [input.sessionHash, userId, input.email, input.expiresAt],
+      );
+      await client.query("COMMIT");
+      return {
+        userId,
+        email: input.email,
+        emailVerified: false,
+        createdAt: user.rows[0]?.created_at.toISOString() ?? new Date().toISOString(),
+      };
+    } catch (error) {
+      await safeRollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getPasswordCredential(email: string): Promise<AuthPasswordCredentialRecord | undefined> {
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      user_id: string;
+      email_normalized: string;
+      password_hash: string;
+      created_at: Date;
+    }>(
+      `SELECT user_id, email_normalized, password_hash, created_at
+       FROM veyra_auth_password_credentials WHERE email_normalized = $1`,
+      [email],
+    );
+    const row = result.rows[0];
+    return row ? {
+      userId: row.user_id,
+      email: row.email_normalized,
+      passwordHash: row.password_hash,
+      createdAt: row.created_at.toISOString(),
+    } : undefined;
+  }
+
+  async getAccountProfile(userId: string): Promise<AuthAccountProfileRecord | undefined> {
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      user_id: string;
+      email: string | null;
+      email_verified: boolean;
+      created_at: Date;
+    }>(
+      `SELECT u.id AS user_id,
+              COALESCE(pc.email_normalized, ai.email) AS email,
+              COALESCE(ai.email_verified, false) AS email_verified,
+              u.created_at
+       FROM veyra_auth_users u
+       LEFT JOIN veyra_auth_password_credentials pc ON pc.user_id = u.id
+       LEFT JOIN LATERAL (
+         SELECT email, email_verified FROM veyra_auth_identities
+         WHERE user_id = u.id AND email IS NOT NULL
+         ORDER BY email_verified DESC, created_at ASC LIMIT 1
+       ) ai ON true
+       WHERE u.id = $1`,
+      [userId],
+    );
+    const row = result.rows[0];
+    return row ? {
+      userId: row.user_id,
+      ...(row.email ? { email: row.email } : {}),
+      emailVerified: row.email_verified,
+      createdAt: row.created_at.toISOString(),
+    } : undefined;
+  }
+
+  async getEmbeddedWallet(userId: string): Promise<AuthEmbeddedWalletRecord | undefined> {
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      provider: "privy";
+      provider_user_id: string;
+      provider_wallet_id: string;
+      address: string;
+      created_at: Date;
+      verified_at: Date;
+    }>(
+      `SELECT provider, provider_user_id, provider_wallet_id, address, created_at, verified_at
+       FROM veyra_auth_embedded_wallets WHERE user_id = $1`,
+      [userId],
+    );
+    const row = result.rows[0];
+    return row ? {
+      provider: row.provider,
+      providerUserId: row.provider_user_id,
+      providerWalletId: row.provider_wallet_id,
+      address: row.address,
+      createdAt: row.created_at.toISOString(),
+      verifiedAt: row.verified_at.toISOString(),
+    } : undefined;
+  }
+
+  async createOrGetAuthIdentity(identity: AuthIdentityInput): Promise<AuthIdentityRecord> {
+    await this.ensureSchema();
+    const client = await this.pool.connect();
+    const candidateUserId = randomUUID();
+    try {
+      await client.query("BEGIN");
+      await client.query("INSERT INTO veyra_auth_users (id) VALUES ($1)", [candidateUserId]);
+      const inserted = await client.query<{ user_id: string }>(
+        `INSERT INTO veyra_auth_identities (provider, provider_subject, user_id, email, email_verified)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (provider, provider_subject) DO UPDATE
+           SET email = COALESCE(EXCLUDED.email, veyra_auth_identities.email),
+               email_verified = veyra_auth_identities.email_verified OR EXCLUDED.email_verified,
+               updated_at = now()
+         RETURNING user_id`,
+        [identity.provider, identity.subject, candidateUserId, identity.email ?? null, identity.emailVerified],
+      );
+      const userId = inserted.rows[0]?.user_id;
+      if (!userId) throw new Error("auth_identity_persist_failed");
+      if (userId !== candidateUserId) {
+        await client.query("DELETE FROM veyra_auth_users WHERE id = $1", [candidateUserId]);
+      }
+      await client.query("COMMIT");
+      return { ...identity, userId };
+    } catch (error) {
+      await safeRollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async createAuthSession(input: AuthSessionRecord & { sessionHash: string; walletSessionHash?: string }): Promise<void> {
+    await this.ensureSchema();
+    await this.pool.query(
+      `INSERT INTO veyra_auth_sessions (session_hash, user_id, provider, provider_subject, email, wallet_session_hash, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [input.sessionHash, input.userId, input.provider, input.subject, input.email ?? null, input.walletSessionHash ?? null, input.expiresAt],
+    );
+  }
+
+  async getAuthSession(sessionHash: string): Promise<AuthSessionRecord | undefined> {
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      user_id: string;
+      provider: AuthIdentityProvider;
+      provider_subject: string;
+      email: string | null;
+      expires_at: Date;
+    }>(
+      `SELECT user_id, provider, provider_subject, email, expires_at
+       FROM veyra_auth_sessions
+       WHERE session_hash = $1 AND revoked_at IS NULL AND expires_at > now()`,
+      [sessionHash],
+    );
+    const row = result.rows[0];
+    return row ? {
+      userId: row.user_id,
+      provider: row.provider,
+      subject: row.provider_subject,
+      ...(row.email ? { email: row.email } : {}),
+      expiresAt: row.expires_at.toISOString(),
+    } : undefined;
+  }
+
+  async revokeAuthSession(sessionHash: string): Promise<void> {
+    await this.ensureSchema();
+    await this.pool.query("UPDATE veyra_auth_sessions SET revoked_at = now() WHERE session_hash = $1 AND revoked_at IS NULL", [sessionHash]);
+  }
+
+  async revokeWalletAuthSession(walletSessionHash: string, expiresAt: string): Promise<void> {
+    await this.ensureSchema();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        "UPDATE veyra_auth_sessions SET revoked_at = now() WHERE wallet_session_hash = $1 AND revoked_at IS NULL",
+        [walletSessionHash],
+      );
+      await client.query(
+        `INSERT INTO veyra_auth_wallet_revocations (wallet_session_hash, expires_at)
+         VALUES ($1, $2) ON CONFLICT (wallet_session_hash) DO UPDATE
+         SET revoked_at = now(), expires_at = GREATEST(veyra_auth_wallet_revocations.expires_at, EXCLUDED.expires_at)`,
+        [walletSessionHash, expiresAt],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await safeRollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async walletAuthSessionIsRevoked(walletSessionHash: string): Promise<boolean> {
+    await this.ensureSchema();
+    const result = await this.pool.query<{ revoked: boolean }>(
+      `SELECT (
+         EXISTS (SELECT 1 FROM veyra_auth_sessions WHERE wallet_session_hash = $1 AND (revoked_at IS NOT NULL OR expires_at <= now()))
+         OR EXISTS (SELECT 1 FROM veyra_auth_wallet_revocations WHERE wallet_session_hash = $1 AND expires_at > now())
+       ) AS revoked`,
+      [walletSessionHash],
+    );
+    return result.rows[0]?.revoked === true;
+  }
+
+  async attachWalletSessionToAuthSession(sessionHash: string, walletSessionHash: string): Promise<boolean> {
+    await this.ensureSchema();
+    const result = await this.pool.query(
+      `UPDATE veyra_auth_sessions SET wallet_session_hash = $2
+       WHERE session_hash = $1 AND revoked_at IS NULL AND expires_at > now()`,
+      [sessionHash, walletSessionHash],
+    );
+    return result.rowCount === 1;
+  }
+
+  async createEmailOtpChallenge(emailHash: string, codeHash: string, expiresAt: string): Promise<void> {
+    await this.ensureSchema();
+    await this.pool.query(
+      `INSERT INTO veyra_auth_email_challenges (email_hash, code_hash, attempt_count, expires_at, consumed_at)
+       VALUES ($1, $2, 0, $3, NULL)
+       ON CONFLICT (email_hash) DO UPDATE SET code_hash = EXCLUDED.code_hash,
+         attempt_count = 0, expires_at = EXCLUDED.expires_at, consumed_at = NULL`,
+      [emailHash, codeHash, expiresAt],
+    );
+  }
+
+  async consumeEmailOtpChallenge(emailHash: string, codeHash: string): Promise<boolean> {
+    await this.ensureSchema();
+    const result = await this.pool.query<{ valid: boolean }>(
+      `UPDATE veyra_auth_email_challenges
+       SET attempt_count = attempt_count + 1,
+           consumed_at = CASE WHEN code_hash = $2 THEN now() ELSE consumed_at END
+       WHERE email_hash = $1 AND consumed_at IS NULL AND expires_at > now() AND attempt_count < 5
+       RETURNING (code_hash = $2) AS valid`,
+      [emailHash, codeHash],
+    );
+    return result.rows[0]?.valid === true;
+  }
+
+  async deleteEmailOtpChallenge(emailHash: string): Promise<void> {
+    await this.ensureSchema();
+    await this.pool.query("DELETE FROM veyra_auth_email_challenges WHERE email_hash = $1", [emailHash]);
+  }
+
+  async createGoogleOAuthState(stateHash: string, expiresAt: string): Promise<void> {
+    await this.ensureSchema();
+    await this.pool.query("INSERT INTO veyra_auth_google_states (state_hash, expires_at) VALUES ($1, $2)", [stateHash, expiresAt]);
+  }
+
+  async consumeGoogleOAuthState(stateHash: string): Promise<boolean> {
+    await this.ensureSchema();
+    const result = await this.pool.query(
+      "DELETE FROM veyra_auth_google_states WHERE state_hash = $1 AND expires_at > now() RETURNING state_hash",
+      [stateHash],
+    );
+    return result.rowCount === 1;
+  }
+
+  async createWalletLinkChallenge(challenge: WalletLinkChallenge): Promise<void> {
+    await this.ensureSchema();
+    await this.pool.query(
+      `INSERT INTO veyra_auth_wallet_link_challenges (nonce_hash, user_id, wallet_address, chain_id, message, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [challenge.nonceHash, challenge.userId, challenge.address, challenge.chainId, challenge.message, challenge.expiresAt],
+    );
+  }
+
+  async getWalletLinkChallenge(nonceHash: string, userId: string): Promise<WalletLinkChallenge | undefined> {
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      nonce_hash: string;
+      user_id: string;
+      wallet_address: string;
+      chain_id: number;
+      message: string;
+      expires_at: Date;
+    }>(
+      `SELECT nonce_hash, user_id, wallet_address, chain_id, message, expires_at
+       FROM veyra_auth_wallet_link_challenges WHERE nonce_hash = $1 AND user_id = $2 AND expires_at > now()`,
+      [nonceHash, userId],
+    );
+    const row = result.rows[0];
+    return row ? {
+      nonceHash: row.nonce_hash.trim(),
+      userId: row.user_id,
+      address: row.wallet_address,
+      chainId: row.chain_id,
+      message: row.message,
+      expiresAt: row.expires_at.toISOString(),
+    } : undefined;
+  }
+
+  async consumeWalletLinkChallenge(nonceHash: string, userId: string): Promise<boolean> {
+    await this.ensureSchema();
+    const result = await this.pool.query(
+      `DELETE FROM veyra_auth_wallet_link_challenges
+       WHERE nonce_hash = $1 AND user_id = $2 AND expires_at > now() RETURNING nonce_hash`,
+      [nonceHash, userId],
+    );
+    return result.rowCount === 1;
+  }
+
+  async linkWalletIdentity(userId: string, address: string): Promise<boolean> {
+    await this.ensureSchema();
+    const client = await this.pool.connect();
+    const subject = address.toLowerCase();
+    try {
+      await client.query("BEGIN");
+      const existing = await client.query<{ user_id: string }>(
+        "SELECT user_id FROM veyra_auth_identities WHERE provider = 'wallet' AND provider_subject = $1 FOR UPDATE",
+        [subject],
+      );
+      if (existing.rows[0]) {
+        await client.query("COMMIT");
+        return existing.rows[0].user_id === userId;
+      }
+      const inserted = await client.query(
+        `INSERT INTO veyra_auth_identities (provider, provider_subject, user_id, email, email_verified)
+         VALUES ('wallet', $1, $2, NULL, false) ON CONFLICT (provider, provider_subject) DO NOTHING RETURNING user_id`,
+        [subject, userId],
+      );
+      if (inserted.rowCount !== 1) {
+        const raced = await client.query<{ user_id: string }>(
+          "SELECT user_id FROM veyra_auth_identities WHERE provider = 'wallet' AND provider_subject = $1",
+          [subject],
+        );
+        await client.query("COMMIT");
+        return raced.rows[0]?.user_id === userId;
+      }
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await safeRollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async createRun(run: ResearchRunRecord, ownerId?: string): Promise<void> {
@@ -409,6 +919,11 @@ export class PostgresResearchStore {
       DELETE FROM qevra_rate_limits WHERE window_started_at < now() - interval '1 day';
       DELETE FROM qevra_security_workers WHERE heartbeat_at < now() - interval '1 day';
       DELETE FROM veyra_user_auth_challenges WHERE expires_at < now();
+      DELETE FROM veyra_auth_sessions WHERE expires_at < now() - interval '30 days' OR revoked_at < now() - interval '30 days';
+      DELETE FROM veyra_auth_email_challenges WHERE expires_at < now() OR consumed_at < now() - interval '1 day';
+      DELETE FROM veyra_auth_google_states WHERE expires_at < now();
+      DELETE FROM veyra_auth_wallet_link_challenges WHERE expires_at < now();
+      DELETE FROM veyra_auth_wallet_revocations WHERE expires_at < now();
     `);
     this.lastOperationalCleanupAt = now;
   }

@@ -2,7 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import { getAddress, isAddress, recoverMessageAddress } from "viem";
 
 export const USER_SESSION_COOKIE = "veyra_user_session";
-const USER_SESSION_SECONDS = 12 * 60 * 60;
+export const USER_SESSION_SECONDS = 12 * 60 * 60;
 const USER_SECRET_ENV = "VEYRA_USER_SESSION_SECRET";
 const AUTH_ORIGIN_ENV = "VEYRA_AUTH_ORIGIN";
 
@@ -41,7 +41,9 @@ export function isConfiguredWalletAuthOrigin(origin: string | null, env: NodeJS.
   const expected = configuredWalletAuthOrigin(env);
   if (!expected || !origin) return false;
   try {
-    return new URL(origin).origin === expected;
+    const url = new URL(origin);
+    return url.origin === expected && !url.username && !url.password
+      && url.pathname === "/" && !url.search && !url.hash;
   } catch {
     return false;
   }
@@ -93,14 +95,14 @@ function sign(payload: string, secret: string): string {
 }
 
 export function createUserSession(addressInput: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()):
-  { value: string; address: `0x${string}`; expiresAt: number } | undefined {
+  { value: string; address: `0x${string}`; sessionKey: string; expiresAt: number } | undefined {
   const secret = userSecret(env);
   if (!secret || !isAddress(addressInput)) return undefined;
   const address = getAddress(addressInput);
   const expiresAt = Math.floor(now / 1_000) + USER_SESSION_SECONDS;
   const nonce = randomBytes(24).toString("base64url");
   const payload = `u1.${expiresAt}.${address}.${nonce}`;
-  return { value: `${payload}.${sign(payload, secret)}`, address, expiresAt };
+  return { value: `${payload}.${sign(payload, secret)}`, address, sessionKey: createHash("sha256").update(nonce).digest("hex"), expiresAt };
 }
 
 export function verifyUserSessionCookie(

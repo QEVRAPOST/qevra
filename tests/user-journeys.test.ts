@@ -6,7 +6,7 @@ import { ActivityResearchAccess, ActivityView } from "@/components/dashboard/Act
 import { ModelContext } from "@/components/dashboard/AppModelContext";
 import { CopyAddressButton, copyAddressFeedback } from "@/components/dashboard/CopyAddressButton";
 import { PublicAddressInspectionMessage, PublicAddressInspector, PublicAddressResult, publicAddressActionLabel } from "@/components/dashboard/PublicAddressInspector";
-import { SecurityPublicEntry, SecurityResearchAccess } from "@/components/dashboard/SecurityView";
+import { SecurityResearchAccess, researchCreationBlockerFromAction, researchSessionBlocker } from "@/components/dashboard/SecurityView";
 import { LiveAccessGate, operatorAccessErrorMessage } from "@/features/dashboard/LiveAppProvider";
 import { SecurityApiClientError } from "@/features/security/client";
 import { startBlocker, SwarmLaunch } from "@/components/dashboard/SwarmLaunch";
@@ -37,44 +37,36 @@ test("Security Swarm starts with the read-only Robinhood research topic selected
   assert.equal(DEFAULT_RESEARCH_TOPIC_ID, "robinhood-readonly-wallet");
 });
 
-test("Security entry leads with wallet sign-in and keeps the separate operator form secondary", () => {
-  const gate = createElement(LiveAccessGate, {
+test("Security Swarm keeps the workspace visible and asks for wallet proof only at protected research actions", () => {
+  const markup = renderToStaticMarkup(createElement(SecurityResearchAccess, {
     gate: "unauthenticated",
-    onLogin: async () => {},
+    walletAuthConfigured: true,
     onRetry() {},
-  });
-  const markup = renderToStaticMarkup(createElement(SecurityPublicEntry, null, gate));
+  }));
 
-  assert.match(markup, /Security Swarm/);
-  assert.match(markup, /research workspace/i);
-  assert.match(markup, /Research Access/);
-  assert.match(markup, /Sign in to Research/);
+  assert.match(markup, /Protected research access/);
+  assert.match(markup, /Wallet-owned saved reports and creating a research run require a wallet research session/i);
+  assert.match(markup, /does not sign out your VEYRA Account/i);
+  assert.match(markup, /Verify wallet for research/);
   assert.match(markup, /EIP-191/);
-  assert.match(markup, /Operator administration/);
-  assert.doesNotMatch(markup, /How Security Swarm Works|Research → Analysis → Verification|orbit/i);
-  assert.match(markup, /configured operator access token/i);
-  assert.match(markup, /Run ID is not an authentication token/i);
-  assert.equal((markup.match(/<form/g) ?? []).length, 1);
-  assert.equal((markup.match(/type="password"/g) ?? []).length, 1);
-  assert.match(markup, /Show operator access token/);
+  assert.doesNotMatch(markup, /Sign in to the Security Swarm|Operator administration|type="password"|<form/);
 });
 
-test("Security renders its workspace only for an authenticated session fixture", () => {
-  const authenticated = renderToStaticMarkup(createElement(SecurityResearchAccess, {
-    gate: "authenticated",
-    onLogin: async () => {},
+test("research authorization failures keep reports private and provide a precise disabled-run reason", () => {
+  const gated = renderToStaticMarkup(createElement(SecurityResearchAccess, {
+    gate: "not_configured",
+    walletAuthConfigured: false,
     onRetry() {},
-  }, createElement("div", null, "Persisted research workspace")));
-  const signedOut = renderToStaticMarkup(createElement(SecurityResearchAccess, {
-    gate: "unauthenticated",
-    onLogin: async () => {},
-    onRetry() {},
-  }, createElement("div", null, "Protected persisted research workspace")));
+  }));
 
-  assert.match(authenticated, /Persisted research workspace/);
-  assert.doesNotMatch(authenticated, /type="password"/);
-  assert.match(signedOut, /type="password"/);
-  assert.doesNotMatch(signedOut, /Protected persisted research workspace/);
+  assert.match(gated, /Wallet-owned research history remains protected/i);
+  assert.doesNotMatch(gated, /Verify wallet for research/);
+  assert.match(researchSessionBlocker("unauthenticated") ?? "", /email\/password sign-in.*does not grant wallet research access/i);
+  assert.match(researchSessionBlocker("checking") ?? "", /checking for a server-verified research session/i);
+  assert.match(researchSessionBlocker("service_error") ?? "", /research session check failed/i);
+  assert.match(researchCreationBlockerFromAction("research_run_owner_allowlist_not_configured: disabled" ) ?? "", /server-side wallet owner allowlist is not configured/i);
+  assert.match(researchCreationBlockerFromAction("research_run_wallet_not_allowed: denied") ?? "", /not on the server-side research owner allowlist/i);
+  assert.equal(researchCreationBlockerFromAction(undefined), null);
 });
 
 test("operator administration sign-in reports friendly invalid-token and expired-session messages", () => {

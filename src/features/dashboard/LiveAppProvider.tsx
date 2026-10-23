@@ -172,6 +172,7 @@ export function LiveAccessGate({
   onConnectWallet = () => {},
   onLogin,
   onRetry,
+  walletLoginEnabled = true,
 }: {
   gate: Exclude<GateState, "authenticated">;
   message?: string;
@@ -188,6 +189,7 @@ export function LiveAccessGate({
   onConnectWallet?: () => void;
   onLogin: (token: string) => Promise<void>;
   onRetry: () => void;
+  walletLoginEnabled?: boolean;
 }) {
   const [token, setToken] = useState("");
   const [tokenVisible, setTokenVisible] = useState(false);
@@ -240,7 +242,7 @@ export function LiveAccessGate({
     && signInChallenge.message.includes(`Chain ID: ${selected.chainId}`));
 
   return (
-    <section className="operator-access-gate" aria-busy={gate === "checking" || signInBusy || submitting || undefined}>
+    <section className={`operator-access-gate${walletLoginEnabled ? "" : " operator-only"}`} aria-busy={gate === "checking" || signInBusy || submitting || undefined}>
       {message ? <p className="operator-access-message" role="status">{message}</p> : null}
       <section className="wallet-research-access" aria-labelledby="wallet-research-access-heading">
         <p className="operator-access-kicker">Wallet-owned research</p>

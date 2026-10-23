@@ -7,6 +7,7 @@ import { brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 import { WalletBand } from "./WalletBand";
+import { BuiltInWalletPanel } from "./BuiltInWalletPanel";
 import { buttonVariants } from "@/components/ui/Button";
 
 /**
@@ -26,11 +27,16 @@ export function WalletView() {
     <section className="route wl" aria-labelledby="h-wallet">
       <PageHead
         id="h-wallet"
-        kicker="Wallet · read-only"
-        title="Your wallet"
-        lede={brandizeProjectName(live ? "See your wallet’s public balance. The app cannot sign, send or change anything." : "See how a read-only wallet will look. Your wallet and the experimental account are two different things.", PROJECT_NAME)}
+        kicker="Wallet · account and external reads"
+        title="Wallet overview"
+        lede={brandizeProjectName("Your VEYRA Account and an external EVM wallet are separate. Account sign-in does not require MetaMask; connecting an external wallet is optional and read-only here.", PROJECT_NAME)}
       />
-      <WalletBand />
+      <BuiltInWalletPanel networkId={model.network.selected} enabled={live} />
+
+      <section className="wl-external" aria-labelledby="h-external-wallet">
+        <h2 id="h-external-wallet" className="ov-h">External wallet · read-only</h2>
+        <WalletBand />
+      </section>
 
       <div className="wl-two">
         <section aria-labelledby="h-wl-net">
@@ -72,7 +78,7 @@ export function WalletView() {
         </section>
 
         <section className="wl-exp" aria-labelledby="h-wl-exp">
-          <h2 id="h-wl-exp" className="ov-h">{PROJECT_NAME} account · research only</h2>
+          <h2 id="h-wl-exp" className="ov-h">Post-quantum wallet research · not provisioned</h2>
           <p className="wl-exp-lede">
             {brandizeProjectName("A separate smart account with post-quantum authorization is being researched. It is not built, holds nothing and cannot be created here.", PROJECT_NAME)}
           </p>

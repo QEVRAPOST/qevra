@@ -9,6 +9,7 @@ import { CommandNav, TabBar } from "./AppNav";
 import { useAppModel } from "./DemoAppProvider";
 import { ModeMenu } from "./ModeMenu";
 import { NetworkSelect } from "./NetworkSelect";
+import { AuthEntryControl } from "@/components/auth/AuthEntryControl";
 
 /**
  * The frame around every route: one header (brand, route bar, what kind of data this is, network, wallet) and a phone tab bar.
@@ -32,6 +33,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <CommandNav />
           <div className="apptools">
+            <AuthEntryControl />
             {phone ? null : <ModeMenu />}
             <NetworkSelect />
             <Button variant="ghost" size="small" className="walbtn" onClick={actions.pressWalletButton} disabled={walletPending}>

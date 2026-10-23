@@ -33,6 +33,9 @@ export async function GET(request: Request) {
 
   try {
     const store = getResearchStore();
+    if (!operatorSession && userSession && await store.walletAuthSessionIsRevoked(userSession.sessionKey)) {
+      return apiError(401, "authentication_required", `A valid ${getProjectName()} session is required.`);
+    }
     const rate = await store.takeRateLimit(hashRateLimitKey(`capabilities:${sessionKey}`), 60, 60_000);
     if (!rate.allowed) return apiError(429, "rate_limit_exceeded", "Too many requests. Try again later.", { "retry-after": "60" });
     const workerCount = await store.countLiveWorkers();

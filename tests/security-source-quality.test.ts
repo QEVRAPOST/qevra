@@ -201,8 +201,13 @@ test("Research selects relevant evidence beyond the page prefix and downstream s
   assert.ok(researchInput.sources[0]?.text.includes(longEvidenceQuote));
   assert.equal(researchInput.sources[0]?.text.includes(unrelatedStoredPassage), false);
   assert.ok(researchInput.sources[0]?.text.length <= 1_200);
-  const analysisInput = seenRequests[1]?.input as { research: { claims: Array<{ id: string }> } };
-  assert.deepEqual(analysisInput.research.claims.map((claim) => claim.id), [acceptedClaim.id]);
+  const analysisInput = seenRequests[1]?.input as {
+    researchClaims: Array<{ id: string }>;
+    approvedSources: Array<{ id: string; text: string }>;
+  };
+  assert.deepEqual(analysisInput.researchClaims.map((claim) => claim.id), [acceptedClaim.id]);
+  assert.ok(analysisInput.approvedSources[0]?.text.includes(longEvidenceQuote));
+  assert.equal(analysisInput.approvedSources[0]?.text.includes(unrelatedStoredPassage), false);
   const verificationInput = seenRequests[2]?.input as { approvedSources: Array<{ text: string; textIsExcerpt?: boolean }> };
   assert.ok(verificationInput.approvedSources[0]?.text.includes(longEvidenceQuote));
   assert.ok(verificationInput.approvedSources[0]?.text.length <= 1_200);

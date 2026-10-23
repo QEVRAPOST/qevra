@@ -6,6 +6,7 @@ import { createSession, hashRateLimitKey } from "@/features/security/auth";
 import { getResearchStore } from "@/features/security/store";
 import { POST as createWalletChallenge } from "@/app/api/auth/user/challenge/route";
 import { GET as getOperatorSession } from "@/app/api/auth/session/route";
+import { GET as getCurrentAuthSession } from "@/app/api/auth/current/route";
 import {
   DELETE as logoutWalletUser,
   GET as getWalletUserSession,
@@ -35,11 +36,13 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   ] as const;
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]])) as Record<(typeof keys)[number], string | undefined>;
   const originalQuery = Pool.prototype.query;
+  const originalConnect = Pool.prototype.connect;
   const wallet = privateKeyToAccount(`0x${"4".repeat(64)}`);
   const operatorToken = "test-only-operator-access-token-not-a-secret";
   const operatorSessionSecret = "test-only-operator-session-secret-0123456789";
   const userSessionSecret = "test-only-wallet-session-secret-0123456789";
   let challenge: { nonceHash: string; wallet_address: string; chain_id: number; message: string; expires_at: Date } | undefined;
+  let authSession: { hash: string; userId: string; provider: string; subject: string; email?: string; walletHash?: string; expiresAt: Date; revokedAt?: Date } | undefined;
   let consumed = false;
   let liveWorkers = 1;
   const savedRuns = new Map<string, { ownerId: string; data: { id: string; createdAt: string; [key: string]: unknown } }>();
@@ -56,9 +59,7 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   process.env.VEYRA_USER_SESSION_SECRET = userSessionSecret;
   process.env.VEYRA_AUTH_ORIGIN = origin;
 
-  (Pool.prototype as unknown as {
-    query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>;
-  }).query = async function (sql: string, values?: unknown[]) {
+  const queryMock = async function (sql: string, values?: unknown[]) {
     statements.push({ sql, values });
     if (sql.includes("INSERT INTO qevra_rate_limits")) {
       const key = String(values?.[0]);
@@ -89,6 +90,31 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
       consumed = true;
       return { rows: [{ nonce_hash: challenge.nonceHash }], rowCount: 1 };
     }
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [], rowCount: 1 };
+    if (sql.startsWith("INSERT INTO veyra_auth_users")) return { rows: [], rowCount: 1 };
+    if (sql.includes("INSERT INTO veyra_auth_identities")) return { rows: [{ user_id: String(values?.[2]) }], rowCount: 1 };
+    if (sql.includes("INSERT INTO veyra_auth_sessions")) {
+      authSession = {
+        hash: String(values?.[0]), userId: String(values?.[1]), provider: String(values?.[2]),
+        subject: String(values?.[3]), ...(values?.[4] ? { email: String(values[4]) } : {}),
+        ...(values?.[5] ? { walletHash: String(values[5]) } : {}), expiresAt: new Date(String(values?.[6])),
+      };
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("SELECT user_id, provider, provider_subject, email, expires_at")) {
+      return authSession && authSession.hash === values?.[0] && !authSession.revokedAt && authSession.expiresAt.getTime() > Date.now()
+        ? { rows: [{ user_id: authSession.userId, provider: authSession.provider, provider_subject: authSession.subject, email: authSession.email ?? null, expires_at: authSession.expiresAt }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("FROM veyra_auth_wallet_revocations")) {
+      return authSession && authSession.walletHash === values?.[0]
+        ? { rows: [{ revoked: Boolean(authSession.revokedAt) || authSession.expiresAt.getTime() <= Date.now() }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("UPDATE veyra_auth_sessions SET revoked_at = now()")) {
+      if (authSession && (authSession.hash === values?.[0] || authSession.walletHash === values?.[0])) authSession.revokedAt = new Date();
+      return { rows: [], rowCount: 1 };
+    }
     if (sql.includes("INSERT INTO qevra_research_runs")) {
       const data = JSON.parse(String(values?.[6])) as { id: string; createdAt: string; [key: string]: unknown };
       savedRuns.set(data.id, { ownerId: String(values?.[5]), data });
@@ -107,7 +133,11 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     }
     if (sql.includes("FROM qevra_research_runs")) return { rows: [], rowCount: 0 };
     return { rows: [], rowCount: 1 };
-  } as typeof Pool.prototype.query;
+  };
+  (Pool.prototype as unknown as { query: typeof queryMock }).query = queryMock;
+  (Pool.prototype as unknown as {
+    connect: () => Promise<{ query: typeof queryMock; release: () => void }>;
+  }).connect = async function () { return { query: queryMock, release() {} }; };
 
   const store = getResearchStore();
   try {
@@ -139,7 +169,12 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     assert.match(setCookie, /httponly/i);
     assert.match(setCookie, /samesite=strict/i);
     assert.doesNotMatch(setCookie, /qevra_session=/);
-    const walletCookie = setCookie.split(";")[0]!;
+    const walletValue = /(?:^|,\s*)veyra_user_session=([^;,\s]+)/.exec(setCookie)?.[1];
+    const appValue = /(?:^|,\s*)veyra_auth_session=([^;,\s]+)/.exec(setCookie)?.[1];
+    assert.ok(walletValue);
+    assert.ok(appValue);
+    const walletCookie = `veyra_user_session=${walletValue}`;
+    const appCookie = `veyra_auth_session=${appValue}`;
 
     const restored = await getWalletUserSession(new Request(`${origin}/api/auth/user/session`, {
       headers: { cookie: walletCookie },
@@ -148,6 +183,14 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     assert.equal(restoredBody.authenticated, true);
     assert.equal(restoredBody.address?.toLowerCase(), wallet.address.toLowerCase());
     assert.ok(Date.parse(restoredBody.expiresAt ?? "") > Date.now());
+
+    const restoredAppSession = await getCurrentAuthSession(new Request(`${origin}/api/auth/current`, {
+      headers: { cookie: `${walletCookie}; ${appCookie}` },
+    }));
+    const restoredAppBody = await restoredAppSession.json() as { authenticated: boolean; identity?: { provider: string; walletAddress?: string } };
+    assert.equal(restoredAppBody.authenticated, true);
+    assert.equal(restoredAppBody.identity?.provider, "wallet");
+    assert.equal(restoredAppBody.identity?.walletAddress?.toLowerCase(), wallet.address.toLowerCase());
 
     const capabilitiesResponse = await getCapabilities(new Request(`${origin}/api/security/capabilities`, {
       headers: { cookie: walletCookie },
@@ -281,12 +324,13 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
 
     const logoutResponse = await logoutWalletUser(new Request(`${origin}/api/auth/user/session`, {
       method: "DELETE",
-      headers: { origin, host: "localhost:3113", cookie: `${walletCookie}; qevra_session=${operatorSession.value}` },
+      headers: { origin, host: "localhost:3113", cookie: `${walletCookie}; ${appCookie}; qevra_session=${operatorSession.value}` },
     }));
     assert.equal(logoutResponse.status, 200);
     const clearedCookie = logoutResponse.headers.get("set-cookie") ?? "";
     assert.match(clearedCookie, /veyra_user_session=/);
     assert.match(clearedCookie, /max-age=0/i);
+    assert.match(clearedCookie, /veyra_auth_session=/);
     assert.doesNotMatch(clearedCookie, /qevra_session=/);
 
     const operatorStatus = await getOperatorSession(new Request(`${origin}/api/auth/session`, {
@@ -296,9 +340,19 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     assert.equal((await operatorStatus.json() as { authenticated: boolean }).authenticated, true);
     const loggedOut = await getWalletUserSession(new Request(`${origin}/api/auth/user/session`));
     assert.equal((await loggedOut.json() as { authenticated: boolean }).authenticated, false);
+    const revokedWalletSession = await getWalletUserSession(new Request(`${origin}/api/auth/user/session`, {
+      headers: { cookie: walletCookie },
+    }));
+    assert.equal((await revokedWalletSession.json() as { authenticated: boolean }).authenticated, false);
+    const revokedResearchAccess = await listResearchRuns(new Request(`${origin}/api/security/runs`, {
+      headers: { cookie: walletCookie },
+    }));
+    if (!revokedResearchAccess) throw new Error("revoked wallet access should return a response");
+    assert.equal(revokedResearchAccess.status, 401);
   } finally {
     await store.close();
     Pool.prototype.query = originalQuery;
+    Pool.prototype.connect = originalConnect;
     for (const key of keys) {
       if (previous[key] === undefined) delete process.env[key];
       else Reflect.set(process.env, key, previous[key]);

@@ -30,6 +30,9 @@ export async function requireResearchAccess(
 
   try {
     const store = getResearchStore();
+    if (role === "user" && userSession && await store.walletAuthSessionIsRevoked(userSession.sessionKey)) {
+      return { response: apiError(401, "authentication_required", `A valid ${getProjectName()} session is required.`) } as const;
+    }
     if (!options.deferWalletRateLimit || role === "operator") {
       const rate = await store.takeRateLimit(hashRateLimitKey(`${bucket}:${principalKey}`), effectiveLimit, windowMs);
       if (!rate.allowed) {
