@@ -446,7 +446,7 @@
   white-space: nowrap;
 }
 /* tall desktop windows: the copy and the stage are pinned together while the objects change */
-@media (min-width: 1025px) and (min-height: 760px) {
+@media (min-width: 1025px) and (min-height: 840px) {
   .hs-track {
     height: calc(var(--hs-avail) * 3.1);
   }
@@ -472,8 +472,8 @@
     padding: 0;
   }
 }
-/* wide but short windows: only the stage is pinned, and the copy scrolls away beside it */
-@media (min-width: 1025px) and (max-height: 759px) {
+/* laptop-height windows: the copy stays in page flow while only the stage is pinned */
+@media (min-width: 1025px) and (max-height: 839px) {
   .hgrid {
     min-height: calc(var(--hs-avail) * 2.2);
   }
