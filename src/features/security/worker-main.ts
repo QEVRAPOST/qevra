@@ -7,6 +7,7 @@ import { getModelProvider, ModelProviderError, type ModelProvider } from "./prov
 import { fetchApprovedSources } from "./sources";
 import { getResearchStore } from "./store";
 import { isGroqGptOssProfile, resolveMaxConcurrentRuns } from "./groq-profile";
+import { claimNextRunWhenProviderReady } from "./worker-policy";
 
 const workerId = randomUUID();
 const pollMs = boundedInteger(process.env.QEVRA_WORKER_POLL_MS, 1_000, 250, 10_000);
@@ -51,7 +52,7 @@ async function main() {
     while (!stopping) {
       let run: ResearchRunRecord | undefined;
       try {
-        run = await store.claimNextRun(workerId, maxConcurrentRuns);
+        run = await claimNextRunWhenProviderReady(providerConfig, () => store.claimNextRun(workerId, maxConcurrentRuns));
       } catch {
         if (!databaseUnavailable) console.warn("[qevra-security-worker] database unavailable; polling will retry.");
         databaseUnavailable = true;
