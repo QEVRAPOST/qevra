@@ -59,6 +59,51 @@ export function startBlocker(capabilities: SecurityResearchCapabilities | undefi
       : "The research worker cannot be ready until PostgreSQL is available; then start it with bun run security:worker using the same private environment as the server.");
   }
 
+  const admission = capabilities.runCreation;
+  if (admission && !admission.allowed && !admission.blocker) {
+    blockers.push("Run admission could not be confirmed. Refresh research capabilities before creating a run.");
+  }
+  if (admission?.blocker) {
+    switch (admission.blocker) {
+      case "wallet_authentication_required":
+        blockers.push("Verify an external wallet with the explicit EIP-191 research sign-in before creating wallet-owned runs. VEYRA account login does not grant this access.");
+        break;
+      case "access_mode_not_configured":
+        blockers.push("Research run access is disabled because QEVRA_RESEARCH_ACCESS_MODE is not configured. An operator must explicitly select owner_only or public_limited.");
+        break;
+      case "access_mode_invalid":
+        blockers.push("Research run access is disabled because QEVRA_RESEARCH_ACCESS_MODE is invalid. Set it to owner_only or public_limited.");
+        break;
+      case "owner_allowlist_not_configured":
+        blockers.push("Owner-only research access is disabled because QEVRA_RESEARCH_RUN_OWNER_ALLOWLIST is missing or invalid.");
+        break;
+      case "wallet_not_allowed":
+        blockers.push("This verified wallet is not on the owner-only research allowlist.");
+        break;
+      case "research_run_limits_not_configured":
+        blockers.push("Research run access is disabled until all bounded wallet cooldown, hourly, daily, and active-run limits are configured.");
+        break;
+      case "research_run_limits_invalid":
+        blockers.push("Research run access is disabled because a configured run quota is invalid or exceeds its enforced safety cap.");
+        break;
+      case "wallet_cooldown":
+        blockers.push(`This wallet can create another run in ${admission.usage?.walletCooldownRemainingSeconds ?? "the configured cooldown period"} seconds.`);
+        break;
+      case "global_hourly_quota":
+        blockers.push(`The global hourly research quota is reached (${admission.usage?.globalHourlyRuns ?? "?"}/${admission.limits?.globalHourlyRunLimit ?? "?"}). Try again after the rolling hour.`);
+        break;
+      case "global_daily_quota":
+        blockers.push(`The global daily research quota is reached (${admission.usage?.globalDailyRuns ?? "?"}/${admission.limits?.globalDailyRunLimit ?? "?"}). Try again after the rolling 24-hour window.`);
+        break;
+      case "max_active_runs":
+        blockers.push(`The maximum active research run count is reached (${admission.usage?.activeRuns ?? "?"}/${admission.limits?.maxActiveRuns ?? "?"}). Wait for an active run to finish.`);
+        break;
+      case "persistence_unavailable":
+        blockers.push("Research quota status cannot be checked because PostgreSQL is unavailable. New runs stay disabled until persistence recovers.");
+        break;
+    }
+  }
+
   if (capabilities.sourceCount <= 0) {
     blockers.push("No approved research sources are configured. An operator must restore an allowlisted source for the selected topic.");
   }

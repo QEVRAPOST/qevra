@@ -6,6 +6,12 @@ import { describeProviderState } from "@/features/security/provider-capabilities
 import { getResearchStore, StoreNotConfiguredError } from "@/features/security/store";
 import { approvedSources } from "@/features/security/topics";
 import { hasWalletAuthConfiguration, USER_SESSION_COOKIE, verifyUserSessionCookie } from "@/features/security/wallet-auth";
+import {
+  evaluateResearchRunAdmission,
+  resolveResearchRunAccessMode,
+  resolveResearchRunCreationAccess,
+  resolveResearchRunLimits,
+} from "@/features/security/run-creation-policy";
 import { getProjectName } from "@/lib/project-brand";
 import type { SecurityResearchCapabilities } from "@/types/integrations";
 
@@ -21,6 +27,18 @@ export async function GET(request: Request) {
   }
 
   const provider = getModelProvider();
+  const accessMode = resolveResearchRunAccessMode();
+  const access = resolveResearchRunCreationAccess(operatorSession ? "operator" : "user", userSession?.address.toLowerCase());
+  const limitsConfiguration = resolveResearchRunLimits();
+  const runCreation: NonNullable<SecurityResearchCapabilities["runCreation"]> = {
+    accessMode,
+    allowed: false,
+    ...("reason" in access ? { blocker: access.reason } : {}),
+    ...(limitsConfiguration.status === "available" ? { limits: limitsConfiguration.limits } : {}),
+  };
+  if (access.allowed && limitsConfiguration.status !== "available") {
+    runCreation.blocker = limitsConfiguration.reason;
+  }
   const capabilities: SecurityResearchCapabilities = {
     ...describeProviderState(provider),
     authentication: hasSessionConfiguration() || hasWalletAuthConfiguration() ? "available" : "not_configured",
@@ -29,6 +47,7 @@ export async function GET(request: Request) {
     worker: "unavailable",
     deterministicExperiments: isExperimentSandboxConfigured() ? "available" : "not_configured",
     sourceCount: Object.keys(approvedSources).length,
+    runCreation,
   };
 
   try {
@@ -41,11 +60,23 @@ export async function GET(request: Request) {
     const workerCount = await store.countLiveWorkers();
     capabilities.worker = workerCount > 0 ? "available" : "unavailable";
     if (workerCount === 0 && !capabilities.unavailableReason) capabilities.unavailableReason = "security_worker_not_running";
+    if (access.allowed && limitsConfiguration.status === "available" && userSession) {
+      const ownerId = userSession.address.toLowerCase();
+      const snapshot = await store.getResearchRunAdmissionSnapshot(ownerId, limitsConfiguration.limits.walletCooldownSeconds);
+      const admission = evaluateResearchRunAdmission(snapshot, limitsConfiguration.limits);
+      runCreation.usage = snapshot;
+      runCreation.allowed = admission.allowed;
+      if (!admission.allowed) runCreation.blocker = admission.reason;
+    }
   } catch (error) {
     capabilities.persistence = error instanceof StoreNotConfiguredError ? "not_configured" : "unavailable";
     capabilities.worker = "unavailable";
     if (!capabilities.unavailableReason) {
       capabilities.unavailableReason = error instanceof StoreNotConfiguredError ? "database_url_missing" : "database_unavailable";
+    }
+    if (access.allowed && limitsConfiguration.status === "available" && userSession) {
+      runCreation.allowed = false;
+      runCreation.blocker = "persistence_unavailable";
     }
   }
 

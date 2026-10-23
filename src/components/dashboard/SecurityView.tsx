@@ -62,6 +62,30 @@ export function researchCreationBlockerFromAction(actionMessage: string | undefi
   if (message.includes("research_run_wallet_not_allowed")) {
     return "This wallet is not on the server-side research owner allowlist. Run creation stays disabled; existing reports remain subject to their owner access rules.";
   }
+  if (message.includes("research_run_access_mode_not_configured")) {
+    return "Run creation is disabled because the server-side research access mode is not configured.";
+  }
+  if (message.includes("research_run_access_mode_invalid")) {
+    return "Run creation is disabled because the server-side research access mode is invalid. An operator must choose owner_only or public_limited.";
+  }
+  if (message.includes("research_run_limits_not_configured")) {
+    return "Run creation is disabled until the server-side wallet cooldown and global quota limits are configured.";
+  }
+  if (message.includes("research_run_limits_invalid")) {
+    return "Run creation is disabled because a configured quota is invalid or exceeds its hard safety cap.";
+  }
+  if (message.includes("research_run_wallet_cooldown")) {
+    return "This wallet is still within its research run cooldown period.";
+  }
+  if (message.includes("research_run_global_hourly_quota")) {
+    return "The global hourly research quota is reached. Try again after the rolling hour.";
+  }
+  if (message.includes("research_run_global_daily_quota")) {
+    return "The global daily research quota is reached. Try again after the rolling 24-hour window.";
+  }
+  if (message.includes("research_run_max_active_runs")) {
+    return "The maximum number of active research runs is reached. Wait for one to finish.";
+  }
   return null;
 }
 

@@ -141,4 +141,39 @@ export interface SecurityResearchCapabilities {
   deterministicExperiments: IntegrationAvailability;
   sourceCount: number;
   unavailableReason?: string;
+  runCreation?: ResearchRunCreationCapability;
+}
+
+export type ResearchRunAccessModeState = "owner_only" | "public_limited" | "not_configured" | "invalid";
+
+export type ResearchRunCreationBlocker =
+  | "wallet_authentication_required"
+  | "access_mode_not_configured"
+  | "access_mode_invalid"
+  | "owner_allowlist_not_configured"
+  | "wallet_not_allowed"
+  | "research_run_limits_not_configured"
+  | "research_run_limits_invalid"
+  | "wallet_cooldown"
+  | "global_hourly_quota"
+  | "global_daily_quota"
+  | "max_active_runs"
+  | "persistence_unavailable";
+
+export interface ResearchRunCreationCapability {
+  accessMode: ResearchRunAccessModeState;
+  allowed: boolean;
+  blocker?: ResearchRunCreationBlocker;
+  limits?: {
+    walletCooldownSeconds: number;
+    globalHourlyRunLimit: number;
+    globalDailyRunLimit: number;
+    maxActiveRuns: number;
+  };
+  usage?: {
+    walletCooldownRemainingSeconds: number;
+    globalHourlyRuns: number;
+    globalDailyRuns: number;
+    activeRuns: number;
+  };
 }

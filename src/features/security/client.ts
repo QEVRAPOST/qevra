@@ -110,7 +110,18 @@ function isSecurityResearchCapabilities(value: unknown): value is SecurityResear
     && (candidate.providerName === undefined || (typeof candidate.providerName === "string" && candidate.providerName.length <= 160))
     && (candidate.providerVendor === undefined || (typeof candidate.providerVendor === "string" && candidate.providerVendor.length <= 80))
     && (candidate.providerModel === undefined || (typeof candidate.providerModel === "string" && candidate.providerModel.length <= 160))
-    && (candidate.unavailableReason === undefined || (typeof candidate.unavailableReason === "string" && candidate.unavailableReason.length <= 160));
+    && (candidate.unavailableReason === undefined || (typeof candidate.unavailableReason === "string" && candidate.unavailableReason.length <= 160))
+    && (candidate.runCreation === undefined || (() => {
+      const admission = candidate.runCreation;
+      if (!admission || typeof admission !== "object" || typeof admission.allowed !== "boolean"
+        || !["owner_only", "public_limited", "not_configured", "invalid"].includes(admission.accessMode)) return false;
+      if (admission.blocker !== undefined && typeof admission.blocker !== "string") return false;
+      for (const record of [admission.limits, admission.usage]) {
+        if (record !== undefined && (!record || typeof record !== "object"
+          || Object.values(record).some((number) => !Number.isSafeInteger(number) || number < 0))) return false;
+      }
+      return true;
+    })());
 }
 
 export async function getWalletSessionStatus(): Promise<WalletSessionStatus> {

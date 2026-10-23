@@ -66,6 +66,11 @@ test("research authorization failures keep reports private and provide a precise
   assert.match(researchSessionBlocker("service_error") ?? "", /research session check failed/i);
   assert.match(researchCreationBlockerFromAction("research_run_owner_allowlist_not_configured: disabled" ) ?? "", /server-side wallet owner allowlist is not configured/i);
   assert.match(researchCreationBlockerFromAction("research_run_wallet_not_allowed: denied") ?? "", /not on the server-side research owner allowlist/i);
+  assert.match(researchCreationBlockerFromAction("research_run_access_mode_not_configured") ?? "", /access mode is not configured/i);
+  assert.match(researchCreationBlockerFromAction("research_run_access_mode_invalid") ?? "", /access mode is invalid/i);
+  assert.match(researchCreationBlockerFromAction("research_run_global_hourly_quota") ?? "", /global hourly research quota is reached/i);
+  assert.match(researchCreationBlockerFromAction("research_run_global_daily_quota") ?? "", /global daily research quota is reached/i);
+  assert.match(researchCreationBlockerFromAction("research_run_max_active_runs") ?? "", /maximum number of active research runs/i);
   assert.equal(researchCreationBlockerFromAction(undefined), null);
 });
 

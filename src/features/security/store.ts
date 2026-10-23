@@ -4,6 +4,12 @@ import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { isGroqGptOssProfile } from "./groq-profile";
 import type { ResearchRunRecord } from "./model";
+import {
+  evaluateResearchRunAdmission,
+  type ResearchRunAdmissionLimits,
+  type ResearchRunAdmissionSnapshot,
+  type ResearchRunAdmissionBlocker,
+} from "./run-creation-policy";
 
 const LEASE_SECONDS = 900;
 const DEFAULT_MAX_RUN_ATTEMPTS = 3;
@@ -80,6 +86,10 @@ export interface AuthEmbeddedWalletRecord {
 export interface WalletLinkChallenge extends WalletAuthChallenge {
   userId: string;
 }
+
+export type ResearchRunAdmissionDecision =
+  | { allowed: true; snapshot: ResearchRunAdmissionSnapshot }
+  | { allowed: false; reason: ResearchRunAdmissionBlocker; snapshot: ResearchRunAdmissionSnapshot };
 
 let singleton: PostgresResearchStore | undefined;
 
@@ -628,6 +638,97 @@ export class PostgresResearchStore {
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
       [run.id, run.topicId, run.status, run.createdAt, run.updatedAt, ownerId ?? null, JSON.stringify(run)],
     );
+  }
+
+  async getResearchRunAdmissionSnapshot(
+    ownerId: string,
+    walletCooldownSeconds: number,
+  ): Promise<ResearchRunAdmissionSnapshot> {
+    if (!/^0x[a-f0-9]{40}$/i.test(ownerId)) throw new Error("Invalid authenticated research owner.");
+    if (!Number.isInteger(walletCooldownSeconds) || walletCooldownSeconds < 60 || walletCooldownSeconds > 86_400) {
+      throw new Error("Invalid research wallet cooldown.");
+    }
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      wallet_cooldown_remaining_seconds: number | string;
+      global_hourly_runs: number | string;
+      global_daily_runs: number | string;
+      active_runs: number | string;
+    }>(
+      `SELECT /* research_run_admission_snapshot */
+         COALESCE(GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
+           max(created_at) FILTER (WHERE owner_id = $1)
+             + ($2::integer * interval '1 second') - now()
+         ))))::integer, 0) AS wallet_cooldown_remaining_seconds,
+         count(*) FILTER (WHERE created_at >= now() - interval '1 hour')::integer AS global_hourly_runs,
+         count(*) FILTER (WHERE created_at >= now() - interval '24 hours')::integer AS global_daily_runs,
+         count(*) FILTER (WHERE status = 'queued' OR (status = 'running' AND (lease_until IS NULL OR lease_until > now())))::integer AS active_runs
+       FROM qevra_research_runs`,
+      [ownerId.toLowerCase(), walletCooldownSeconds],
+    );
+    const row = result.rows[0];
+    return {
+      walletCooldownRemainingSeconds: Number(row?.wallet_cooldown_remaining_seconds ?? 0),
+      globalHourlyRuns: Number(row?.global_hourly_runs ?? 0),
+      globalDailyRuns: Number(row?.global_daily_runs ?? 0),
+      activeRuns: Number(row?.active_runs ?? 0),
+    };
+  }
+
+  async admitResearchRun(
+    run: ResearchRunRecord,
+    ownerId: string,
+    limits: ResearchRunAdmissionLimits,
+  ): Promise<ResearchRunAdmissionDecision> {
+    if (!/^0x[a-f0-9]{40}$/i.test(ownerId)) throw new Error("Invalid authenticated research owner.");
+    await this.ensureSchema();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Share the worker's lock so two API processes cannot over-admit while a worker claims capacity.
+      await client.query("SELECT pg_advisory_xact_lock(20261018, 101)");
+      const result = await client.query<{
+        wallet_cooldown_remaining_seconds: number | string;
+        global_hourly_runs: number | string;
+        global_daily_runs: number | string;
+        active_runs: number | string;
+      }>(
+        `SELECT /* research_run_admission_snapshot */
+           COALESCE(GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
+             max(created_at) FILTER (WHERE owner_id = $1)
+               + ($2::integer * interval '1 second') - now()
+           ))))::integer, 0) AS wallet_cooldown_remaining_seconds,
+           count(*) FILTER (WHERE created_at >= now() - interval '1 hour')::integer AS global_hourly_runs,
+           count(*) FILTER (WHERE created_at >= now() - interval '24 hours')::integer AS global_daily_runs,
+           count(*) FILTER (WHERE status = 'queued' OR (status = 'running' AND (lease_until IS NULL OR lease_until > now())))::integer AS active_runs
+         FROM qevra_research_runs`,
+        [ownerId, limits.walletCooldownSeconds],
+      );
+      const row = result.rows[0];
+      const snapshot: ResearchRunAdmissionSnapshot = {
+        walletCooldownRemainingSeconds: Number(row?.wallet_cooldown_remaining_seconds ?? 0),
+        globalHourlyRuns: Number(row?.global_hourly_runs ?? 0),
+        globalDailyRuns: Number(row?.global_daily_runs ?? 0),
+        activeRuns: Number(row?.active_runs ?? 0),
+      };
+      const decision = evaluateResearchRunAdmission(snapshot, limits);
+      if (!decision.allowed) {
+        await client.query("COMMIT");
+        return { ...decision, snapshot };
+      }
+      await client.query(
+        `INSERT INTO qevra_research_runs (id, topic_id, status, created_at, updated_at, owner_id, data)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+        [run.id, run.topicId, run.status, run.createdAt, run.updatedAt, ownerId.toLowerCase(), JSON.stringify(run)],
+      );
+      await client.query("COMMIT");
+      return { allowed: true, snapshot };
+    } catch (error) {
+      await safeRollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getRun(id: string, ownerId?: string): Promise<ResearchRunRecord | undefined> {

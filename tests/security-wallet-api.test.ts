@@ -32,7 +32,12 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     "QEVRA_AI_BILLING_APPROVED",
     "VEYRA_USER_SESSION_SECRET",
     "VEYRA_AUTH_ORIGIN",
+    "QEVRA_RESEARCH_ACCESS_MODE",
     "QEVRA_RESEARCH_RUN_OWNER_ALLOWLIST",
+    "QEVRA_RESEARCH_PER_WALLET_COOLDOWN_SECONDS",
+    "QEVRA_RESEARCH_GLOBAL_HOURLY_RUN_LIMIT",
+    "QEVRA_RESEARCH_GLOBAL_DAILY_RUN_LIMIT",
+    "QEVRA_RESEARCH_MAX_ACTIVE_RUNS",
   ] as const;
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]])) as Record<(typeof keys)[number], string | undefined>;
   const originalQuery = Pool.prototype.query;
@@ -48,6 +53,7 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   const savedRuns = new Map<string, { ownerId: string; data: { id: string; createdAt: string; [key: string]: unknown } }>();
   const rateLimitCounts = new Map<string, number>();
   const statements: Array<{ sql: string; values?: unknown[] }> = [];
+  let admissionLockTail: Promise<void> = Promise.resolve();
 
   process.env.DATABASE_URL = fakeDatabaseUrl;
   Reflect.set(process.env, "NODE_ENV", "test");
@@ -58,6 +64,25 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   process.env.QEVRA_AI_BILLING_APPROVED = "false";
   process.env.VEYRA_USER_SESSION_SECRET = userSessionSecret;
   process.env.VEYRA_AUTH_ORIGIN = origin;
+  process.env.QEVRA_RESEARCH_ACCESS_MODE = "owner_only";
+  process.env.QEVRA_RESEARCH_RUN_OWNER_ALLOWLIST = wallet.address;
+  process.env.QEVRA_RESEARCH_PER_WALLET_COOLDOWN_SECONDS = "3600";
+  process.env.QEVRA_RESEARCH_GLOBAL_HOURLY_RUN_LIMIT = "20";
+  process.env.QEVRA_RESEARCH_GLOBAL_DAILY_RUN_LIMIT = "60";
+  process.env.QEVRA_RESEARCH_MAX_ACTIVE_RUNS = "1";
+
+  const admissionSnapshot = (ownerId: string, cooldownSeconds: number) => {
+    const now = Date.now();
+    const runs = [...savedRuns.values()];
+    const walletRuns = runs.filter((saved) => saved.ownerId === ownerId);
+    const latestCreatedAt = Math.max(0, ...walletRuns.map((saved) => Date.parse(saved.data.createdAt)));
+    return {
+      wallet_cooldown_remaining_seconds: Math.max(0, Math.ceil((latestCreatedAt + cooldownSeconds * 1_000 - now) / 1_000)),
+      global_hourly_runs: runs.filter((saved) => Date.parse(saved.data.createdAt) >= now - 60 * 60_000).length,
+      global_daily_runs: runs.filter((saved) => Date.parse(saved.data.createdAt) >= now - 24 * 60 * 60_000).length,
+      active_runs: runs.filter((saved) => saved.data.status === "queued" || saved.data.status === "running").length,
+    };
+  };
 
   const queryMock = async function (sql: string, values?: unknown[]) {
     statements.push({ sql, values });
@@ -68,6 +93,9 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
       return { rows: [{ request_count: requestCount }], rowCount: 1 };
     }
     if (sql.includes("SELECT count(*)::text AS count FROM qevra_security_workers")) return { rows: [{ count: String(liveWorkers) }], rowCount: 1 };
+    if (sql.includes("research_run_admission_snapshot")) {
+      return { rows: [admissionSnapshot(String(values?.[0]), Number(values?.[1]))], rowCount: 1 };
+    }
     if (sql.includes("INSERT INTO veyra_user_auth_challenges")) {
       challenge = {
         nonceHash: String(values?.[0]),
@@ -137,7 +165,28 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   (Pool.prototype as unknown as { query: typeof queryMock }).query = queryMock;
   (Pool.prototype as unknown as {
     connect: () => Promise<{ query: typeof queryMock; release: () => void }>;
-  }).connect = async function () { return { query: queryMock, release() {} }; };
+  }).connect = async function () {
+    let releaseLock: (() => void) | undefined;
+    return {
+      async query(sql: string, values?: unknown[]) {
+        if (sql.includes("pg_advisory_xact_lock")) {
+          const previousLock = admissionLockTail;
+          let unlock!: () => void;
+          admissionLockTail = new Promise<void>((resolve) => { unlock = resolve; });
+          await previousLock;
+          releaseLock = unlock;
+          return { rows: [], rowCount: 1 };
+        }
+        const result = await queryMock(sql, values);
+        if (sql === "COMMIT" || sql === "ROLLBACK") {
+          releaseLock?.();
+          releaseLock = undefined;
+        }
+        return result;
+      },
+      release() { releaseLock?.(); },
+    };
+  };
 
   const store = getResearchStore();
   try {
@@ -203,6 +252,7 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
       persistence: string;
       worker: string;
       unavailableReason?: string;
+      runCreation?: { accessMode: string; allowed: boolean; blocker?: string };
     };
     assert.equal(capabilities.authentication, "available");
     assert.equal(capabilities.billing, "not_configured");
@@ -210,6 +260,11 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     assert.equal(capabilities.unavailableReason, "ai_billing_not_approved");
     assert.equal(capabilities.persistence, "available");
     assert.equal(capabilities.worker, "available");
+    assert.deepEqual(capabilities.runCreation, { accessMode: "owner_only", allowed: true, limits: {
+      walletCooldownSeconds: 3600, globalHourlyRunLimit: 20, globalDailyRunLimit: 60, maxActiveRuns: 1,
+    }, usage: {
+      walletCooldownRemainingSeconds: 0, globalHourlyRuns: 0, globalDailyRuns: 0, activeRuns: 0,
+    } });
 
     const historyResponse = await listResearchRuns(new Request(`${origin}/api/security/runs?limit=20`, {
       headers: { cookie: walletCookie },
@@ -232,11 +287,23 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     assert.equal((await ownerRestrictionMissing.json() as { error: { code: string } }).error.code, "research_run_owner_allowlist_not_configured");
     assert.equal(rateLimitCounts.get(hashRateLimitKey(`create-run:${wallet.address.toLowerCase()}`)) ?? 0, 0);
 
+    delete process.env.QEVRA_RESEARCH_ACCESS_MODE;
+    const missingAccessMode = await createResearchRun(runRequest());
+    assert.equal(missingAccessMode?.status, 503);
+    assert.equal((await missingAccessMode!.json() as { error: { code: string } }).error.code, "research_run_access_mode_not_configured");
+    process.env.QEVRA_RESEARCH_ACCESS_MODE = "owner_only";
+
     process.env.QEVRA_RESEARCH_RUN_OWNER_ALLOWLIST = `${wallet.address},not-an-address`;
     const invalidOwnerRestriction = await createResearchRun(runRequest());
     if (!invalidOwnerRestriction) throw new Error("invalid owner allowlist should return a response");
     assert.equal(invalidOwnerRestriction.status, 503);
     assert.equal((await invalidOwnerRestriction.json() as { error: { code: string } }).error.code, "research_run_owner_allowlist_not_configured");
+
+    process.env.QEVRA_RESEARCH_ACCESS_MODE = "unlimited";
+    const invalidAccessMode = await createResearchRun(runRequest());
+    assert.equal(invalidAccessMode?.status, 503);
+    assert.equal((await invalidAccessMode!.json() as { error: { code: string } }).error.code, "research_run_access_mode_invalid");
+    process.env.QEVRA_RESEARCH_ACCESS_MODE = "owner_only";
 
     process.env.QEVRA_RESEARCH_RUN_OWNER_ALLOWLIST = wallet.address;
     const otherWallet = createUserSession("0x0000000000000000000000000000000000000002");
@@ -272,6 +339,15 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     assert.equal(rateLimitCounts.get(hashRateLimitKey(`create-run:${wallet.address.toLowerCase()}`)) ?? 0, 0);
     assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO qevra_research_runs")), false);
 
+    // Public access removes the owner allowlist only; provider billing remains an independent hard gate.
+    process.env.QEVRA_RESEARCH_ACCESS_MODE = "public_limited";
+    delete process.env.QEVRA_RESEARCH_RUN_OWNER_ALLOWLIST;
+    const publicBillingBlocked = await createResearchRun(runRequest());
+    if (!publicBillingBlocked) throw new Error("public access with billing disabled should return a response");
+    assert.equal(publicBillingBlocked.status, 503);
+    assert.equal((await publicBillingBlocked.json() as { error: { code: string } }).error.code, "ai_billing_not_approved");
+    assert.equal(savedRuns.size, 0);
+
     process.env.QEVRA_AI_BILLING_APPROVED = "true";
     liveWorkers = 0;
     const workerBlocked = await createResearchRun(runRequest());
@@ -296,7 +372,7 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     const createdRun = await availableRun.json() as { run: { id: string; status: string } };
     assert.equal(createdRun.run.status, "queued");
     assert.equal(duplicateRun.status, 429);
-    assert.equal((await duplicateRun.json() as { error: { code: string } }).error.code, "rate_limit_exceeded");
+    assert.equal((await duplicateRun.json() as { error: { code: string } }).error.code, "research_run_wallet_cooldown");
     assert.equal(statements.filter(({ sql }) => sql.includes("INSERT INTO qevra_research_runs")).length, 1);
     assert.equal(savedRuns.size, 1);
 
