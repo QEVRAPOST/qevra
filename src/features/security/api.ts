@@ -10,7 +10,13 @@ export function apiError(status: number, code: string, message: string, headers?
   return Response.json({ error: { code, message } }, { status, headers });
 }
 
-export async function requireResearchAccess(request: Request, limit = 60, windowMs = 60_000, bucket = "general") {
+export async function requireResearchAccess(
+  request: Request,
+  limit = 60,
+  windowMs = 60_000,
+  bucket = "general",
+  options: { deferWalletRateLimit?: boolean } = {},
+) {
   const operatorSession = verifySessionCookie(readCookie(request, "qevra_session"));
   const userSession = verifyUserSessionCookie(readCookie(request, USER_SESSION_COOKIE));
   const role = operatorSession ? "operator" as const : userSession ? "user" as const : undefined;
@@ -24,15 +30,17 @@ export async function requireResearchAccess(request: Request, limit = 60, window
 
   try {
     const store = getResearchStore();
-    const rate = await store.takeRateLimit(hashRateLimitKey(`${bucket}:${principalKey}`), effectiveLimit, windowMs);
-    if (!rate.allowed) {
-      return {
-        response: apiError(429, "rate_limit_exceeded", role === "user" && bucket === "create-run"
-          ? "Only one research run per wallet may be created in a 60-minute window."
-          : "Too many requests. Try again later.", {
-          "retry-after": String(Math.ceil(windowMs / 1_000)),
-        }),
-      } as const;
+    if (!options.deferWalletRateLimit || role === "operator") {
+      const rate = await store.takeRateLimit(hashRateLimitKey(`${bucket}:${principalKey}`), effectiveLimit, windowMs);
+      if (!rate.allowed) {
+        return {
+          response: apiError(429, "rate_limit_exceeded", role === "user" && bucket === "create-run"
+            ? "Only one research run per wallet may be created in a 60-minute window."
+            : "Too many requests. Try again later.", {
+            "retry-after": String(Math.ceil(windowMs / 1_000)),
+          }),
+        } as const;
+      }
     }
     return {
       store,

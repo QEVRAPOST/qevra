@@ -7,6 +7,8 @@ import { toResearchRunSummary } from "@/features/security/public-view";
 import { createResearchRunRequestSchema, runListQuerySchema } from "@/features/security/schemas";
 import { resolveResearchTopic } from "@/features/security/topics";
 import { StoreNotConfiguredError } from "@/features/security/store";
+import { resolveResearchRateLimit } from "@/features/security/rate-limit-policy";
+import { resolveResearchRunCreationAccess } from "@/features/security/run-creation-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,8 +34,21 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return apiError(403, "origin_not_allowed", "Cross-origin research requests are not allowed.");
   if (!requireJsonContentType(request)) return apiError(415, "json_required", "Send a JSON request body.");
-  const access = await requireResearchAccess(request, 8, 60 * 60_000, "create-run");
+  const access = await requireResearchAccess(request, 8, 60 * 60_000, "create-run", { deferWalletRateLimit: true });
   if ("response" in access) return access.response;
+  const creationAccess = resolveResearchRunCreationAccess(access.role, access.ownerId);
+  if (!creationAccess.allowed) {
+    if (creationAccess.reason === "wallet_authentication_required") {
+      return apiError(403, creationAccess.reason, "Only an authenticated wallet user may create research runs.");
+    }
+    if (creationAccess.reason === "owner_allowlist_not_configured") {
+      return apiError(503, "research_run_owner_allowlist_not_configured", "Research run creation is disabled until an operator configures the server-side wallet allowlist.");
+    }
+    return apiError(403, "research_run_wallet_not_allowed", "This authenticated wallet is not allowed to create research runs.");
+  }
+  if (access.role !== "user" || !access.ownerId) {
+    return apiError(403, "wallet_authentication_required", "Only an authenticated wallet user may create research runs.");
+  }
 
   let raw: unknown;
   try {
@@ -65,6 +80,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    const walletRate = await access.store.takeRateLimit(
+      hashRateLimitKey(`create-run:${access.ownerId}`),
+      resolveResearchRateLimit(access.role, "create-run", 8),
+      60 * 60_000,
+    );
+    if (!walletRate.allowed) {
+      return apiError(429, "rate_limit_exceeded", "Only one research run per wallet may be created in a 60-minute window.", { "retry-after": "3600" });
+    }
     const globalRate = await access.store.takeRateLimit(hashRateLimitKey("qevra:research-run-global"), 20, 60 * 60_000);
     if (!globalRate.allowed) return apiError(429, "global_run_quota_exceeded", "The service run quota is currently full. Try again later.", { "retry-after": "3600" });
     const topic = resolveResearchTopic(parsed.data.topicId, parsed.data.question);
