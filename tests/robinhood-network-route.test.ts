@@ -77,8 +77,8 @@ test("network route reads a validated watch-only address and returns its public 
     });
     assert.deepEqual(methods, [
       { method: "eth_chainId", params: [] },
-      { method: "eth_getBalance", params: [address, "latest"] },
       { method: "eth_blockNumber", params: [] },
+      { method: "eth_getBalance", params: [address, "0x2a"] },
     ]);
     assert.match(body.observedAt, /^\d{4}-\d\d-\d\dT/);
   } finally {

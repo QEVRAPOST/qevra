@@ -60,7 +60,7 @@ function SelectItem({ className, children, hint, ...props }: React.ComponentProp
         "relative flex w-full cursor-pointer items-center gap-3 rounded-sm py-2 pr-9 pl-3 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:text-muted-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
         className,
       )}
-      /* the option's name is all of its text, hint included ("Robinhood Mainnet · 4663 not available yet"), not just the ItemText */
+      /* the option's name includes its hint, not just the ItemText */
       aria-labelledby={undefined}
       {...props}
     >

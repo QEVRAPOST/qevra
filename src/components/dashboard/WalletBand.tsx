@@ -6,7 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/Button";
 import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { CopyAddressButton } from "./CopyAddressButton";
-import { NETWORKS, getExplorerAddressUrl } from "@/lib/config/networks";
+import { getExplorerAddressUrl } from "@/lib/config/networks";
 import type { Material, ReadOnlyWalletStatus } from "@/types";
 import { useAppModel } from "./DemoAppProvider";
 
@@ -57,8 +57,7 @@ export function WalletBand() {
   const balance = live && !mismatch ? conn?.balance : undefined;
   const exBalance = !live && w.eoa.assets[0] ? w.eoa.assets[0] : null;
   const walletNet = live ? (conn?.networkName ?? `Chain ${conn?.chainId ?? "unknown"}`) : (net?.label ?? "Unavailable");
-  const walletNetwork = live ? NETWORKS.find((network) => network.chainId === conn?.chainId) : undefined;
-  const addressExplorerUrl = address && walletNetwork ? getExplorerAddressUrl(walletNetwork.id, address) : undefined;
+  const addressExplorerUrl = address && net ? getExplorerAddressUrl(net.id, address) : undefined;
 
   return (
     <section className={`wl-band${connected || canRecoverWallet ? " on" : ""}`} aria-labelledby="h-wl-band">

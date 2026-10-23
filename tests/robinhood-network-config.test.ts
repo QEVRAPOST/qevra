@@ -7,7 +7,7 @@ test("Robinhood read-only targets use documented RPC URLs and chain IDs", () => 
     NETWORKS.map(({ id, chainId, rpcUrl, available }) => ({ id, chainId, rpcUrl, available })),
     [
       { id: "testnet", chainId: 46630, rpcUrl: "https://rpc.testnet.chain.robinhood.com", available: true },
-      { id: "mainnet", chainId: 4663, rpcUrl: "https://robinhood.rpc.pinax.network", available: true },
+      { id: "mainnet", chainId: 4663, rpcUrl: "https://rpc.mainnet.chain.robinhood.com", available: true },
     ],
   );
   assert.equal(DEFAULT_NETWORK_ID, "testnet");

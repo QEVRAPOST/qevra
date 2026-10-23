@@ -198,7 +198,7 @@ test("renders both registries only for explicit all-network selection", async ()
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+46630/);
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+4663/);
   assert.ok(calls.some((call) => call.startsWith("https://rpc.testnet.chain.robinhood.com:")));
-  assert.ok(calls.some((call) => call.startsWith("https://robinhood.rpc.pinax.network:")));
+  assert.ok(calls.some((call) => call.startsWith("https://rpc.mainnet.chain.robinhood.com:")));
 });
 
 test("renders validated Testnet deployments dynamically and keeps Mainnet empty", async () => {

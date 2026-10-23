@@ -17,7 +17,7 @@ chain_id = 4663
 
 [rpc_endpoints]
 robinhood_testnet = "https://rpc.testnet.chain.robinhood.com"
-robinhood_mainnet = "https://robinhood.rpc.pinax.network"
+robinhood_mainnet = "https://rpc.mainnet.chain.robinhood.com"
 
 # This is a conservative local baseline only. Robinhood Chain's exact deployed
 # EVM revision still needs confirmation before choosing a deployment target.

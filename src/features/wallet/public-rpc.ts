@@ -135,20 +135,20 @@ export async function readRobinhoodPublicAddress(
     throw new RobinhoodRpcError("rpc_chain_id_mismatch", "The public Robinhood RPC chain ID did not match the selected network.", chainId);
   }
 
+  const blockResult = parseQuantity(await requestRpcResult(network.rpcUrl, 2, "eth_blockNumber", fetchImpl));
+  if (blockResult === undefined) {
+    throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC returned an invalid latest block number.");
+  }
+
   const balanceResult = parseQuantity(await requestRpcResult(
     network.rpcUrl,
-    2,
+    3,
     "eth_getBalance",
     fetchImpl,
-    [normalizedAddress, "latest"],
+    [normalizedAddress, `0x${blockResult.toString(16)}`],
   ));
   if (balanceResult === undefined) {
     throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC returned an invalid native balance.");
-  }
-
-  const blockResult = parseQuantity(await requestRpcResult(network.rpcUrl, 3, "eth_blockNumber", fetchImpl));
-  if (blockResult === undefined) {
-    throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC returned an invalid latest block number.");
   }
 
   return {

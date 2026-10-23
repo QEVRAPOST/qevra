@@ -39,6 +39,20 @@ test("public RPC health verifies the selected network's chain ID and latest bloc
   assert.ok(calls.every((call) => call.url === "https://rpc.testnet.chain.robinhood.com"));
 });
 
+test("Mainnet public status reads use the official RPC and verify chain 4663", async () => {
+  const calls: Array<{ url: string; body: { id: number; method: string } }> = [];
+  const snapshot = await readRobinhoodNetwork("mainnet", async (input, init) => {
+    calls.push({ url: String(input), body: JSON.parse(String(init?.body)) as { id: number; method: string } });
+    return calls.length === 1 ? rpcResponse(1, "0x1237") : rpcResponse(2, "0x2a");
+  });
+
+  assert.equal(snapshot.networkId, "mainnet");
+  assert.equal(snapshot.chainId, 4_663);
+  assert.equal(snapshot.latestBlock, "42");
+  assert.deepEqual(calls.map((call) => call.body.method), ["eth_chainId", "eth_blockNumber"]);
+  assert.ok(calls.every((call) => call.url === "https://rpc.mainnet.chain.robinhood.com"));
+});
+
 test("public RPC rejects a response from the wrong chain before reading its block", async () => {
   let calls = 0;
   await assert.rejects(
@@ -67,7 +81,7 @@ test("public address reads verify Testnet and Mainnet and return the latest nati
   const address = "0x0000000000000000000000000000000000000001";
   const cases = [
     { networkId: "testnet" as const, chainId: 46_630, rpcUrl: "https://rpc.testnet.chain.robinhood.com", rpcChain: "0xb626" },
-    { networkId: "mainnet" as const, chainId: 4_663, rpcUrl: "https://robinhood.rpc.pinax.network", rpcChain: "0x1237" },
+    { networkId: "mainnet" as const, chainId: 4_663, rpcUrl: "https://rpc.mainnet.chain.robinhood.com", rpcChain: "0x1237" },
   ];
   const readAddress = getPublicAddressReader();
 
@@ -88,8 +102,8 @@ test("public address reads verify Testnet and Mainnet and return the latest nati
     assert.equal(snapshot.balanceWei, "10000000000000000");
     assert.equal(snapshot.observedBlock, "42");
     assert.match(snapshot.observedAt, /^\d{4}-\d\d-\d\dT/);
-    assert.deepEqual(calls.map(({ method }) => method), ["eth_chainId", "eth_getBalance", "eth_blockNumber"]);
-    assert.deepEqual(calls.map(({ params }) => params), [[], [address, "latest"], []]);
+    assert.deepEqual(calls.map(({ method }) => method), ["eth_chainId", "eth_blockNumber", "eth_getBalance"]);
+    assert.deepEqual(calls.map(({ params }) => params), [[], [], [address, "0x2a"]]);
     assert.ok(calls.every(({ url }) => url === item.rpcUrl));
   }
 });

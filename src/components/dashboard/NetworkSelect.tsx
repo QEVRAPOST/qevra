@@ -8,8 +8,7 @@ import { useAppModel } from "./DemoAppProvider";
 
 /**
  * The network menu in the top bar (a shadcn Select). It replaces the fixed "Robinhood Testnet · 46630" chip.
- * Mainnet is in the list so the menu is ready for it, but it is disabled and says why: it is not available yet.
- * Choosing a network only records the choice in the app model; this component reads no chain and signs nothing.
+ * Mainnet is selectable for public reads. Choosing a network only updates the app model; this component signs nothing.
  */
 export function NetworkSelect() {
   const { model, actions } = useAppModel();

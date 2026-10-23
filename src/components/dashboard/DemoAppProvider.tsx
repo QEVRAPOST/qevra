@@ -38,7 +38,7 @@ export function DemoAppProvider({ children }: { children: React.ReactNode }) {
     };
     return {
       setNetwork(id) {
-        /* an unavailable network (mainnet, for now) is never selected, whatever the caller asks */
+        /* an unavailable network is never selected, whatever the caller asks */
         if (isNetworkAvailable(id)) setNetworkRaw(id);
       },
       setAmount(value) {

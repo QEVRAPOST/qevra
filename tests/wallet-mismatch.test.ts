@@ -52,6 +52,8 @@ test("a connected wallet balance is hidden when its chain differs from the selec
   assert.match(markup, /manually select Robinhood Mainnet.*4663/i);
   assert.match(markup, /Not available/);
   assert.doesNotMatch(markup, /0\.1/);
+  assert.match(markup, /href="https:\/\/robinhoodchain\.blockscout\.com\/address\/0x0000000000000000000000000000000000000001"/);
+  assert.doesNotMatch(markup, /href="https:\/\/explorer\.testnet\.chain\.robinhood\.com\/address\//);
 });
 
 test("an unknown provider chain shows its ID, asks for a manual Testnet switch, and has no balance", () => {
