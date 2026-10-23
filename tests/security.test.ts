@@ -680,10 +680,11 @@ test("Analysis and Verification prompts enumerate their strict JSON contracts an
     assert.ok(analysis.includes(field), `Analysis prompt must enumerate ${field}`);
   }
   assert.match(analysis, /severity.*critical.*high.*medium.*low.*unknown/i);
-  assert.match(analysis, /1-5 exact available source IDs/i);
+  assert.match(analysis, /1-5 approved source IDs/i);
   assert.match(analysis, /1-5/);
   assert.match(analysis, /extra keys/i);
-  assert.match(analysis, /arrays are always arrays.*never null or omitted/i);
+  assert.match(analysis, /use \[\] when none/i);
+  assert.match(analysis, /these three arrays contain non-empty strings only, never objects/i);
   assert.match(analysis, /under 160 characters/i);
   assert.match(analysis, /800[- ]completion[- ]token/i);
   assert.ok(analysis.length <= 1_100, `Analysis instructions should stay concise (got ${analysis.length} chars)`);
@@ -1335,6 +1336,76 @@ test("Groq Analysis truncation is persisted and Verification remains blocked", a
   assert.equal(detail.agents.find((agent) => agent.role === "verification")?.status, "blocked");
 });
 
+test("Groq Analysis rejects an object recommendation at stop and requests the strict string-array schema", async () => {
+  let analysisRequestBody: Record<string, unknown> | undefined;
+  const groqAnalysis = new OpenAICompatibleProvider({
+    apiKey: "offline-fixture-key",
+    model: "openai/gpt-oss-20b",
+    baseUrl: "https://api.groq.com/openai/v1",
+    maxOutputTokens: 800,
+    maxRequestBytes: 6_000,
+    timeoutMs: 1_000,
+    fetchImpl: async (_input, init) => {
+      analysisRequestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
+          summary: "The supplied evidence is limited.",
+          assumptions: [],
+          risks: [],
+          unknowns: [],
+          recommendations: [{ action: "Review implementation", rationale: "The source is incomplete." }],
+        }) } }],
+        usage: { prompt_tokens: 42, completion_tokens: 60, total_tokens: 102 },
+      }, { headers: { "x-request-id": "offline-analysis-recommendation-object" } });
+    },
+  });
+  const fallback = mockProvider();
+  const stages: string[] = [];
+  const provider: ModelProvider = {
+    name: "offline-groq-recommendation-type-fixture",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      stages.push(request.agent);
+      return request.agent === "analysis" ? groqAnalysis.completeJson(request) : fallback.completeJson(request);
+    },
+  };
+  const run = createQueuedRun("88888885-8888-4888-8888-888888888885", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  const responseFormat = analysisRequestBody?.response_format as {
+    type: string;
+    json_schema: { name: string; strict: boolean; schema: Record<string, unknown> };
+  };
+  const schema = responseFormat.json_schema.schema as {
+    properties: Record<string, { type?: string; items?: { type?: string } }>;
+    required: string[];
+    additionalProperties: boolean;
+  };
+  assert.deepEqual(stages, ["research", "analysis"]);
+  assert.equal(responseFormat.type, "json_schema");
+  assert.equal(responseFormat.json_schema.name, "security_swarm_analysis");
+  assert.equal(responseFormat.json_schema.strict, true);
+  assert.deepEqual(schema.required, ["summary", "assumptions", "risks", "unknowns", "recommendations"]);
+  assert.equal(schema.additionalProperties, false);
+  for (const field of ["assumptions", "unknowns", "recommendations"]) {
+    assert.equal(schema.properties[field]?.type, "array");
+    assert.equal(schema.properties[field]?.items?.type, "string");
+  }
+  assert.equal(run.status, "failed");
+  assert.equal(run.errorCode, "provider_output_invalid");
+  const detail = await toResearchRunDetail(run);
+  const analysis = detail.agents.find((agent) => agent.role === "analysis");
+  assert.equal(analysis?.providerReportedUsage?.outputDiagnostics?.finishReason, "stop");
+  assert.equal(analysis?.providerReportedUsage?.outputDiagnostics?.validationCategory, "schema_validation");
+  assert.ok(analysis?.providerReportedUsage?.outputDiagnostics?.validationIssues?.some((issue) =>
+    issue.path.join(".") === "recommendations.0" && issue.code === "invalid_type"));
+  assert.equal(run.agents.find((agent) => agent.role === "verification")?.status, "blocked");
+});
+
 test("bounded Groq Analysis output completes Research, Analysis, and Verification in order", async () => {
   let analysisRequestBody: Record<string, unknown> | undefined;
   const groqAnalysis = new OpenAICompatibleProvider({
@@ -1379,6 +1450,16 @@ test("bounded Groq Analysis output completes Research, Analysis, and Verificatio
   assert.deepEqual(stages, ["research", "analysis", "verification"]);
   assert.equal(analysisRequestBody?.max_completion_tokens, 800);
   assert.equal(analysisRequestBody?.reasoning_effort, "low");
+  const responseFormat = analysisRequestBody?.response_format as {
+    type: string;
+    json_schema: { strict: boolean; schema: Record<string, unknown> };
+  };
+  assert.equal(responseFormat.type, "json_schema");
+  assert.equal(responseFormat.json_schema.strict, true);
+  const analysisSchema = responseFormat.json_schema.schema as {
+    properties: Record<string, { type?: string; items?: { type?: string } }>;
+  };
+  assert.equal(analysisSchema.properties.recommendations?.items?.type, "string");
   const messages = analysisRequestBody?.messages as Array<{ role: string; content: string }>;
   const analysisPayload = JSON.parse(messages[1]!.content) as { payload: Record<string, unknown> };
   assert.deepEqual(Object.keys(analysisPayload.payload), ["topic", "question", "approvedSources", "researchClaims", "completedArtifacts"]);

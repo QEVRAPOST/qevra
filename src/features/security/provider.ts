@@ -89,6 +89,22 @@ const providerResponseSchema = z.object({
 const MAX_PROVIDER_RESPONSE_BYTES = 400_000;
 const MAX_MODEL_REQUEST_BYTES = 64_000;
 const GROQ_GPT_OSS_MAX_COMPLETION_TOKENS = 800;
+const GROQ_STRICT_SCHEMA_UNSUPPORTED_KEYWORDS = new Set([
+  "$schema",
+  "maxItems",
+  "maxLength",
+  "minItems",
+  "minLength",
+  "pattern",
+]);
+
+function toGroqStrictSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toGroqStrictSchema);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !GROQ_STRICT_SCHEMA_UNSUPPORTED_KEYWORDS.has(key))
+    .map(([key, nested]) => [key, toGroqStrictSchema(nested)]));
+}
 
 function parseResetMilliseconds(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -226,6 +242,16 @@ export class OpenAICompatibleProvider implements ModelProvider {
 
   async completeJson<T>(request: StructuredModelRequest<T>, outerSignal?: AbortSignal): Promise<StructuredModelResponse<T>> {
     const baseUrl = this.options.baseUrl.replace(/\/+$/, "");
+    const responseFormat = this.isGroqGptOss && request.agent === "analysis"
+      ? {
+          type: "json_schema",
+          json_schema: {
+            name: "security_swarm_analysis",
+            strict: true,
+            schema: toGroqStrictSchema(z.toJSONSchema(request.schema)),
+          },
+        }
+      : { type: "json_object" };
     const payload = JSON.stringify({
       model: this.options.model,
       temperature: 0.1,
@@ -236,7 +262,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
             include_reasoning: false,
           }
         : { max_tokens: this.options.maxOutputTokens }),
-      response_format: { type: "json_object" },
+      response_format: responseFormat,
       messages: [
         { role: "system", content: request.systemPrompt },
         {
