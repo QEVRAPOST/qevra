@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
-import { pipelineFor, STATUS_TEXT } from "@/lib/swarm-view";
+import { pipelineFor, shortWalletIdentity, STATUS_TEXT } from "@/lib/swarm-view";
 import type { DeterministicTestSummary, ResearchFinding, SwarmRun } from "@/types";
 import type { ResearchAnalysisDetail, ResearchEvidenceSource, ResearchHumanReviewDecision, ResearchHumanReviewSubmission } from "@/types/integrations";
 import { saveSecurityRunReview, SecurityApiClientError } from "@/features/security/client";
@@ -308,7 +308,17 @@ export function HumanReviewStatus({
               <p className="review-saved-label">Your assessment</p>
               <strong>{reviewDecisionLabel(savedReview.decision, savedReview.disposition)}</strong>
               <dl className="review-status-meta">
-                <div><dt>Reviewer wallet</dt><dd><code>{savedReview.by}</code></dd></div>
+                <div>
+                  <dt>Reviewer wallet</dt>
+                  <dd>
+                    {savedReview.by ? (
+                      <code title={savedReview.by}>
+                        <span aria-hidden="true">{shortWalletIdentity(savedReview.by)}</span>
+                        <span className="sr">Full reviewer wallet {savedReview.by}</span>
+                      </code>
+                    ) : "Not reported"}
+                  </dd>
+                </div>
                 <div><dt>Saved</dt><dd><time dateTime={savedReview.at}>{formatRecordedEventTime(savedReview.at)}</time></dd></div>
               </dl>
               {savedReview.notes ? <p className="review-saved-note"><b>Your note.</b> {savedReview.notes}</p> : null}

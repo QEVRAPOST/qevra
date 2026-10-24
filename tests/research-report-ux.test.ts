@@ -84,6 +84,8 @@ test("saved Human Review is explicit, persisted, and collapsed behind an edit ac
   assert.match(markup, /Review recorded/);
   assert.match(markup, /Needs investigation/);
   assert.match(markup, /0x0000000000000000000000000000000000000001/);
+  assert.match(markup, /aria-hidden="true">0x000000…000001<\/span>/, "the reviewer wallet should be compact in the visible metadata");
+  assert.match(markup, /class="sr">Full reviewer wallet 0x0000000000000000000000000000000000000001<\/span>/, "assistive technology should retain the full reviewer identity");
   assert.match(markup, /Confirm the source context\./);
   assert.match(markup, /2026-10-22 05:20:45 UTC/);
   assert.match(markup, /not an independent audit/i);

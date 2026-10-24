@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { useMediaQuery } from "@/lib/use-media-query";
-import { STAGE_DOING, STAGE_META, STAGE_ORDER, STATUS_TEXT, type PipelineModel, type PipelineStage } from "@/lib/swarm-view";
+import { shortWalletIdentity, STAGE_DOING, STAGE_META, STAGE_ORDER, STATUS_TEXT, type PipelineModel, type PipelineStage } from "@/lib/swarm-view";
 import type { Material, ResearchAgentRole, ResearchAgentStatus } from "@/types";
 
 /** A pipeline agent's status as a status circle: waiting and blocked are dotted, running and completed are outlined, failed is solid red. */
@@ -124,6 +124,8 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls, trace 
   const moves = !!model && (!model.example || !!model.illustration);
   const running = (i: number) => moves && stages[i].status === "running";
   const segState = (i: number): string => (i < 3 ? stages[i].status : "pending");
+  const reviewerWallet = model?.review.recorded ? model.review.by : undefined;
+  const compactReviewerWallet = reviewerWallet ? shortWalletIdentity(reviewerWallet) : undefined;
 
   /* a ring flashes once when its agent finishes while you are looking: never on first paint */
   const statusKey = stages.map((s) => s.status).join(",");
@@ -170,7 +172,7 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls, trace 
       <ol className="pipe-nodes" aria-label="Agents, in the order they run">
         {stages.map((stage, i) => (
           <li key={stage.role} className={`pipe-li om-n${i + 1}`}>
-            {i > 0 ? <span className={`plink s-${stage.status}${running(i) ? " flow" : ""}`} aria-hidden="true" /> : null}
+            <span className={`plink${i === 0 ? " pipe-entry" : ""} s-${stage.status}${running(i) ? " flow" : ""}`} aria-hidden="true" />
             <button
               type="button"
               className={`pn s-${stage.status}${justDone.includes(stage.role) ? " pop" : ""}`}
@@ -181,10 +183,10 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls, trace 
             >
               <span className="om-ring" aria-hidden="true">
                 <i className="om-halo" />
-                <b>{i + 1}</b>
+                <b>{String(i + 1).padStart(2, "0")}</b>
               </span>
               <span className="pn-body">
-                <span className="pn-step">Step {i + 1}</span>
+                <span className="pn-step">Step {String(i + 1).padStart(2, "0")}</span>
                 <span className="pn-title">{stage.title}</span>
                 <span className="pn-state">
                   <StatusMaterial material={AGENT_MATERIAL[stage.status]} />
@@ -205,17 +207,28 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls, trace 
         ))}
       </ol>
 
-      <div className={`pipe-dock om-dock${model?.review.recorded ? " lit" : ""}`}>
+      <div className={`pipe-dock om-dock${model?.review.recorded ? " lit" : ""}`} role="group" aria-label="Human review, separate from AI stages">
         <span className="pd-lamp" aria-hidden="true" />
-        <div>
-          <b>Human review</b>
-          <span>
-            {model?.review.recorded
-              ? `Recorded by ${model.review.by ?? "a reviewer"}${model.review.at ? `, ${model.review.at}` : ""}.`
-              : guide
-                ? "A person decides. Nothing is approved without one."
-                : "Not recorded. A finished run is not a review."}
-          </span>
+        <div className="pipe-review-copy">
+          <span className="pipe-review-kicker">Separate personal assessment</span>
+          <b>Human Review</b>
+          {model?.review.recorded ? (
+            <span className="pipe-review-state">
+              <span>Assessment recorded</span>
+              {compactReviewerWallet ? (
+                <span className="pipe-review-wallet" title={reviewerWallet}>
+                  <span aria-hidden="true">{compactReviewerWallet}</span>
+                  <span className="sr">Reviewer wallet {reviewerWallet}</span>
+                </span>
+              ) : null}
+              {model.review.at ? <time dateTime={model.review.at}>{model.review.at}</time> : null}
+            </span>
+          ) : (
+            <span className="pipe-review-state">
+              {guide ? "A person can assess the saved evidence after the AI stages." : "Not recorded. A finished run is not a review."}
+            </span>
+          )}
+          <span className="pipe-review-note">Not a fourth AI stage, independent security audit, or certification.</span>
         </div>
       </div>
     </div>

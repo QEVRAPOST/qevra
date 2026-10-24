@@ -50,13 +50,13 @@ export function OverviewView() {
       <header className="ov-hero">
         <p className="pg-kick">Overview</p>
         <h1 id="h-ov">
-          Research first. <em>Nothing moves your funds.</em>
+          Research first. <em>You approve every transaction.</em>
         </h1>
         <p className="pg-lede">
           {brandizeProjectName(
             live
-              ? "VEYRA provides read-only EVM wallet access and the VEYRA Research Engine. A wallet-authenticated three-stage Security Swarm run has been demonstrated; reports are research, not audits. Smart-account custody and swap execution are unavailable."
-              : "This demo build uses simulated workspace data. A configured live build supports read-only EVM wallet access and wallet-authenticated Security Swarm research. Smart-account custody and swap execution are unavailable.",
+              ? "VEYRA provides read-only EVM wallet access and wallet-authenticated Security Swarm research. Robinhood Mainnet swaps use an external wallet and require a live quote, chain preflight, and explicit wallet confirmation. Reports are research, not audits. PQ smart-account custody is unavailable; off-chain ML-DSA attestations do not protect EVM execution."
+              : "This demo uses simulated workspace data. Configured live builds support read-only EVM wallet access, wallet-authenticated Security Swarm research, and a quote-gated Robinhood Mainnet swap flow through an external wallet. PQ smart-account custody is unavailable.",
             PROJECT_NAME,
           )}
         </p>

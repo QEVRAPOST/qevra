@@ -80,7 +80,9 @@ export function buildReadiness(model: AppModel): ReadinessRow[] {
         : { id: "swarm", group: "now", label: "Security Swarm", value: caps.provider !== "available" ? "Provider unavailable" : "Service unavailable", detail: "New runs cannot start. Saved runs can still be opened.", tone: "unk", material: "dotted", href: "/app/security", linkLabel: "Open history" }
     : { id: "swarm", group: "now", label: "Security Swarm", value: "Example runs only", detail: "Example runs show how a run looks. No agent runs in example mode.", tone: "demo", material: "dotted", href: "/app/security", linkLabel: "See how it works" };
 
-  const swap: ReadinessRow = { id: "swap", group: "off", label: "Swap", value: "Switched off", detail: "No route is configured, so there is no quote and no transaction. The page previews the steps.", tone: "unk", material: "dotted", href: "/app/swap", linkLabel: "See the preview" };
+  const swap: ReadinessRow = live
+    ? { id: "swap", group: "off", label: "Swap", value: "Route check required", detail: "Robinhood Mainnet swaps use an external wallet. A live quote, chain preflight, and explicit wallet confirmation are required before a transaction.", tone: "unk", material: "dotted", href: "/app/swap", linkLabel: "Check Mainnet swap" }
+    : { id: "swap", group: "off", label: "Swap", value: "Switched off", detail: "No route is configured in this demo, so there is no live quote or transaction. The page previews the steps.", tone: "unk", material: "dotted", href: "/app/swap", linkLabel: "See the preview" };
   const pq: ReadinessRow = { id: "pq", group: "off", label: "PQ authorization", value: "Experimental", detail: "ML-DSA is under evaluation. No key can be registered and no account exists.", tone: "exp", material: "outline", href: "/app/wallet", linkLabel: "See the account concept" };
   const audit: ReadinessRow = { id: "audit", group: "off", label: "Independent audit", value: "None yet", detail: "No independent audit has been done. Research runs are not a substitute for one.", tone: "unk", material: "dotted", href: "/app/protocol", linkLabel: "See limits" };
 

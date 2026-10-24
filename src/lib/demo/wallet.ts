@@ -37,7 +37,7 @@ function buildQevra(stage: SetupStage): LedgerView {
     return {
       ...base,
       intro: "No QEVRA account yet.",
-      hint: "Swaps use this account, not your connected wallet. It holds no assets, so none are protected by it.",
+      hint: "Illustrative account preview only; it holds no assets. Robinhood Mainnet swaps use the connected external wallet, not this example account.",
       facts: [],
       assets: [],
       actions: [{ id: "createAccount", label: "Create QEVRA account", variant: "ghost", disabled: stage === 0 }],

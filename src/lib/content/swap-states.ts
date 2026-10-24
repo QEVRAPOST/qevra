@@ -9,7 +9,7 @@ import type { SwapButtonKey, SwapButtonState } from "@/types";
 export const SWAP_STATES: Readonly<Record<SwapButtonKey, SwapButtonState>> = {
   connect: { key: "connect", label: "Connect wallet", severity: "info", disabled: false, cause: "No wallet is connected.", notDone: "Nothing was requested from your wallet." },
   network: { key: "network", label: "Switch network", severity: "blocked", disabled: false, cause: "Your wallet is on another network. Expected: Robinhood Testnet (46630).", notDone: "No transaction was sent." },
-  account: { key: "account", label: "Create QEVRA account", severity: "blocked", disabled: false, cause: "You have no QEVRA smart account yet. Swaps use that account, not your connected wallet.", notDone: "No assets are held in a QEVRA account, so none are protected by it." },
+  account: { key: "account", label: "Create QEVRA account", severity: "blocked", disabled: false, cause: "This demo illustrates an experimental QEVRA account concept. Live Robinhood Mainnet swaps use the connected external wallet, not this account.", notDone: "This example account holds no assets and is not part of the live Mainnet swap flow." },
   key: { key: "key", label: "Register authorization key", severity: "blocked", disabled: false, cause: "The account needs an authorization key before it can swap. This part is experimental.", notDone: "No key was created and nothing was signed." },
   fund: { key: "fund", label: "Fund your QEVRA account", severity: "info", disabled: false, cause: "The QEVRA account holds no assets to swap.", notDone: "No transaction was sent." },
   amount: { key: "amount", label: "Enter amount", severity: "info", disabled: true, cause: "Type an amount to swap.", notDone: "Nothing has been reviewed yet." },

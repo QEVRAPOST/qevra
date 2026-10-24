@@ -38,6 +38,11 @@ export const STATUS_TEXT: Readonly<Record<ResearchAgentStatus, string>> = {
   blocked: "Blocked",
 };
 
+/** Keep a wallet reviewer recognizable at a glance while the full address remains available in accessible text and a title. */
+export function shortWalletIdentity(value: string): string {
+  return /^0x[a-f\d]{40}$/i.test(value) ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
+}
+
 export interface PipelineEvent {
   at: string;
   stage: string;

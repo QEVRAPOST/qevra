@@ -846,6 +846,7 @@
   --ring: clamp(46px, 6.4cqw, 70px);
   position: relative;
   width: 100%;
+  min-width: 0;
   aspect-ratio: 1200 / 330;
   margin-bottom: 22px;
 }
@@ -939,6 +940,7 @@
 }
 .pipe-nodes {
   display: block;
+  min-width: 0;
 }
 .plink {
   display: none;
@@ -950,6 +952,7 @@
   justify-items: center;
   gap: 10px;
   width: clamp(120px, 18cqw, 200px);
+  min-width: 0;
   padding: 0;
   border: 0;
   background: none;
@@ -961,10 +964,16 @@
   cursor: default;
   opacity: 1;
 }
+.pn:focus-visible {
+  outline: 2px solid var(--exp);
+  outline-offset: 5px;
+  border-radius: 2px;
+}
 .pn-body {
   display: grid;
   gap: 3px;
   justify-items: center;
+  min-width: 0;
 }
 .pn-step {
   font: 400 10.5px/1.2 var(--f-mono);
@@ -1081,6 +1090,11 @@
   text-align: center;
   width: clamp(110px, 16cqw, 190px);
 }
+.om-dock {
+  box-sizing: border-box;
+  border-left: 1px solid var(--line-2);
+  padding: 8px;
+}
 .om-sring {
   width: calc(var(--ring) * 0.62);
   height: calc(var(--ring) * 0.62);
@@ -1134,6 +1148,36 @@
 .pipe-dock.lit .pd-lamp::after {
   background: var(--fg);
   border: 0;
+}
+.pipe-review-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pipe-review-kicker {
+  color: var(--muted);
+  font: 400 10.5px/1.3 var(--f-mono);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+.pipe-review-state {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.pipe-review-wallet,
+.pipe-review-state time {
+  max-width: 100%;
+  color: var(--muted);
+  font: 400 11px/1.4 var(--f-mono);
+  overflow-wrap: anywhere;
+}
+.pipe-review-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 /* the inspector for the chosen station */
@@ -1310,9 +1354,11 @@
   }
   .pipe-nodes {
     display: grid;
+    margin-top: 6px;
   }
   .pipe-li {
     display: grid;
+    min-width: 0;
   }
   .pn {
     grid-template-columns: var(--ring) minmax(0, 1fr);
@@ -1324,6 +1370,30 @@
     padding: 6px 0;
   }
   .pn-body {
+    justify-items: start;
+  }
+  .pn-does {
+    display: block;
+    max-width: 52ch;
+    color: var(--fg-2);
+    font: 400 12.5px/1.4 var(--f-ui);
+  }
+  .pn-state,
+  .pn-err {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .om-dock {
+    margin-top: 10px;
+    border-top: 1px solid var(--exp);
+    border-left: 0;
+    padding: 12px 0 4px;
+  }
+  .pipe-review-copy {
+    justify-items: start;
+    text-align: left;
+  }
+  .pipe-review-state {
     justify-items: start;
   }
   .plink {
@@ -1377,6 +1447,11 @@
   }
   .pipe-detail {
     animation: none;
+  }
+  .pn .om-ring,
+  .pn:hover:not(:disabled) .om-ring {
+    transition: none;
+    transform: none;
   }
 }
 

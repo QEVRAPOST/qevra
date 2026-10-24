@@ -3,11 +3,17 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LandingNav } from "@/components/landing/LandingNav";
+import { OverviewView } from "@/components/dashboard/OverviewView";
+import { ModelContext } from "@/components/dashboard/AppModelContext";
 import { HERO, CURTAIN, HERO_FACTS, HERO_SCENES, STORY_STEPS, SWARM_CAN, STATUS_BAND_INTRO } from "@/lib/content/landing";
 import { PILLARS } from "@/lib/content/pillars";
 import { COVERAGE_ROWS } from "@/lib/content/status";
 import { CORE_SENTENCE, FOOTER_PREVIEW, SWARM_PARAGRAPH_A } from "@/lib/content/copy-lock";
+import { buildDemoModel } from "@/lib/demo/model";
+import { DEFAULT_NETWORK_ID } from "@/lib/config/networks";
 import { createSiteMetadata } from "@/lib/site-metadata";
+import type { AppActions } from "@/types";
+import { buildReadiness } from "@/lib/app-readiness";
 
 test("landing copy leads with Robinhood Chain and distinguishes configured swaps from future PQ custody", () => {
   assert.deepEqual(HERO_SCENES.map((scene) => scene.tab), ["Account concept", "Intent Lock", "Research + Swarm"]);
@@ -64,4 +70,67 @@ test("social metadata describes configured Mainnet swaps and experimental custod
   assert.match(description, /custody.*(?:under evaluation|unavailable|security review)/i);
   assert.doesNotMatch(description, /swap execution.*unavailable/i);
   assert.doesNotMatch(description, /design preview/i);
+});
+
+test("live Overview describes external-wallet Mainnet swaps and keeps PQ custody unavailable", () => {
+  const demo = buildDemoModel({
+    stage: 0,
+    forced: null,
+    reviewed: null,
+    amount: "100",
+    runsMode: "examples",
+    actsMode: "examples",
+    network: DEFAULT_NETWORK_ID,
+  });
+  const model = { ...demo, mode: "live" as const };
+  const markup = renderToStaticMarkup(createElement(
+    ModelContext.Provider,
+    { value: { model, actions: {} as AppActions } },
+    createElement(OverviewView),
+  ));
+
+  assert.match(markup, /You approve every transaction/);
+  assert.match(markup, /Robinhood Mainnet swaps use an external wallet/);
+  assert.match(markup, /live quote/);
+  assert.match(markup, /explicit wallet confirmation/);
+  assert.match(markup, /reports are research, not audits/i);
+  assert.match(markup, /PQ smart-account custody is unavailable/);
+  assert.doesNotMatch(markup, /swap execution are unavailable/i);
+});
+
+test("demo account and swap states identify QEVRA smart-account use as an illustration", () => {
+  const demo = buildDemoModel({
+    stage: 1,
+    forced: null,
+    reviewed: null,
+    amount: "100",
+    runsMode: "examples",
+    actsMode: "examples",
+    network: DEFAULT_NETWORK_ID,
+  });
+  const copy = `${demo.wallet.qevra.hint ?? ""} ${demo.swap.button.cause}`;
+
+  assert.match(copy, /illustrative .*account/i);
+  assert.match(copy, /Mainnet swaps use the connected external wallet/i);
+  assert.doesNotMatch(copy, /swaps use that account, not your connected wallet/i);
+});
+
+test("live swap readiness points to Mainnet route checks and wallet-confirmed preflight", () => {
+  const demo = buildDemoModel({
+    stage: 0,
+    forced: null,
+    reviewed: null,
+    amount: "100",
+    runsMode: "examples",
+    actsMode: "examples",
+    network: DEFAULT_NETWORK_ID,
+  });
+  const model = { ...demo, mode: "live" as const };
+  const swap = buildReadiness(model).find((row) => row.id === "swap");
+
+  assert.equal(swap?.value, "Route check required");
+  assert.match(swap?.detail ?? "", /Robinhood Mainnet.*external wallet/i);
+  assert.match(swap?.detail ?? "", /quote.*chain preflight/i);
+  assert.match(swap?.detail ?? "", /explicit wallet confirmation/i);
+  assert.equal(swap?.linkLabel, "Check Mainnet swap");
 });
