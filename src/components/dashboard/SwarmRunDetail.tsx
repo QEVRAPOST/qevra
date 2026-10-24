@@ -8,7 +8,7 @@ import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { pipelineFor, shortWalletIdentity, STATUS_TEXT } from "@/lib/swarm-view";
 import type { DeterministicTestSummary, ResearchFinding, SwarmRun } from "@/types";
-import type { ResearchAnalysisDetail, ResearchEvidenceSource, ResearchHumanReviewDecision, ResearchHumanReviewSubmission } from "@/types/integrations";
+import type { ResearchAgentStatus, ResearchAnalysisDetail, ResearchEvidenceSource, ResearchHumanReviewDecision, ResearchHumanReviewSubmission } from "@/types/integrations";
 import { saveSecurityRunReview, SecurityApiClientError } from "@/features/security/client";
 
 const ASSESSMENT: Record<ResearchFinding["modelAssessment"], { label: string; tone: "neutral" | "exp" | "unk"; material: "outline" | "dotted" }> = {
@@ -182,6 +182,17 @@ const REVIEW_OPTIONS: Array<{ value: ResearchHumanReviewDecision; label: string;
   { value: "insufficient_evidence", label: "Insufficient evidence", description: "The saved sources do not support a clear conclusion." },
 ];
 
+export interface HumanReviewEvidenceContext {
+  question: string;
+  findingsCount: number | null;
+  sourcesCount: number | null;
+  availableSourcesCount: number | null;
+  verificationStatus: ResearchAgentStatus | null;
+  limitations: string[] | null;
+  reportHref: string;
+  onViewResearchReport?: () => void;
+}
+
 export function HumanReviewStatus({
   review,
   runId,
@@ -191,6 +202,7 @@ export function HumanReviewStatus({
   reviewLoaded = true,
   canSubmit = false,
   sessionRole,
+  evidenceContext,
   onReviewSaved,
 }: {
   review: SwarmRun["humanReview"];
@@ -202,6 +214,7 @@ export function HumanReviewStatus({
   reviewLoaded?: boolean;
   canSubmit?: boolean;
   sessionRole?: "wallet" | "operator";
+  evidenceContext?: HumanReviewEvidenceContext;
   onReviewSaved?: (review: ResearchHumanReviewSubmission) => void;
 }) {
   const [savedReview, setSavedReview] = useState(review);
@@ -268,7 +281,8 @@ export function HumanReviewStatus({
           })}
         </div>
       </fieldset>
-      <label className="review-notes-label" htmlFor={`review-notes-${runId}`}>Optional note</label>
+      <label className="review-notes-label" htmlFor={`review-notes-${runId}`}>Your reasoning</label>
+      <p className="review-reasoning-help" id={`review-reasoning-help-${runId}`}>Explain what in the saved evidence led to this decision.</p>
       <textarea
         id={`review-notes-${runId}`}
         value={notes}
@@ -277,6 +291,7 @@ export function HumanReviewStatus({
         rows={3}
         placeholder="Record what evidence you considered or what needs follow-up."
         disabled={saving}
+        aria-describedby={`review-reasoning-help-${runId}`}
       />
       <div className="review-form-footer">
         <span>{notes.length}/1,000</span>
@@ -300,6 +315,37 @@ export function HumanReviewStatus({
           </Chip>
         </div>
         <p className="review-intro">Review the saved evidence and record your own assessment.</p>
+        {live && evidenceContext ? (
+          <section className="review-evidence" aria-label="Research evidence being assessed">
+            <div className="review-evidence-heading">
+              <div>
+                <p className="review-saved-label">Evidence being assessed</p>
+                <p className="review-evidence-question">{evidenceContext.question || "Research question unavailable in this report."}</p>
+              </div>
+              <a className="review-report-link" href={evidenceContext.reportHref} onClick={evidenceContext.onViewResearchReport}>View research report</a>
+            </div>
+            <dl className="review-evidence-facts">
+              <div><dt>Findings</dt><dd>{evidenceContext.findingsCount === null ? "Unavailable" : `${evidenceContext.findingsCount} recorded`}</dd></div>
+              <div><dt>Sources</dt><dd>{evidenceContext.sourcesCount === null
+                ? "Unavailable"
+                : `${evidenceContext.sourcesCount} saved${evidenceContext.availableSourcesCount === null ? "" : ` · ${evidenceContext.availableSourcesCount} available`}`}</dd></div>
+              <div><dt>Verification status</dt><dd>{evidenceContext.verificationStatus ? STATUS_TEXT[evidenceContext.verificationStatus] : "Unavailable in this report"}</dd></div>
+            </dl>
+            {evidenceContext.findingsCount === 0 ? (
+              <p className="review-evidence-empty">No substantiated findings were recorded. This does not establish that the subject is secure.</p>
+            ) : null}
+            <div className="review-evidence-limitations">
+              <p className="review-saved-label">Relevant limitations</p>
+              {evidenceContext.limitations === null ? (
+                <p>Limitations are unavailable until report details load.</p>
+              ) : evidenceContext.limitations.length > 0 ? (
+                <ul>{evidenceContext.limitations.map((limitation, index) => <li key={`${index}-${limitation}`}>{limitation}</li>)}</ul>
+              ) : (
+                <p>No limitations were recorded for this report.</p>
+              )}
+            </div>
+          </section>
+        ) : null}
         {live && sessionRole === "wallet" && !reviewLoaded ? (
           <p className="dnote">Saved Human Review status is not available until report details load.</p>
         ) : statusKnown && savedReview.recorded ? (
@@ -321,9 +367,9 @@ export function HumanReviewStatus({
                 </div>
                 <div><dt>Saved</dt><dd><time dateTime={savedReview.at}>{formatRecordedEventTime(savedReview.at)}</time></dd></div>
               </dl>
-              {savedReview.notes ? <p className="review-saved-note"><b>Your note.</b> {savedReview.notes}</p> : null}
+              {savedReview.notes ? <p className="review-saved-note"><b>Your reasoning.</b> {savedReview.notes}</p> : <p className="review-saved-note">No reasoning was recorded.</p>}
             </div>
-            <p className="dnote">{savedReview.disclaimer ?? "This is a personal evidence assessment, not an independent security review, audit, or certification."}</p>
+            <p className="dnote">{savedReview.disclaimer ?? "This is a personal evidence assessment, not an independent audit, security review, or certification."}</p>
           </>
         ) : !statusKnown ? (
           <p className="dnote">Owner self-review data is available only in a verified wallet-owner session. Operator sessions are read-only.</p>
@@ -539,7 +585,7 @@ export function SwarmRunDetail({
         </div>
       ) : null}
 
-        <div className={`ev-panel${tab === "events" ? " events-reveal" : ""}`} id={`${headingId}-p`} role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `${headingId}-t-${tab}` : undefined} key={tab}>
+        <div className={`ev-panel${tab === "events" ? " events-reveal" : ""}`} id={`${headingId}-p`} tabIndex={-1} role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `${headingId}-t-${tab}` : undefined} key={tab}>
         {tab === "summary" ? (
           <>
             <dl className="dfacts">
@@ -709,6 +755,20 @@ export function SwarmRunDetail({
         reviewLoaded={!!detail}
         canSubmit={canSubmitReview}
         sessionRole={reviewSessionRole}
+        evidenceContext={live ? {
+          question: run.goal,
+          findingsCount: detail?.findings.length ?? run.liveSummary?.findingCount ?? null,
+          sourcesCount: detail?.sources.length ?? run.liveSummary?.sourceCount ?? null,
+          availableSourcesCount: detail
+            ? detail.sources.filter((source) => source.status === "available").length
+            : run.liveSummary?.availableSourceCount ?? null,
+          verificationStatus: agents.find((agent) => agent.role === "verification")?.status ?? null,
+          limitations: detail
+            ? [...new Set([...detail.limitations, ...(detail.analysis?.unknowns ?? []), ...(detail.verification?.limitations ?? [])])]
+            : null,
+          reportHref: `#${headingId}-p`,
+          onViewResearchReport: () => setPicked(withDetail ? "findings" : "summary"),
+        } : undefined}
         onReviewSaved={onReviewSaved}
       />
       <p className="wrapnote">By design, a run has no access to keys, signing or funds.</p>

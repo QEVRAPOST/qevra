@@ -783,6 +783,93 @@ html[data-arrive] .wsmain {
   font-size: 13px;
   line-height: 1.45;
 }
+.drawer .review-evidence {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  border-block: 1px solid var(--line);
+  padding: 12px 0;
+}
+.drawer .review-evidence-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.drawer .review-evidence-question {
+  margin-top: 4px;
+  color: var(--fg);
+  font: 400 14px/1.45 var(--f-display);
+  overflow-wrap: anywhere;
+}
+.drawer .review-report-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid var(--line-2);
+  padding: 0 12px;
+  color: var(--fg-2);
+  font-size: 12px;
+  text-decoration: none;
+  transition: color var(--t), border-color var(--t), background-color var(--t);
+}
+.drawer .review-report-link:hover {
+  border-color: var(--exp);
+  background: color-mix(in srgb, var(--exp) 4%, transparent);
+  color: var(--fg);
+}
+.drawer .review-report-link:focus-visible {
+  outline: 2px solid var(--exp);
+  outline-offset: 3px;
+}
+.drawer .review-evidence-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+.drawer .review-evidence-facts > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.drawer .review-evidence-facts dt {
+  color: var(--muted);
+  font: 500 10.5px/1.3 var(--f-mono);
+  text-transform: uppercase;
+}
+.drawer .review-evidence-facts dd {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.drawer .review-evidence-limitations {
+  display: grid;
+  gap: 5px;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.drawer .review-evidence-limitations ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 17px;
+  list-style: disc;
+}
+.drawer .review-evidence-empty {
+  color: var(--fg-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.drawer .review-reasoning-help {
+  margin-top: -5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
 .drawer .review-saved {
   display: grid;
   gap: 8px;
@@ -877,7 +964,8 @@ html[data-arrive] .wsmain {
   max-width: 90ch;
 }
 @media (prefers-reduced-motion: reduce) {
-  .drawer .review-edit > summary {
+  .drawer .review-edit > summary,
+  .drawer .review-report-link {
     transition: none;
   }
 }
@@ -1325,6 +1413,19 @@ html[data-arrive] .wsmain {
 }
 
 @media (max-width: 560px) {
+  .drawer .review-evidence-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .drawer .review-report-link {
+    width: 100%;
+  }
+  .drawer .review-evidence-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .drawer .review-evidence-facts > div:last-child {
+    grid-column: 1 / -1;
+  }
   .apptop .wrap {
     gap: 10px;
   }

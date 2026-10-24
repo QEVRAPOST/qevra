@@ -83,6 +83,7 @@ test("saved Human Review is explicit, persisted, and collapsed behind an edit ac
   assert.match(markup, /Review the saved evidence and record your own assessment\./);
   assert.match(markup, /Review recorded/);
   assert.match(markup, /Needs investigation/);
+  assert.match(markup, /<b>Your reasoning\.<\/b> Confirm the source context\./);
   assert.match(markup, /0x0000000000000000000000000000000000000001/);
   assert.match(markup, /aria-hidden="true">0x000000…000001<\/span>/, "the reviewer wallet should be compact in the visible metadata");
   assert.match(markup, /class="sr">Full reviewer wallet 0x0000000000000000000000000000000000000001<\/span>/, "assistive technology should retain the full reviewer identity");
@@ -122,10 +123,72 @@ test("a completed live report offers a clear wallet-owner Human Review", () => {
   assert.match(markup, /Needs investigation/);
   assert.match(markup, /Insufficient evidence/);
   assert.match(markup, /name="review-55555555-5555-4555-8555-555555555555"/);
-  assert.match(markup, /Optional note/);
+  assert.match(markup, /Your reasoning/);
+  assert.match(markup, /Explain what in the saved evidence led to this decision\./);
   assert.match(markup, /maxLength="1000"/);
   assert.match(markup, /Save Human Review/);
   assert.match(markup, /Only the verified report owner can save this self-review/);
+});
+
+test("Human Review names the saved evidence and links back to that run's findings", () => {
+  const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({
+    review: {
+      recorded: true,
+      by: "0x0000000000000000000000000000000000000001",
+      at: "2026-10-22T05:20:45.818Z",
+      decision: "insufficient_evidence",
+    },
+    runId: "55555555-5555-4555-8555-555555555555",
+    live: true,
+    completed: true,
+    canSubmit: true,
+    sessionRole: "wallet",
+    evidenceContext: {
+      question: "Which Robinhood network is described in the saved documentation?",
+      findingsCount: 2,
+      sourcesCount: 4,
+      availableSourcesCount: 3,
+      verificationStatus: "completed",
+      limitations: ["The report covers only approved public sources."],
+      reportHref: "#report-heading-p",
+    },
+  }));
+
+  assert.match(markup, /Which Robinhood network is described in the saved documentation\?/);
+  assert.match(markup, /2 recorded/);
+  assert.match(markup, /4 saved · 3 available/);
+  assert.match(markup, /Verification status/);
+  assert.match(markup, /Completed/);
+  assert.match(markup, /The report covers only approved public sources\./);
+  assert.match(markup, /<a[^>]*href="#report-heading-p"[^>]*>View research report<\/a>/);
+  assert.match(markup, /Insufficient evidence/);
+  assert.match(markup, /No reasoning was recorded\./);
+  assert.match(markup, /not an independent audit/i);
+});
+
+test("zero recorded findings are explained without implying the subject is secure", () => {
+  const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({
+    review: { recorded: false },
+    runId: "55555555-5555-4555-8555-555555555555",
+    live: true,
+    completed: true,
+    canSubmit: true,
+    sessionRole: "wallet",
+    evidenceContext: {
+      question: "What does the saved source establish?",
+      findingsCount: 0,
+      sourcesCount: 2,
+      availableSourcesCount: 2,
+      verificationStatus: "completed",
+      limitations: [],
+      reportHref: "#report-heading-p",
+    },
+  }));
+
+  assert.match(markup, /0 recorded/);
+  assert.match(markup, /No substantiated findings were recorded/);
+  assert.match(markup, /does not establish that the subject is secure/i);
+  assert.match(markup, /No limitations were recorded for this report\./);
 });
 
 test("completed reports connect the three AI stages to the separate personal Human Review", () => {
@@ -179,6 +242,9 @@ test("completed reports connect the three AI stages to the separate personal Hum
   assert.match(markup, /Verification<\/span><span>Completed/);
   assert.match(markup, /Human Review is a separate personal assessment, not an AI agent/);
   assert.match(markup, /href="#human-review-55555555-5555-4555-8555-555555555555"/);
+  assert.match(markup, /<a class="review-report-link" href="#report-heading-p">View research report<\/a>/);
+  assert.match(markup, /id="report-heading-p" tabindex="-1"/);
+  assert.match(markup, /No substantiated findings were recorded\. This does not establish that the subject is secure\./);
 });
 
 test("failed research preserves failed stage states and does not expose Human Review as complete", () => {
