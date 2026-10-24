@@ -834,6 +834,8 @@ test("Analysis and Verification schemas reject missing fields, wrong types, and 
   assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, risks: [validAnalysis.risks[0]!, validAnalysis.risks[0]!] }).success, false);
   assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, unknowns: ["one", "two", "three"] }).success, false);
   assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, recommendations: ["one", "two"] }).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, recommendations: [""] }).success, false);
+  assert.equal(analysisAgentOutputSchema.safeParse({ ...validAnalysis, recommendations: ["R".repeat(161)] }).success, false);
 
   const validVerification = {
     summary: "No claims or completed artifacts were returned for checking.",
@@ -1429,7 +1431,17 @@ test("Groq Analysis rejects an object recommendation at stop and requests the st
     json_schema: { name: string; strict: boolean; schema: Record<string, unknown> };
   };
   const schema = responseFormat.json_schema.schema as {
-    properties: Record<string, { type?: string; items?: { type?: string } }>;
+    properties: Record<string, {
+      type?: string;
+      description?: string;
+      items?: {
+        type?: string;
+        description?: string;
+        properties?: Record<string, { type?: string }>;
+        required?: string[];
+        additionalProperties?: boolean;
+      };
+    }>;
     required: string[];
     additionalProperties: boolean;
   };
@@ -1439,10 +1451,15 @@ test("Groq Analysis rejects an object recommendation at stop and requests the st
   assert.equal(responseFormat.json_schema.strict, true);
   assert.deepEqual(schema.required, ["summary", "assumptions", "risks", "unknowns", "recommendations"]);
   assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(schema.properties.risks?.items?.required, ["id", "title", "severity", "analysis", "sourceIds"]);
+  assert.equal(schema.properties.risks?.items?.additionalProperties, false);
   for (const field of ["assumptions", "unknowns", "recommendations"]) {
     assert.equal(schema.properties[field]?.type, "array");
     assert.equal(schema.properties[field]?.items?.type, "string");
   }
+  assert.match(schema.properties.recommendations?.description ?? "", /at most 1 item/i);
+  assert.match(schema.properties.recommendations?.items?.description ?? "", /at least 1 character/i);
+  assert.match(schema.properties.recommendations?.items?.description ?? "", /at most 160 characters/i);
   assert.equal(run.status, "failed");
   assert.equal(run.errorCode, "provider_output_invalid");
   const detail = await toResearchRunDetail(run);
@@ -1451,6 +1468,58 @@ test("Groq Analysis rejects an object recommendation at stop and requests the st
   assert.equal(analysis?.providerReportedUsage?.outputDiagnostics?.validationCategory, "schema_validation");
   assert.ok(analysis?.providerReportedUsage?.outputDiagnostics?.validationIssues?.some((issue) =>
     issue.path.join(".") === "recommendations.0" && issue.code === "invalid_type"));
+  assert.equal(run.agents.find((agent) => agent.role === "verification")?.status, "blocked");
+});
+
+test("Analysis rejects recommendations beyond runtime limits even when strict JSON Schema only carries their guidance", async () => {
+  let analysisRequestBody: Record<string, unknown> | undefined;
+  const invalidOutput = { ...analysisOutput, recommendations: ["R".repeat(161)] };
+  const groqAnalysis = new OpenAICompatibleProvider({
+    apiKey: "offline-fixture-key",
+    model: "openai/gpt-oss-20b",
+    baseUrl: "https://api.groq.com/openai/v1",
+    maxOutputTokens: 800,
+    maxRequestBytes: 6_000,
+    timeoutMs: 1_000,
+    fetchImpl: async (_input, init) => {
+      analysisRequestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({
+        choices: [{ finish_reason: "stop", message: { content: JSON.stringify(invalidOutput) } }],
+        usage: { prompt_tokens: 42, completion_tokens: 70, total_tokens: 112 },
+      }, { headers: { "x-request-id": "offline-analysis-oversized-recommendation" } });
+    },
+  });
+  const fallback = mockProvider();
+  const stages: string[] = [];
+  const provider: ModelProvider = {
+    name: "offline-groq-oversized-recommendation-fixture",
+    async completeJson<T>(request: StructuredModelRequest<T>) {
+      stages.push(request.agent);
+      return request.agent === "analysis" ? groqAnalysis.completeJson(request) : fallback.completeJson(request);
+    },
+  };
+  const run = createQueuedRun("88888886-8888-4888-8888-888888888886", "mldsa-key-registration", "FIPS evidence question");
+  await processResearchRun(run, {
+    provider,
+    fetchSources: async () => [source],
+    runExperiment: async (id) => ({ id, name: id, status: "blocked", command: "fixed", limitations: [] }),
+    persist: async () => undefined,
+  });
+
+  const responseFormat = analysisRequestBody?.response_format as {
+    json_schema: { schema: { properties: Record<string, { description?: string; items?: { description?: string } }> } };
+  };
+  const recommendationSchema = responseFormat.json_schema.schema.properties.recommendations;
+  assert.match(recommendationSchema?.description ?? "", /at most 1 item/i);
+  assert.match(recommendationSchema?.items?.description ?? "", /at most 160 characters/i);
+  assert.deepEqual(stages, ["research", "analysis"]);
+  assert.equal(run.status, "failed");
+  assert.equal(run.errorCode, "provider_output_invalid");
+  const detail = await toResearchRunDetail(run);
+  const analysis = detail.agents.find((agent) => agent.role === "analysis");
+  assert.equal(analysis?.providerReportedUsage?.outputDiagnostics?.validationCategory, "schema_validation");
+  assert.ok(analysis?.providerReportedUsage?.outputDiagnostics?.validationIssues?.some((issue) =>
+    issue.path.join(".") === "recommendations.0" && issue.code === "too_big"));
   assert.equal(run.agents.find((agent) => agent.role === "verification")?.status, "blocked");
 });
 
@@ -1509,6 +1578,8 @@ test("bounded Groq Analysis output completes Research, Analysis, and Verificatio
   };
   assert.equal(analysisSchema.properties.recommendations?.items?.type, "string");
   const messages = analysisRequestBody?.messages as Array<{ role: string; content: string }>;
+  assert.match(messages[0]!.content, /240 visible JSON tokens/i);
+  assert.match(messages[0]!.content, /recommendations.{0,40}80 characters/i);
   const analysisPayload = JSON.parse(messages[1]!.content) as { payload: Record<string, unknown> };
   assert.deepEqual(Object.keys(analysisPayload.payload), ["topic", "question", "approvedSources", "researchClaims", "completedArtifacts"]);
   assert.ok(Buffer.byteLength(JSON.stringify(analysisPayload.payload), "utf8") < 3_000);

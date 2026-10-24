@@ -18,7 +18,7 @@ function Inspector({ stage, model, id }: { stage: PipelineStage; model: Pipeline
     if (stage.role === "research" && model.sources) facts.push(["Sources", `${model.sources.available} of ${model.sources.total} available`]);
     if (stage.role === "verification" && model.quotes) facts.push(["Quotes matched", `${model.quotes.matched} of ${model.quotes.total}`]);
   }
-  if (stage.errorCode) facts.push(["Error code", <code key="c">{stage.errorCode}</code>]);
+  if (stage.errorCode) facts.push(["Technical error code", <code key="c">{stage.errorCode}</code>]);
   return (
     <div className="pipe-detail" id={id} role="group" aria-label={`${stage.title} detail`}>
       <div className="pd-head">

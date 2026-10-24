@@ -138,7 +138,7 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls, trace 
   }
 
   return (
-    <div className="pipe-track om">
+    <div className={`pipe-track om${model?.review.recorded ? " has-recorded-review" : ""}`}>
       <svg className="om-svg" viewBox="0 0 1200 330" aria-hidden="true" focusable="false">
         <defs>
           {SEGMENTS.map((d, i) => (
@@ -153,7 +153,7 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls, trace 
         {SEGMENTS.map((d, i) => (
           <g key={d} className={`om-seg s-${segState(i)}${i === 3 ? " out" : ""}`} data-seg={i}>
             <path className="om-line" d={d} />
-            {i < 3 && running(i) ? <path className="om-flow" d={d} /> : null}
+            {i < 3 ? <path className={`om-flow${running(i) ? " is-running" : ""}`} d={d} /> : null}
           </g>
         ))}
         {trace
@@ -178,6 +178,7 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls, trace 
               className={`pn s-${stage.status}${justDone.includes(stage.role) ? " pop" : ""}`}
               aria-pressed={onSelect ? selected === stage.role : undefined}
               aria-controls={onSelect ? controls : undefined}
+              aria-describedby={stage.errorCode ? `${uid}-error-${stage.role}` : undefined}
               disabled={guide || !onSelect}
               onClick={() => onSelect?.(stage.role)}
             >
@@ -190,17 +191,18 @@ export function OrbitCanvas({ model, selected = null, onSelect, controls, trace 
                 <span className="pn-title">{stage.title}</span>
                 <span className="pn-state">
                   <StatusMaterial material={AGENT_MATERIAL[stage.status]} />
-                  {guide ? "Waiting for a run" : STATUS_TEXT[stage.status]}
+                  {guide
+                    ? "Waiting for a run"
+                    : stage.status === "failed"
+                      ? `${stage.title} failed`
+                      : stage.status === "blocked"
+                        ? `${stage.title} blocked`
+                        : STATUS_TEXT[stage.status]}
                   {model?.example && !model.illustration && stage.status === "running" ? " (simulated)" : ""}
                 </span>
                 {running(i) ? <span className="pn-doing">{STAGE_DOING[stage.role]}<i aria-hidden="true">…</i></span> : null}
                 <span className="pn-does">{stage.does}</span>
-                {stage.status === "failed" || stage.status === "blocked" ? (
-                  <span className="pn-err">
-                    {stage.status === "failed" ? "Error" : "Did not run"}
-                    {stage.errorCode ? <>: <code>{stage.errorCode}</code></> : null}
-                  </span>
-                ) : null}
+                {stage.errorCode ? <span className="sr" id={`${uid}-error-${stage.role}`}>Technical error code {stage.errorCode}. Select this stage for details.</span> : null}
               </span>
             </button>
           </li>

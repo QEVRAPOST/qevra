@@ -101,9 +101,22 @@ const GROQ_STRICT_SCHEMA_UNSUPPORTED_KEYWORDS = new Set([
 function toGroqStrictSchema(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(toGroqStrictSchema);
   if (value === null || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value)
+  const schema = value as Record<string, unknown>;
+  const converted = Object.fromEntries(Object.entries(schema)
     .filter(([key]) => !GROQ_STRICT_SCHEMA_UNSUPPORTED_KEYWORDS.has(key))
     .map(([key, nested]) => [key, toGroqStrictSchema(nested)]));
+  const applicationLimits: string[] = [];
+  if (typeof schema.minItems === "number") applicationLimits.push(`at least ${schema.minItems} item${schema.minItems === 1 ? "" : "s"}`);
+  if (typeof schema.maxItems === "number") applicationLimits.push(`at most ${schema.maxItems} item${schema.maxItems === 1 ? "" : "s"}`);
+  if (typeof schema.minLength === "number") applicationLimits.push(`at least ${schema.minLength} character${schema.minLength === 1 ? "" : "s"}`);
+  if (typeof schema.maxLength === "number") applicationLimits.push(`at most ${schema.maxLength} characters`);
+  if (applicationLimits.length === 0) return converted;
+  const existingDescription = typeof schema.description === "string" ? schema.description.trim() : "";
+  const applicationDescription = `Application validation requires ${applicationLimits.join(" and ")}.`;
+  return {
+    ...converted,
+    description: [existingDescription, applicationDescription].filter(Boolean).join(" "),
+  };
 }
 
 function parseResetMilliseconds(value: string | undefined): number | undefined {
