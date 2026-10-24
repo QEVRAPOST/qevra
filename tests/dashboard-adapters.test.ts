@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { toLiveDashboardSnapshot, toLiveSecurityRun } from "@/features/dashboard/live-adapters";
 import { createSecurityRun, getSecuritySessionStatus, saveSecurityRunReview, SecurityApiClientError } from "@/features/security/client";
-import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "@/features/dashboard/live-model";
+import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun, withPersistedHumanReview } from "@/features/dashboard/live-model";
 import { createResearchRunRequestSchema } from "@/features/security/schemas";
 import { buildDemoModel } from "@/lib/demo/model";
 import { pipelineFor } from "@/lib/swarm-view";
@@ -80,6 +80,53 @@ test("live dashboard adapter keeps live provenance separate from demo fixtures a
   assert.equal(detail.summary, "One source-backed claim.");
   assert.deepEqual(detail.limitations, ["No independent audit."]);
   assert.equal(detail.origin, "live");
+});
+
+test("a server-confirmed Human Review updates the selected run cache immutably for later reopening", () => {
+  const run: ResearchRunDetail = {
+    id: "55555555-5555-4555-8555-555555555555",
+    topicId: "security-evidence",
+    topic: "Saved evidence review",
+    status: "completed",
+    currentStage: "completed",
+    createdAt: "2026-10-18T00:00:00.000Z",
+    updatedAt: "2026-10-18T00:01:00.000Z",
+    completedAt: "2026-10-18T00:01:00.000Z",
+    agents: [],
+    sourceCount: 0,
+    availableSourceCount: 0,
+    findingCount: 0,
+    events: [],
+    sources: [],
+    findings: [],
+    assumptions: [],
+    limitations: [],
+    recommendations: [],
+    deterministicTests: [],
+    humanReview: { status: "not_reviewed" },
+  };
+  const saved = {
+    runId: run.id,
+    reviewerId: "0x0000000000000000000000000000000000000001",
+    decision: "needs_investigation" as const,
+    notes: "Check source context again.",
+    reviewedAt: "2026-10-18T00:02:00.000Z",
+    reviewKind: "owner_self_review" as const,
+    disclaimer: "Owner self-review, not an independent security audit.",
+  };
+
+  const updated = withPersistedHumanReview(run, saved);
+  assert.deepEqual(updated.humanReview, {
+    status: "reviewed",
+    reviewer: saved.reviewerId,
+    reviewedAt: saved.reviewedAt,
+    decision: "needs_investigation",
+    notes: "Check source context again.",
+    reviewKind: "owner_self_review",
+    disclaimer: "Owner self-review, not an independent security audit.",
+  });
+  assert.equal(run.humanReview.status, "not_reviewed");
+  assert.equal(withPersistedHumanReview(run, { ...saved, runId: "66666666-6666-4666-8666-666666666666" }), run);
 });
 
 test("typed security client sends same-origin cookie requests and rejects invalid inputs before fetch", async () => {

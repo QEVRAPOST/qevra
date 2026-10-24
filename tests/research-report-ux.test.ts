@@ -58,7 +58,7 @@ test("an empty limits section says nothing was recorded instead of implying none
   assert.match(markup, /Risk assessments are not available in the report data returned by the service\. Older reports may not include the Analysis fields\./);
 });
 
-test("human review presents a saved personal assessment without implying an audit", () => {
+test("saved Human Review is explicit, persisted, and collapsed behind an edit action", () => {
   const Component = reportUi.HumanReviewStatus;
   assert.equal(typeof Component, "function", "the report should clearly present its persisted human-review status");
   if (typeof Component !== "function") return;
@@ -72,15 +72,25 @@ test("human review presents a saved personal assessment without implying an audi
       reviewKind: "owner_self_review",
       disclaimer: "This is the report owner's self-review, not an independent audit.",
     },
+    runId: "55555555-5555-4555-8555-555555555555",
+    live: true,
+    completed: true,
+    canSubmit: true,
+    sessionRole: "wallet",
   }));
 
-  assert.match(markup, /Personal evidence assessment/);
+  assert.match(markup, /<h4[^>]*>Human Review<\/h4>/);
+  assert.match(markup, /Review the saved evidence and record your own assessment\./);
+  assert.match(markup, /Review recorded/);
   assert.match(markup, /Needs investigation/);
   assert.match(markup, /0x0000000000000000000000000000000000000001/);
   assert.match(markup, /Confirm the source context\./);
   assert.match(markup, /2026-10-22 05:20:45 UTC/);
   assert.match(markup, /not an independent audit/i);
-  assert.doesNotMatch(markup, /<button|<form|<textarea|<select/);
+  assert.match(markup, /<details class="review-edit"><summary>Edit assessment<\/summary>/);
+  assert.match(markup, /checked=""/);
+  assert.match(markup, /<textarea[^>]*>Confirm the source context\.<\/textarea>/);
+  assert.doesNotMatch(markup, /<details class="review-edit" open/);
 });
 
 test("unreviewed reports explain that no personal review is saved or submitted", () => {
@@ -89,11 +99,12 @@ test("unreviewed reports explain that no personal review is saved or submitted",
   if (typeof Component !== "function") return;
   const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({ review: { recorded: false } }));
 
+  assert.match(markup, /<h4[^>]*>Human Review<\/h4>/);
   assert.match(markup, /Illustrative reports do not contain live personal evidence assessments\./);
   assert.doesNotMatch(markup, /saved successfully|submit review/i);
 });
 
-test("a completed live report offers an explicit wallet-owner evidence review", () => {
+test("a completed live report offers a clear wallet-owner Human Review", () => {
   const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({
     review: { recorded: false },
     runId: "55555555-5555-4555-8555-555555555555",
@@ -103,15 +114,161 @@ test("a completed live report offers an explicit wallet-owner evidence review", 
     sessionRole: "wallet",
   }));
 
-  assert.match(markup, /Assess the saved evidence/);
+  assert.match(markup, /Review the saved evidence and record your own assessment\./);
+  assert.match(markup, /<legend>Assess the saved evidence<\/legend>/);
   assert.match(markup, /Evidence supported/);
   assert.match(markup, /Needs investigation/);
   assert.match(markup, /Insufficient evidence/);
   assert.match(markup, /name="review-55555555-5555-4555-8555-555555555555"/);
   assert.match(markup, /Optional note/);
   assert.match(markup, /maxLength="1000"/);
-  assert.match(markup, /Save assessment/);
+  assert.match(markup, /Save Human Review/);
   assert.match(markup, /Only the verified report owner can save this self-review/);
+});
+
+test("completed reports connect the three AI stages to the separate personal Human Review", () => {
+  const run: SwarmRun = {
+    origin: "live",
+    id: "55555555-5555-4555-8555-555555555555",
+    role: "Research",
+    goal: "Review saved source evidence.",
+    status: { label: "Run completed", tone: "neutral", material: "outline" },
+    shows: "One saved conclusion.",
+    how: "Three AI stages reviewed approved sources.",
+    notShown: "No independent security audit.",
+    limitation: "Source coverage is limited.",
+    evidence: "One saved source.",
+    humanReview: { recorded: false },
+    liveDetail: {
+      id: "55555555-5555-4555-8555-555555555555",
+      topicId: "security-evidence",
+      topic: "Saved evidence",
+      status: "completed",
+      currentStage: "completed",
+      createdAt: "2026-10-22T05:18:35.044Z",
+      updatedAt: "2026-10-22T05:20:45.818Z",
+      agents: [
+        { role: "research", status: "completed" },
+        { role: "analysis", status: "completed" },
+        { role: "verification", status: "completed" },
+      ],
+      sourceCount: 1,
+      availableSourceCount: 1,
+      findingCount: 1,
+      events: [],
+      sources: [],
+      findings: [],
+      assumptions: [],
+      limitations: [],
+      recommendations: [],
+      deterministicTests: [],
+      humanReview: { status: "not_reviewed" },
+    },
+  };
+  const markup = render("src/components/dashboard/SwarmRunDetail", "SwarmRunDetail", JSON.stringify({
+    run,
+    headingId: "report-heading",
+    canSubmitReview: true,
+    reviewSessionRole: "wallet",
+  }));
+
+  assert.match(markup, /Research<\/span><span>Completed/);
+  assert.match(markup, /Analysis<\/span><span>Completed/);
+  assert.match(markup, /Verification<\/span><span>Completed/);
+  assert.match(markup, /Human Review is a separate personal assessment, not an AI agent/);
+  assert.match(markup, /href="#human-review-55555555-5555-4555-8555-555555555555"/);
+});
+
+test("failed research preserves failed stage states and does not expose Human Review as complete", () => {
+  const run: SwarmRun = {
+    origin: "live",
+    id: "88888888-8888-4888-8888-888888888888",
+    role: "Research",
+    goal: "Review a saved source.",
+    status: { label: "Run failed", tone: "bad", material: "solid" },
+    shows: "No completed outcome.",
+    how: "The Research stage failed.",
+    notShown: "No completed report.",
+    limitation: "The run stopped before completion.",
+    evidence: "No findings were produced.",
+    humanReview: { recorded: false },
+    liveSummary: {
+      id: "88888888-8888-4888-8888-888888888888",
+      topicId: "security-evidence",
+      topic: "Saved source review",
+      status: "failed",
+      currentStage: "research",
+      createdAt: "2026-10-22T05:18:35.044Z",
+      updatedAt: "2026-10-22T05:19:35.044Z",
+      agents: [
+        { role: "research", status: "failed", errorCode: "provider_error" },
+        { role: "analysis", status: "blocked", errorCode: "prior_stage_failed" },
+        { role: "verification", status: "blocked", errorCode: "prior_stage_failed" },
+      ],
+      sourceCount: 1,
+      availableSourceCount: 1,
+      findingCount: 0,
+      errorCode: "provider_error",
+      events: [],
+    },
+  };
+  const markup = render("src/components/dashboard/SwarmRunDetail", "SwarmRunDetail", JSON.stringify({
+    run,
+    headingId: "report-heading",
+    canSubmitReview: true,
+    reviewSessionRole: "wallet",
+  }));
+
+  assert.match(markup, /<span>Research<\/span><span>Failed<\/span>/);
+  assert.match(markup, /<span>Analysis<\/span><span>Blocked<\/span>/);
+  assert.match(markup, /<span>Verification<\/span><span>Blocked<\/span>/);
+  assert.match(markup, /Human Review is unavailable because this run did not complete\./);
+  assert.doesNotMatch(markup, /Open Human Review|<form|Research<\/span><span>Completed/);
+});
+
+test("a completed summary without loaded report details does not claim that Human Review is absent", () => {
+  const run: SwarmRun = {
+    origin: "live",
+    id: "99999999-9999-4999-8999-999999999999",
+    role: "Research",
+    goal: "Review saved report evidence.",
+    status: { label: "Run completed", tone: "neutral", material: "outline" },
+    shows: "The three stages completed.",
+    how: "The run summary reports completion.",
+    notShown: "Review status is not included in run summaries.",
+    limitation: "The report detail has not loaded.",
+    evidence: "Report detail is pending.",
+    humanReview: { recorded: false },
+    liveSummary: {
+      id: "99999999-9999-4999-8999-999999999999",
+      topicId: "security-evidence",
+      topic: "Saved report evidence",
+      status: "completed",
+      currentStage: "completed",
+      createdAt: "2026-10-22T05:18:35.044Z",
+      updatedAt: "2026-10-22T05:20:45.818Z",
+      agents: [
+        { role: "research", status: "completed" },
+        { role: "analysis", status: "completed" },
+        { role: "verification", status: "completed" },
+      ],
+      sourceCount: 1,
+      availableSourceCount: 1,
+      findingCount: 1,
+      events: [],
+    },
+  };
+  const markup = render("src/components/dashboard/SwarmRunDetail", "SwarmRunDetail", JSON.stringify({
+    run,
+    headingId: "report-heading",
+    canSubmitReview: true,
+    reviewSessionRole: "wallet",
+  }));
+
+  assert.match(markup, /Review unavailable/);
+  assert.match(markup, /Saved Human Review status is not available until report details load\./);
+  assert.match(markup, /The run completed, but its saved report details have not loaded yet\./);
+  assert.doesNotMatch(markup, /Not reviewed|Open Human Review|<form/);
 });
 
 test("operator sessions cannot submit or view a wallet owner's personal review", () => {
@@ -127,6 +284,21 @@ test("operator sessions cannot submit or view a wallet owner's personal review",
   assert.match(markup, /Owner review not shown/);
   assert.match(markup, /Operator sessions are read-only/);
   assert.doesNotMatch(markup, /<form|<input|<textarea|Save assessment/);
+});
+
+test("a wallet session without review permission gets a readable read-only state", () => {
+  const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({
+    review: { recorded: false },
+    runId: "55555555-5555-4555-8555-555555555555",
+    live: true,
+    completed: true,
+    canSubmit: false,
+    sessionRole: "wallet",
+  }));
+
+  assert.match(markup, /Not reviewed/);
+  assert.match(markup, /This report is read-only in the current session\. Only its verified owner can save an assessment\./);
+  assert.doesNotMatch(markup, /<form|<input|<textarea|Save Human Review/);
 });
 
 test("human review shows distinct session, ownership, completion, rate-limit, and persistence errors", () => {
@@ -384,4 +556,5 @@ test("saved run history truncates the selectable row and discloses complete ques
   assert.match(markup, /Run ID/);
   assert.match(markup, /Robinhood read-only wallet/);
   assert.match(markup, /Completed/);
+  assert.match(markup, /<dt>Human review<\/dt><dd>Review status loading<\/dd>/);
 });

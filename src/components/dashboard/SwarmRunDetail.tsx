@@ -8,7 +8,7 @@ import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { pipelineFor, STATUS_TEXT } from "@/lib/swarm-view";
 import type { DeterministicTestSummary, ResearchFinding, SwarmRun } from "@/types";
-import type { ResearchAnalysisDetail, ResearchEvidenceSource, ResearchHumanReviewDecision } from "@/types/integrations";
+import type { ResearchAnalysisDetail, ResearchEvidenceSource, ResearchHumanReviewDecision, ResearchHumanReviewSubmission } from "@/types/integrations";
 import { saveSecurityRunReview, SecurityApiClientError } from "@/features/security/client";
 
 const ASSESSMENT: Record<ResearchFinding["modelAssessment"], { label: string; tone: "neutral" | "exp" | "unk"; material: "outline" | "dotted" }> = {
@@ -187,15 +187,22 @@ export function HumanReviewStatus({
   runId,
   live = false,
   completed = false,
+  failed = false,
+  reviewLoaded = true,
   canSubmit = false,
   sessionRole,
+  onReviewSaved,
 }: {
   review: SwarmRun["humanReview"];
   runId?: string;
   live?: boolean;
   completed?: boolean;
+  failed?: boolean;
+  /** A run summary omits owner review data; only mark it loaded when the detail response is present. */
+  reviewLoaded?: boolean;
   canSubmit?: boolean;
   sessionRole?: "wallet" | "operator";
+  onReviewSaved?: (review: ResearchHumanReviewSubmission) => void;
 }) {
   const [savedReview, setSavedReview] = useState(review);
   const [decision, setDecision] = useState<ResearchHumanReviewDecision | "">(review.recorded ? review.decision ?? "" : "");
@@ -225,7 +232,8 @@ export function HumanReviewStatus({
       });
       setDecision(persisted.decision);
       setNotes(persisted.notes ?? "");
-      setFeedback({ kind: "success", message: "Your personal evidence assessment was saved." });
+      onReviewSaved?.(persisted);
+      setFeedback({ kind: "success", message: "Human Review saved to this report." });
     } catch (error) {
       setFeedback({ kind: "error", message: humanReviewErrorMessage(error) });
     } finally {
@@ -233,85 +241,102 @@ export function HumanReviewStatus({
     }
   }
 
-  const statusKnown = !live || sessionRole === "wallet";
+  const statusKnown = !live || (sessionRole === "wallet" && reviewLoaded);
+  const statusLabel = live && sessionRole === "wallet" && !reviewLoaded
+    ? "Review unavailable"
+    : !statusKnown ? "Owner review not shown" : !live ? "Illustration only" : savedReview.recorded ? "Review recorded" : "Not reviewed";
+  const reviewForm = live && reviewLoaded && completed && canSubmit && runId ? (
+    <form className="review-form" onSubmit={submitReview} aria-busy={saving}>
+      <fieldset disabled={saving}>
+        <legend>{savedReview.recorded ? "Update your assessment" : "Assess the saved evidence"}</legend>
+        <div className="review-options">
+          {REVIEW_OPTIONS.map((option) => {
+            const id = `review-${runId}-${option.value}`;
+            return (
+              <label className="review-option" htmlFor={id} key={option.value}>
+                <input
+                  id={id}
+                  type="radio"
+                  name={`review-${runId}`}
+                  value={option.value}
+                  checked={decision === option.value}
+                  onChange={() => setDecision(option.value)}
+                />
+                <span><b>{option.label}</b><small>{option.description}</small></span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+      <label className="review-notes-label" htmlFor={`review-notes-${runId}`}>Optional note</label>
+      <textarea
+        id={`review-notes-${runId}`}
+        value={notes}
+        onChange={(event) => setNotes(event.currentTarget.value)}
+        maxLength={1_000}
+        rows={3}
+        placeholder="Record what evidence you considered or what needs follow-up."
+        disabled={saving}
+      />
+      <div className="review-form-footer">
+        <span>{notes.length}/1,000</span>
+        <Button type="submit" variant="primary" disabled={!decision || saving}>
+          {saving ? "Saving review…" : savedReview.recorded ? "Save updated review" : "Save Human Review"}
+        </Button>
+      </div>
+      {feedback?.kind === "error" ? <p className="review-feedback is-error" role="alert">{feedback.message}</p> : null}
+      <p className="dnote">Only the verified report owner can save this self-review. It records your evidence assessment; it does not create an independent audit or certification.</p>
+    </form>
+  ) : null;
+
   return (
-    <section className="dock review-status" aria-label="Human review status">
+    <section id={`human-review-${runId ?? "report"}`} className="dock review-status" aria-labelledby={`human-review-heading-${runId ?? "report"}`}>
       <i className={statusKnown && savedReview.recorded ? "lit" : undefined} aria-hidden="true" />
       <div className="review-status-copy">
         <div className="review-status-title">
-          <strong>Personal evidence assessment</strong>
+          <h4 id={`human-review-heading-${runId ?? "report"}`}>Human Review</h4>
           <Chip tone={statusKnown && savedReview.recorded ? "neutral" : "unk"} material={statusKnown && savedReview.recorded ? "outline" : "dotted"}>
-            {!statusKnown ? "Owner review not shown" : savedReview.recorded ? "Recorded" : "Not recorded"}
+            {statusLabel}
           </Chip>
         </div>
-        {statusKnown && savedReview.recorded ? (
+        <p className="review-intro">Review the saved evidence and record your own assessment.</p>
+        {live && sessionRole === "wallet" && !reviewLoaded ? (
+          <p className="dnote">Saved Human Review status is not available until report details load.</p>
+        ) : statusKnown && savedReview.recorded ? (
           <>
-            <dl className="review-status-meta">
-              <div><dt>Decision</dt><dd>{reviewDecisionLabel(savedReview.decision, savedReview.disposition)}</dd></div>
-              <div><dt>Reviewer</dt><dd>{savedReview.by}</dd></div>
-              <div><dt>Saved</dt><dd><time dateTime={savedReview.at}>{formatRecordedEventTime(savedReview.at)}</time></dd></div>
-            </dl>
-            {savedReview.notes ? <p className="review-saved-note"><b>Reviewer note.</b> {savedReview.notes}</p> : null}
+            <div className="review-saved">
+              <p className="review-saved-label">Your assessment</p>
+              <strong>{reviewDecisionLabel(savedReview.decision, savedReview.disposition)}</strong>
+              <dl className="review-status-meta">
+                <div><dt>Reviewer wallet</dt><dd><code>{savedReview.by}</code></dd></div>
+                <div><dt>Saved</dt><dd><time dateTime={savedReview.at}>{formatRecordedEventTime(savedReview.at)}</time></dd></div>
+              </dl>
+              {savedReview.notes ? <p className="review-saved-note"><b>Your note.</b> {savedReview.notes}</p> : null}
+            </div>
             <p className="dnote">{savedReview.disclaimer ?? "This is a personal evidence assessment, not an independent security review, audit, or certification."}</p>
           </>
         ) : !statusKnown ? (
           <p className="dnote">Owner self-review data is available only in a verified wallet-owner session. Operator sessions are read-only.</p>
         ) : savedReview.recorded ? null : live && sessionRole === "wallet" ? (
-          <p className="dnote">No personal evidence assessment has been recorded.</p>
+          <p className="dnote">No Human Review has been recorded for this report.</p>
         ) : live && sessionRole === "operator" ? (
-          <p className="dnote">Operator sessions cannot view or submit a wallet owner&apos;s personal evidence assessment.</p>
+          <p className="dnote">Operator sessions cannot view or submit a wallet owner&apos;s personal assessment.</p>
         ) : live ? (
-          <p className="dnote">A verified wallet-owner session is required to view or submit a personal evidence assessment.</p>
+          <p className="dnote">A verified wallet-owner session is required to view or submit a personal assessment.</p>
         ) : (
           <p className="dnote">Illustrative reports do not contain live personal evidence assessments.</p>
         )}
-        {live && !completed ? <p className="dnote">A personal evidence assessment is available after the report completes.</p> : null}
-        {live && completed && !canSubmit && sessionRole === "wallet" ? (
+        {live && reviewLoaded && !completed ? <p className="dnote">{failed ? "This run did not complete, so Human Review is unavailable." : "Human Review becomes available after all three AI stages complete."}</p> : null}
+        {live && reviewLoaded && completed && !canSubmit && sessionRole === "wallet" ? (
           <p className="dnote">This report is read-only in the current session. Only its verified owner can save an assessment.</p>
         ) : null}
-        {live && completed && canSubmit && runId ? (
-          <form className="review-form" onSubmit={submitReview} aria-busy={saving}>
-            <fieldset disabled={saving}>
-              <legend>{savedReview.recorded ? "Update your assessment" : "Assess the saved evidence"}</legend>
-              <div className="review-options">
-                {REVIEW_OPTIONS.map((option) => {
-                  const id = `review-${runId}-${option.value}`;
-                  return (
-                    <label className="review-option" htmlFor={id} key={option.value}>
-                      <input
-                        id={id}
-                        type="radio"
-                        name={`review-${runId}`}
-                        value={option.value}
-                        checked={decision === option.value}
-                        onChange={() => setDecision(option.value)}
-                      />
-                      <span><b>{option.label}</b><small>{option.description}</small></span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
-            <label className="review-notes-label" htmlFor={`review-notes-${runId}`}>Optional note</label>
-            <textarea
-              id={`review-notes-${runId}`}
-              value={notes}
-              onChange={(event) => setNotes(event.currentTarget.value)}
-              maxLength={1_000}
-              rows={3}
-              placeholder="Record what evidence you considered or what needs follow-up."
-              disabled={saving}
-            />
-            <div className="review-form-footer">
-              <span>{notes.length}/1,000</span>
-              <Button type="submit" variant="primary" disabled={!decision || saving}>
-                {saving ? "Saving assessment…" : savedReview.recorded ? "Save updated assessment" : "Save assessment"}
-              </Button>
-            </div>
-            {feedback ? <p className={`review-feedback is-${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</p> : null}
-            <p className="dnote">Only the verified report owner can save this self-review. It records your evidence assessment; it does not create an independent audit or certification.</p>
-          </form>
-        ) : null}
+        {feedback?.kind === "success" ? <p className="review-feedback is-success" role="status">{feedback.message}</p> : null}
+        {savedReview.recorded && reviewForm ? (
+          <details className="review-edit">
+            <summary>Edit assessment</summary>
+            {reviewForm}
+          </details>
+        ) : reviewForm}
       </div>
     </section>
   );
@@ -359,11 +384,13 @@ export function SwarmRunDetail({
   headingId,
   canSubmitReview = false,
   reviewSessionRole,
+  onReviewSaved,
 }: {
   run: SwarmRun;
   headingId: string;
   canSubmitReview?: boolean;
   reviewSessionRole?: "wallet" | "operator";
+  onReviewSaved?: (review: ResearchHumanReviewSubmission) => void;
 }) {
   const review = run.humanReview;
   const detail = run.liveDetail;
@@ -444,6 +471,21 @@ export function SwarmRunDetail({
               </li>
             ))}
           </ol>
+        </section>
+      ) : null}
+
+      {live ? (
+        <section className="report-review-handoff" aria-label="Research workflow and Human Review">
+          <p><b>Research, Analysis, and Verification are the three AI stages.</b> Human Review is a separate personal assessment, not an AI agent.</p>
+          {detail?.status === "completed" ? (
+            <a href={`#human-review-${run.id}`}>Open Human Review</a>
+          ) : detail?.status === "failed" || run.liveSummary?.status === "failed" ? (
+            <span>Human Review is unavailable because this run did not complete.</span>
+          ) : run.liveSummary?.status === "completed" ? (
+            <span>The run completed, but its saved report details have not loaded yet.</span>
+          ) : (
+            <span>Human Review is available after all three AI stages complete.</span>
+          )}
         </section>
       ) : null}
 
@@ -653,8 +695,11 @@ export function SwarmRunDetail({
         runId={run.id}
         live={live}
         completed={detail?.status === "completed"}
+        failed={detail?.status === "failed" || run.liveSummary?.status === "failed"}
+        reviewLoaded={!!detail}
         canSubmit={canSubmitReview}
         sessionRole={reviewSessionRole}
+        onReviewSaved={onReviewSaved}
       />
       <p className="wrapnote">By design, a run has no access to keys, signing or funds.</p>
     </aside>

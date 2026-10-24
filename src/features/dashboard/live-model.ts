@@ -5,6 +5,7 @@ import type {
   NetworkId,
   NetworkRpcState,
   ReadOnlyWalletState,
+  ResearchHumanReviewSubmission,
   ResearchRunDetail,
   ResearchRunSummary,
   SecurityResearchCapabilities,
@@ -111,6 +112,26 @@ export function toLiveSwarmRun(summary: ResearchRunSummary, detail?: ResearchRun
     liveSummary: summary,
     ...(safeDetail ? { liveDetail: safeDetail } : {}),
     ...(detailUnavailable ? { detailUnavailable } : {}),
+  };
+}
+
+/** Merge only the server-confirmed review response into the matching cached report. */
+export function withPersistedHumanReview(
+  run: ResearchRunDetail,
+  saved: ResearchHumanReviewSubmission,
+): ResearchRunDetail {
+  if (run.id !== saved.runId) return run;
+  return {
+    ...run,
+    humanReview: {
+      status: "reviewed",
+      reviewer: saved.reviewerId,
+      reviewedAt: saved.reviewedAt,
+      decision: saved.decision,
+      ...(saved.notes ? { notes: saved.notes } : {}),
+      reviewKind: saved.reviewKind,
+      disclaimer: saved.disclaimer,
+    },
   };
 }
 

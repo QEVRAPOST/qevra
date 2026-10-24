@@ -250,6 +250,7 @@ function SecurityResearchView({ accessNotice }: { accessNotice?: ReactNode } = {
                 headingId={`${detailId}-h`}
                 canSubmitReview={canSubmitReview}
                 reviewSessionRole={reviewSessionRole}
+                onReviewSaved={researchAccess?.updateResearchRunReview}
               />
             ) : live && researchAccess?.gate !== "authenticated" ? (
               <p className="dnote">Authorized saved reports display their actual sources, findings, limitations, stage events, and human-review status here. No historical report or agent activity is substituted.</p>

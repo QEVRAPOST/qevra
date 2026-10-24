@@ -7,6 +7,7 @@ import type {
   AppModelValue,
   ReadOnlyWalletState,
   ResearchRunDetail,
+  ResearchHumanReviewSubmission,
   ResearchRunSummary,
   ResearchTopicId,
   NetworkId,
@@ -37,7 +38,7 @@ import { discoverInjectedReadOnlyWallets, type InjectedReadOnlyWalletChoice } fr
 import { clearPreferredWallet, readPreferredWallet, rememberPreferredWallet, restorePreferredReadOnlyWallet } from "@/features/wallet/persistence";
 import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
 import { DEFAULT_NETWORK_ID, isNetworkAvailable, NETWORKS } from "@/lib/config/networks";
-import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "./live-model";
+import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun, withPersistedHumanReview } from "./live-model";
 import { canUseProtectedResearch, expireResearchSession, gateAfterProtectedResponse, mergeFirstHistoryPage, mergeHistoryPage, shouldLoadResearchCapabilities, walletResearchSessionAccountMismatch, type ResearchGateState } from "./live-ui-state";
 
 type GateState = ResearchGateState;
@@ -79,6 +80,7 @@ interface LiveResearchAccessValue {
   loadMoreRuns: () => Promise<void>;
   refreshHistory: () => void;
   loadResearchRun: (id: string) => Promise<void>;
+  updateResearchRunReview: (review: ResearchHumanReviewSubmission) => void;
 }
 
 const LiveResearchAccessContext = createContext<LiveResearchAccessValue | null>(null);
@@ -1026,6 +1028,15 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [protectRequest, updateHistory]);
 
+  const updateResearchRunReview = useCallback((review: ResearchHumanReviewSubmission) => {
+    const current = detailCache.current[review.runId];
+    if (!current) return;
+    const updated = withPersistedHumanReview(current, review);
+    if (updated === current) return;
+    detailCache.current[review.runId] = updated;
+    setDetails((value) => ({ ...value, [review.runId]: updated }));
+  }, []);
+
   const startResearch = useCallback((topicId: ResearchTopicId) => {
     if (!canUseProtectedResearch(gateRef.current)) {
       setActionMessage("Sign in to the Security Swarm before starting a research run.");
@@ -1130,7 +1141,8 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
     loadMoreRuns,
     refreshHistory: () => { void loadLiveData(); },
     loadResearchRun,
-  }), [gate, gateMessage, capabilityMessage, wallet, selectedNetwork, authenticationMethod, authenticatedAddress, walletAuthConfigured, operatorAuthConfigured, signInChallenge, signInBusy, signInError, requestWalletSignIn, approveWalletSignIn, cancelWalletSignIn, openWalletPicker, login, checkSession, history.nextCursor, history.isLoadingMore, history.historyError, loadMoreRuns, loadLiveData, loadResearchRun]);
+    updateResearchRunReview,
+  }), [gate, gateMessage, capabilityMessage, wallet, selectedNetwork, authenticationMethod, authenticatedAddress, walletAuthConfigured, operatorAuthConfigured, signInChallenge, signInBusy, signInError, requestWalletSignIn, approveWalletSignIn, cancelWalletSignIn, openWalletPicker, login, checkSession, history.nextCursor, history.isLoadingMore, history.historyError, loadMoreRuns, loadLiveData, loadResearchRun, updateResearchRunReview]);
 
   return (
     <LiveResearchAccessContext.Provider value={access}>

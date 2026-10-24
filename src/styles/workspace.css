@@ -1796,6 +1796,45 @@
 .report-stage-overview li > span:last-child {
   color: var(--muted);
 }
+.report-review-handoff {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 14px;
+  border-left: 2px solid var(--exp);
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--exp) 4%, transparent);
+  color: var(--fg-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.report-review-handoff p {
+  grid-column: 1 / -1;
+  max-width: 78ch;
+}
+.report-review-handoff b {
+  color: var(--fg);
+  font-weight: 600;
+}
+.report-review-handoff > a {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 40px;
+  color: var(--fg);
+  text-decoration-color: var(--exp);
+  text-underline-offset: 3px;
+}
+.report-review-handoff > a:hover {
+  color: var(--exp);
+}
+.report-review-handoff > a:focus-visible {
+  outline: 2px solid var(--exp);
+  outline-offset: 3px;
+}
+.report-review-handoff > span {
+  color: var(--muted);
+}
 .ev-tabs {
   display: flex;
   gap: 4px;
@@ -1820,6 +1859,11 @@
 }
 .ev-tabs button:hover {
   color: var(--fg);
+}
+.ev-tabs button:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--exp);
+  outline-offset: -3px;
 }
 .ev-tabs button[aria-selected="true"] {
   color: var(--fg);
@@ -2074,6 +2118,13 @@
   }
   .review-form-footer > .btn {
     width: 100%;
+  }
+  .report-review-handoff {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .report-review-handoff p {
+    grid-column: 1;
   }
 }
 .events-timeline {

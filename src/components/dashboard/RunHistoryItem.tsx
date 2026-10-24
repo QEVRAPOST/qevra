@@ -22,6 +22,11 @@ export function RunHistoryItem({
   const badge = runBadge(run);
   const pipeline = pipelineFor(run);
   const record = run.liveDetail ?? run.liveSummary;
+  const reviewStatus = run.origin !== "live"
+    ? "Illustration only"
+    : !run.liveDetail
+      ? run.detailUnavailable ? "Review status unavailable" : "Review status loading"
+      : run.humanReview.recorded ? "Recorded" : "Not reviewed";
   const visibleId = run.origin === "live" ? `${run.id.slice(0, 8)}…${run.id.slice(-4)}` : run.id;
 
   return (
@@ -57,7 +62,7 @@ export function RunHistoryItem({
             <div><dt>Started</dt><dd>{record?.createdAt ?? "Not recorded"}</dd></div>
             {record?.updatedAt ? <div><dt>Updated</dt><dd>{record.updatedAt}</dd></div> : null}
             {record?.completedAt ? <div><dt>Completed</dt><dd>{record.completedAt}</dd></div> : null}
-            <div><dt>Human review</dt><dd>{run.humanReview.recorded ? "Recorded" : "Not recorded"}</dd></div>
+            <div><dt>Human review</dt><dd>{reviewStatus}</dd></div>
             {record ? (
               <>
                 <div><dt>Sources available</dt><dd>{record.availableSourceCount} of {record.sourceCount}</dd></div>
