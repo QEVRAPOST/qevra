@@ -475,6 +475,11 @@
 .capnow {
   animation: capin 220ms var(--ease) both;
 }
+@media (prefers-reduced-motion: reduce) {
+  .capnow {
+    animation: none;
+  }
+}
 @keyframes capin {
   from {
     opacity: 0;
@@ -533,8 +538,8 @@
   color: var(--muted);
   white-space: nowrap;
 }
-/* tall desktop windows: the copy and the stage are pinned together while the objects change */
-@media (min-width: 1025px) and (min-height: 840px) {
+/* desktop windows: the copy and stage stay pinned together through all three scenes */
+@media (min-width: 1025px) and (min-height: 640px) {
   .hs-track {
     height: calc(var(--hs-avail) * 3.1);
   }
@@ -558,12 +563,30 @@
   .hstage .hero {
     justify-content: center;
     padding: 0;
+    gap: clamp(8px, 1.35svh, 14px);
+  }
+  .hstage .hero h1 {
+    font-size: clamp(42px, min(5vw, 8svh), 78px);
+  }
+  .hstage .hero .eyebrow {
+    font-size: 12px;
+  }
+  .hstage .hero .lede {
+    font-size: clamp(14px, 1.15vw, 16px);
+    line-height: 1.4;
+  }
+  .hstage .facts li {
+    padding-top: 7px;
+    padding-bottom: 7px;
+    font-size: 13px;
+    line-height: 1.35;
   }
 }
-/* laptop-height windows: the copy stays in page flow while only the stage is pinned */
-@media (min-width: 1025px) and (max-height: 839px) {
-  .hgrid {
-    min-height: calc(var(--hs-avail) * 2.2);
+/* very short wide windows use normal flow rather than separating the pinned stage from its copy */
+@media (min-width: 1025px) and (max-height: 639px) {
+  .hfig {
+    position: relative;
+    height: clamp(280px, 46svh, 380px);
   }
 }
 

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const BRAND_LOGO_PATH = "/logo.png";
 export const SOCIAL_PREVIEW_PATH = "/og-image.webp";
 
-const DESCRIPTION = "Read-only wallet access for EVM accounts and public Robinhood Chain deployment evidence, with the VEYRA Research Engine's demonstrated three-stage Security Swarm. Smart-account custody and swap execution are unavailable.";
+const DESCRIPTION = "EVM wallet reads, public Robinhood Chain evidence, and the VEYRA Research Engine's three-stage reports. Explore a service-dependent Mainnet 0x swap flow; post-quantum smart-account custody remains under security review.";
 
 function getConfiguredMetadataBase(): URL | undefined {
   const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL

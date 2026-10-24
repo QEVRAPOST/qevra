@@ -26,7 +26,7 @@ const LOCKED = [
   "Proposed security changes must pass deterministic tests, appropriate security review, and explicit human approval before deployment.",
   "ML-DSA is the initial candidate scheme, standardized by NIST as FIPS 204. QEVRA makes no claim that it resists quantum attacks, and no claim about the rest of Robinhood Chain.",
   "An account can be called PQC-protected only if no ordinary wallet key can withdraw funds or replace the key. That is still being designed, and independent review is needed before any mainnet use.",
-  "Wallet connection and Robinhood public reads are available in read-only mode. A wallet-authenticated three-stage research run has been demonstrated, but reports are not audits. Smart-account custody and swap execution are unavailable.",
+  "Robinhood Mainnet quotes depend on 0x configuration and liquidity. Wallet approvals are explicit; post-quantum custody remains under research.",
   "Built for Robinhood Chain. Robinhood brand-use rules have not been checked yet, so the name appears only in plain text.",
   "Two ledgers, and no combined total. They do not share the same protection, so QEVRA never adds them together.",
   "Which key controls a QEVRA account, and what your connected wallet can do after setup, is still being designed.",

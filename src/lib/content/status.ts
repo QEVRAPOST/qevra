@@ -6,10 +6,10 @@ import type { CoverageRow, StatusBarItem } from "@/types";
  * These public capability claims describe the current product surface. Live service availability is checked inside the app.
  */
 export const STATUS_BAR_ITEMS: StatusBarItem[] = [
-  { id: "stage", tone: "exp", text: "Robinhood Chain · read-only public access" },
-  { id: "mldsa", tone: "exp", text: "ML-DSA authorization: under evaluation" },
-  { id: "audit", tone: "unk", text: "Independent audit: none yet" },
-  { id: "router", tone: "unk", text: "Swap router: not configured" },
+  { id: "stage", tone: "exp", text: "Robinhood Chain · public data" },
+  { id: "mldsa", tone: "exp", text: "ML-DSA intent attestation · experimental" },
+  { id: "audit", tone: "unk", text: "Independent audit · none" },
+  { id: "router", tone: "unk", text: "Mainnet swap · 0x service-dependent" },
 ];
 
 export const COVERAGE_ROWS: CoverageRow[] = [
@@ -19,23 +19,23 @@ export const COVERAGE_ROWS: CoverageRow[] = [
     tone: "exp",
     material: "outline",
     statusLabel: "Available · read-only",
-    note: "Connect a supported EVM wallet to read its authorized address, actual chain and public native balance. No transactions are signed or sent.",
+    note: "Connect a supported EVM wallet to read its address, actual chain and native balance. Any transaction requires a separate wallet approval.",
   },
   {
     id: "smart-account",
     part: "Smart-account custody",
     tone: "exp",
     material: "outline",
-    statusLabel: "Unavailable · not deployed",
-    note: "Smart-account custody and post-quantum authorization are unavailable while the five future security-research slots remain unresolved.",
+    statusLabel: "Future architecture · not deployed",
+    note: "VEYRA smart-account custody and on-chain post-quantum authorization are not deployed and remain under security review.",
   },
   {
     id: "ml-dsa",
     part: "ML-DSA authorization",
     tone: "exp",
     material: "outline",
-    statusLabel: "Under evaluation",
-    note: "The initial candidate scheme (NIST FIPS 204). VEYRA makes no claim that it resists quantum attacks.",
+    statusLabel: "Experimental · off-chain",
+    note: "Browser-local ML-DSA can attest to a reviewed intent. It does not authorize a transaction or enforce post-quantum custody on-chain.",
   },
   {
     id: "key-control",
@@ -50,16 +50,16 @@ export const COVERAGE_ROWS: CoverageRow[] = [
     part: "Intent Lock comparison",
     tone: "unk",
     material: "dotted",
-    statusLabel: "Design preview",
-    note: "A field-by-field comparison on example values. No test is recorded as passed.",
+    statusLabel: "Transaction review",
+    note: "Intent Lock binds the reviewed Mainnet quote parameters. Wallet approval remains separate; no on-chain PQ enforcement is available.",
   },
   {
     id: "swap-route",
-    part: "Simple swap route",
+    part: "Robinhood Mainnet swap route",
     tone: "unk",
     material: "dotted",
-    statusLabel: "Not configured",
-    note: "No router is set, so no quote is shown.",
+    statusLabel: "Service-dependent",
+    note: "The 0x quote flow requires live server configuration, verified RPC metadata and available liquidity. No sample quote replaces an unavailable route.",
   },
   {
     id: "swarm-runs",
@@ -67,7 +67,7 @@ export const COVERAGE_ROWS: CoverageRow[] = [
     tone: "demo",
     material: "outline",
     statusLabel: "Demonstrated · service-dependent",
-    note: "A wallet-authenticated Research → Analysis → Verification run has been demonstrated. Existing reports require authorization; availability for new runs depends on provider, billing and worker status. This is research, not an audit.",
+    note: "A wallet-authenticated Research → Analysis → Verification run has been demonstrated. Existing reports require authorization; new runs depend on provider, billing and worker availability. This is research, not an audit.",
   },
   {
     id: "disclosure",

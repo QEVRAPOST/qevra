@@ -218,8 +218,8 @@ test("landing exposes sign-in and ambitious but accurate product copy", () => {
   const markup = renderToStaticMarkup(createElement(LandingNav, { projectName: "VEYRA" }));
   assert.match(markup, /href="\/app\?auth=1"/);
   assert.match(markup, /Sign in/);
-  assert.match(`${HERO.eyebrow} ${HERO.lede}`, /Building the future of post-quantum DeFi on Robinhood Chain/);
-  assert.doesNotMatch(`${HERO.eyebrow} ${HERO.lede}`, /first post-quantum/i);
+  assert.match(`${HERO.eyebrow} ${HERO.headline} ${HERO.lede}`, /POST-QUANTUM DEFI · ROBINHOOD CHAIN.*The Next Era of DeFi.*Built for Robinhood Chain/);
+  assert.doesNotMatch(`${HERO.eyebrow} ${HERO.headline} ${HERO.lede}`, /first post-quantum/i);
 });
 
 test("wallet overview separates built-in wallet availability from external read-only wallet", () => {

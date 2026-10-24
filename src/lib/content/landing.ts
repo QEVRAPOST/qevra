@@ -6,17 +6,17 @@ export { DEFAULT_PROJECT_NAME } from "@/lib/project-brand";
 /** Landing copy (docs/QEVRA_DESIGN_DIRECTION.md section 5.3). Sentence case, active voice, no claims past the evidence. */
 
 export const HERO = {
-  eyebrow: "Building the future of post-quantum DeFi on Robinhood Chain",
-  headline: "Read the network. Review the evidence.",
-  lede: "Explore post-quantum wallet research, intent-aware transaction design, and autonomous security research. Public wallet reads and a demonstrated three-stage research workflow are available; smart-account custody and swap execution are not.",
-  note: "Public Testnet deployment evidence is open to everyone. Wallet connection is read-only; research sign-in uses a separate, explicit message signature.",
+  eyebrow: "POST-QUANTUM DEFI · ROBINHOOD CHAIN",
+  headline: "The Next Era of DeFi.",
+  lede: "Built for Robinhood Chain. Review Mainnet swaps with your wallet and explore post-quantum security research.",
+  note: "Live quotes depend on service configuration. Post-quantum custody remains under research.",
 } as const;
 
 /** The closing section (the curtain at the bottom of the page). The words restate the approved hero and story copy. */
 export const CURTAIN = {
   kicker: "Read Robinhood Chain",
-  title: "Public reads and source-backed research.",
-  body: "Explore public Testnet deployment evidence without a wallet, connect for read-only wallet data, or sign in to the VEYRA Research Engine when research service is available. Post-quantum custody and swap execution are unavailable.",
+  title: "Explore the evidence. Review every intent.",
+  body: "Read public network data, request a configured Mainnet quote, or review Security Swarm reports. Post-quantum wallet authorization remains under research.",
 } as const;
 
 /** Frame indexes the nav and the hero button jump to (frame 0 is the story intro, frames 1 to 7 are the steps). */
@@ -30,9 +30,9 @@ export interface HeroFact {
 }
 
 export const HERO_FACTS: HeroFact[] = [
-  { material: "outline", lead: "Read-only wallet", body: "Connect an existing EVM wallet to see its address, actual network and native balance. No transaction signing or custody." },
-  { material: "dotted", lead: "Swap + Intent Lock", body: "Explore the parameter comparison preview. No live quote, supported route or swap execution is available." },
-  { material: "outline", lead: "VEYRA Research Engine", body: "The three-stage Security Swarm has completed a wallet-authenticated research demonstration. Its reports are not audits; post-quantum custody remains unavailable." },
+  { material: "outline", lead: "Wallet reads", body: "View address, actual network and native balance; swaps need separate approval." },
+  { material: "dotted", lead: "Mainnet swap", body: "Request a configured 0x quote; approve each action in your wallet." },
+  { material: "outline", lead: "Research Engine", body: "Three stages produce evidence reports, not audits." },
 ];
 
 /**
@@ -54,25 +54,25 @@ export interface HeroScene {
 export const HERO_SCENES: readonly HeroScene[] = [
   {
     tab: "Account concept",
-    name: "Future smart-account concept",
-    lead: "Not deployed or available.",
-    text: "The illustration shows a future smart-account concept, separate from your connected wallet. No smart-account custody or post-quantum authorization is available; it holds nothing.",
+    name: "Future smart-account design",
+    lead: "Not deployed.",
+    text: "A future wallet architecture, separate from your connected account. No VEYRA smart account holds assets or enforces post-quantum authorization.",
     label:
       "A small vault with an open door, standing apart from a flat plate that stands for your connected wallet. Dashed outlines inside the vault are example assets, none are held. A dotted, crossed line between the plate and the vault marks that no deposit path exists yet.",
   },
   {
     tab: "Intent Lock",
     name: "Intent Lock",
-    lead: "Every detail has to match.",
-    text: "Each swap detail you reviewed gets its own pin. When all of them match, the light passes. This is a design demonstration of the check QEVRA is designed to make.",
+    lead: "Review before wallet approval.",
+    text: "Compare the quoted transaction details before your wallet authorizes them. ML-DSA attestation is off-chain and does not enforce the swap.",
     label:
-      "A row of five pins on a rail, one per swap detail: recipient, chain, token, amount and deadline. A line of light from a lamp on the left passes through a slot in each pin when they line up. It is a design demonstration, not a working lock.",
+      "A row of five pins on a rail, one per swap detail: recipient, chain, token, amount and deadline. A line passes through aligned slots to represent a local parameter match; it does not enforce transaction authorization on-chain.",
   },
   {
     tab: "Research + Swarm",
-    name: "Post-quantum research and the Security Swarm",
-    lead: "The Security Swarm.",
-    text: "A three-stage research workflow that investigates, analyzes and verifies claims from approved public sources. A wallet-authenticated run has been demonstrated; availability depends on the service. Reports support human review and are not audits.",
+    name: "Security Swarm",
+    lead: "Research → Analysis → Verification.",
+    text: "Three research stages work from approved public sources and save evidence reports. Completed research is not an independent audit.",
     label:
       "An illustration of the Security Swarm, not a live run. The demonstrated workflow has three stages: Research, Analysis and Verification. A report with sources and limitations is separate from human review. A dashed lattice represents post-quantum research under evaluation. The Swarm does not access the connected wallet or move funds.",
   },
@@ -86,7 +86,7 @@ export const HERO_PARTS: Readonly<Record<HeroPartId, HeroPart>> = {
   /* 1. the smart account */
   "v-wallet": {
     name: "Your connected wallet",
-    text: "An external account used for public reads. A separate, explicit EIP-191 message signature is used only for research login; no transaction is signed.",
+    text: "Your external EVM account provides public reads and authorizes any swap transactions. Research login uses a separate, explicit EIP-191 message signature.",
     type: "EOA",
     brief: ["External wallet: public address, chain", "and balance reads. No transactions."],
   },
@@ -166,7 +166,7 @@ export const HERO_PARTS: Readonly<Record<HeroPartId, HeroPart>> = {
   },
   "l-a-analysis": {
     name: "Analysis",
-    text: "Weighs what was found against how QEVRA is designed, and says what it means.",
+    text: "Weighs what was found against how VEYRA is designed, and says what it means.",
     type: "agent · weighs",
     brief: ["Weighs what was found against the", "design, and says what it means."],
   },
@@ -202,7 +202,7 @@ export const HERO_PARTS: Readonly<Record<HeroPartId, HeroPart>> = {
   },
   "l-lattice": {
     name: "Post-quantum research",
-    text: "ML-DSA is the initial candidate scheme (NIST FIPS 204). It is under evaluation and not audited. QEVRA makes no claim that it resists quantum attacks.",
+    text: "Browser-local ML-DSA attestation can verify a reviewed intent. It is experimental, not enforced on-chain, and does not provide post-quantum custody.",
     type: "ML-DSA · FIPS 204",
     brief: ["The initial candidate scheme.", "Under evaluation, not audited.", "No claim that it resists quantum attacks."],
   },
@@ -245,17 +245,17 @@ export function brandizeStoryStep(step: StoryStep, name = PROJECT_NAME): StorySt
 /** What the Intent Lock object says while its slots line up, and when one detail has changed. */
 export const HERO_LOCK_CAPTIONS: ReadonlyArray<{ lead: string; text: string }> = [
   {
-    lead: "Every detail matches.",
-    text: "The light passes through all five pins. This is a design demonstration of a comparison. It does not show that anything is secure.",
+    lead: "Intent verified locally.",
+    text: "The reviewed parameters still match. The wallet must separately approve the EVM transaction; this does not enforce post-quantum authorization on-chain.",
   },
   {
-    lead: "One detail changed.",
-    text: "The Amount pin is out of line, so the light stops there and you can see which detail moved. QEVRA is designed to ask for a fresh review.",
+    lead: "A parameter changed.",
+    text: "The attestation no longer matches the intent. Refresh the quote and review the updated terms before wallet approval.",
   },
 ];
 
-export const HERO_TABS_LABEL = "Choose an object";
-export const HERO_SCROLL_HINT = "Scroll to change object";
+export const HERO_TABS_LABEL = "Choose a product scene";
+export const HERO_SCROLL_HINT = "Scroll to change scene";
 
 /** One sentence on what the Security Swarm is, at the head of its section (the hero's Research + Swarm tab says the same in its own words). */
 export const SWARM_DEFINITION =
@@ -265,8 +265,8 @@ export const SWARM_DEFINITION =
 export const STORY_INTRO: StoryStep = {
   id: "aperture",
   kicker: "How it works",
-  title: "One object explains the whole product.",
-  body: "Eight rings, one for each swap detail. A dashed ring for post-quantum research, and a separate ring for the Security Swarm. Scroll to take it apart, one idea at a time.",
+  title: "Three ideas. One connected product.",
+  body: "Explore wallet architecture, transaction intent and evidence-based security research.",
 };
 
 export interface StoryStep {
@@ -295,56 +295,55 @@ export const STORY_STEPS: StoryStep[] = [
   {
     id: "account",
     kicker: "Chapter 1 of 3 · Read-only wallet",
-    title: "Your connected wallet stays yours",
-    body: "Connect an existing EVM wallet to read its public address, actual network and native balance. A separate smart-account design is future research: no account is deployed, no assets are held and post-quantum custody is unavailable.",
+    title: "Your wallet stays in your control",
+    body: "Connect an EVM wallet to read its address, chain and balance. VEYRA smart-account custody is not deployed; post-quantum authorization remains future research.",
     path: [
-      { material: "outline", lead: "Your connected wallet", detail: "An external account used for public reads. Research login separately asks for an EIP-191 message signature; it does not authorize a transaction." },
-      { material: "dotted", lead: "Future smart-account research", detail: "No contract, custody, deposit path or post-quantum authorization is available." },
+      { material: "outline", lead: "External wallet", detail: "Public reads and explicit transaction approval. Research login uses a separate EIP-191 message signature." },
+      { material: "dotted", lead: "Future VEYRA account", detail: "No deployed custody contract or on-chain PQ authorization." },
     ],
-    note: "The wallet connection is read-only. Smart-account custody remains unavailable pending security research and independent review.",
   },
   {
     id: "details",
     kicker: "Chapter 2 of 3 · Intent Lock",
-    title: "Every detail gets a ring",
-    body: "A swap is a set of promises: who gets paid, on which chain, which tokens, how much, through which router, with what slippage limit, at which nonce, before which deadline. Each promise gets its own engraved ring.",
+    title: "Every swap has a defined intent",
+    body: "Recipient, chain, tokens, amount, route, slippage, nonce and deadline define the transaction you review.",
     long: true,
   },
   {
     kicker: "Chapter 2 of 3 · Intent Lock",
-    title: "Review it, and the rings turn into place",
-    body: "When you review a swap, each ring turns to the value you saw, starting at the top. When all eight match, a line of light can pass through the slots.",
-    note: "Design preview. The light shows a comparison. It is not a guarantee.",
+    title: "Review the route before approval",
+    body: "Intent Lock compares the quoted parameters you reviewed. Your wallet separately authorizes any allowance or swap transaction.",
+    note: "ML-DSA attestation is optional and does not enforce the transaction on-chain.",
   },
   {
     kicker: "Chapter 2 of 3 · Intent Lock",
-    title: "Change one detail and the line breaks",
-    body: "If the amount is not what you reviewed, that ring turns out of line and the light stops there. You can see which detail moved. QEVRA is designed to ask for a fresh review before anything is signed.",
-    note: "A picture of the comparison QEVRA is designed to make. No onchain enforcement exists yet.",
+    title: "A changed intent needs a fresh review",
+    body: "Changing a bound quote parameter invalidates the current review. Refresh the quote and review the new terms before approving them.",
+    note: "The wallet remains the authority for the EVM transaction.",
   },
   {
     id: "outline",
     kicker: "Chapter 3 of 3 · Post-quantum research",
-    title: "The experimental part is an outline",
-    body: "The ring on top stands for ML-DSA, a post-quantum signature scheme that QEVRA is evaluating for its smart account. It is dashed because it is under evaluation. Nothing is drawn solid until there is evidence.",
-    note: "ML-DSA is the initial candidate (NIST FIPS 204). QEVRA makes no claim that it resists quantum attacks.",
+    title: "Post-quantum authorization remains experimental",
+    body: "Browser-local ML-DSA can attest to a reviewed intent. It does not replace wallet approval, protect funds, or enforce authorization on-chain.",
+    note: "Smart-account custody is unavailable pending security review.",
   },
   {
     id: "swarm",
     kicker: "Chapter 3 of 3 · The Security Swarm",
-    title: "The Security Swarm stays outside the gap",
+    title: "Evidence for a person to review",
     core: "The Security Swarm researches, analyzes, verifies, and reports. It does not control your wallet.",
-    body: "Its ring sits apart from the stack. Saved research reports include sources and limitations; human review is separate and is not implied by a completed run.",
+    body: "Research → Analysis → Verification saves findings, sources and limitations. A completed report is not an independent audit; human review is separate.",
     cta: { label: "Open Security Swarm", href: "/app/security" },
   },
   {
     id: "start",
-    title: "Explore the working read-only product",
-    body: "Review public Testnet deployment evidence without a wallet. Connect an EVM wallet to read its public balance, or sign in to the VEYRA Research Engine to access saved reports and start a run when service permits it. Smart-account custody and swap execution are unavailable.",
+    title: "Explore VEYRA on Robinhood Chain",
+    body: "Read public Testnet evidence, connect a wallet for account reads, request a configured Mainnet quote, or review saved Security Swarm reports.",
     path: [
-      { material: "outline", lead: "Public Testnet evidence", detail: "See validated deployments at /app/networks; no wallet is required." },
-      { material: "outline", lead: "Read-only wallet", detail: "Connect a supported EVM wallet for public address, network and native balance reads." },
-      { material: "dotted", lead: "VEYRA Research Engine", detail: "Sign in with an explicit message signature to view reports and create a run only when service availability allows." },
+      { material: "outline", lead: "Public Testnet evidence", detail: "Verified deployments are open at /app/networks; no wallet is required." },
+      { material: "outline", lead: "External wallet", detail: "Read address, actual chain and native balance; approve transactions explicitly." },
+      { material: "outline", lead: "VEYRA Research Engine", detail: "Sign in to open saved reports. New runs depend on provider, billing and worker availability." },
     ],
     launch: true,
   },
@@ -372,20 +371,20 @@ export const TRY_OPTIONS = ["As reviewed", "Change the amount"] as const;
 /** Plain-language line per ring, shown when a ring is hovered. They describe the design, not a working check. */
 export const RING_DESCRIPTIONS: readonly string[] = [
   "Recipient: who receives the swapped tokens. A different address is a different swap.",
-  "Chain ID: which network the swap is for. 46630 is Robinhood Testnet.",
-  "Token in and out: the two tokens. The design allows only tokens from a reviewed list.",
+  "Chain ID: which Robinhood network the quote is for.",
+  "Token in and out: tokens are selected from verified Robinhood Mainnet metadata.",
   "Amount: how much you pay. If this changes after you review, the ring turns out of line.",
-  "Router and allowance: which swap router, and how much it may pull. Not configured yet.",
+  "Router and allowance: review the quoted target and exact required allowance.",
   "Slippage and minimum out: the worst price you accept.",
   "Nonce: a one-time number, so an approval cannot be used twice.",
   "Deadline: when the approval runs out.",
 ];
 
 export const FIGURE_LABEL =
-  "Eight engraved rings stacked like a machined instrument, one ring per swap detail. A line of light runs through their aligned slots. An outlined ring above marks post-quantum authorization under evaluation. A separate ring at left stands for the Security Swarm, with an air gap between it and the stack.";
+  "Eight engraved rings, one for each reviewed swap detail. A line of light passes through their aligned slots. An outlined ring represents experimental off-chain post-quantum intent attestation. A separate ring at left represents the Security Swarm.";
 
 export const FIGURE_DESCRIPTION =
-  "Eight rings stand for eight groups of swap details: recipient, chain, tokens, amount, router and allowance, slippage and minimum output, nonce and deadline. When every ring matches what you reviewed, a line of light passes through all eight. The outlined ring on top is post-quantum authorization, ML-DSA, which is under evaluation. The separate ring is the Security Swarm. It reports to a human review dock across an air gap and holds no keys.";
+  "Eight rings stand for the reviewed swap details: recipient, chain, tokens, amount, route and allowance, slippage and minimum output, nonce and deadline. A line of light passing through represents a local intent match, not on-chain enforcement. The outlined ring represents experimental browser-local ML-DSA attestation. The separate ring represents the Security Swarm, which produces reports and holds no wallet keys.";
 
 export const GLYPH_LABEL =
   "Eight stacked rings, one per swap detail. A line of light passes through when every detail matches what you reviewed, and stops at a ring that changed.";
@@ -445,4 +444,4 @@ export const GAP_FIGURE_CAPTION =
   "Reports reach a human review dock. The Swarm has no path to your keys, your signing, or your funds.";
 
 export const STATUS_BAND_INTRO =
-  "This table separates available read-only features from future security research and capabilities that are not available.";
+  "A concise view of available features, service-dependent routes and future security research.";

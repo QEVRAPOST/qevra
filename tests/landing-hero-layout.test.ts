@@ -25,7 +25,8 @@ function hasMediaDeclaration(selector: string, property: string, value: string, 
 
   stylesheet.walkAtRules("media", (media) => {
     if (!mediaMatches(media.params, width, height)) return;
-    media.walkRules(selector, (rule) => {
+    media.walkRules((rule) => {
+      if (!rule.selector.split(",").map((entry) => entry.trim()).includes(selector)) return;
       rule.walkDecls(property, (declaration) => {
         if (declaration.value === value) found = true;
       });
@@ -35,12 +36,17 @@ function hasMediaDeclaration(selector: string, property: string, value: string, 
   return found;
 }
 
-test("short laptop hero keeps copy in page flow while its scene remains scroll-pinned", () => {
-  for (const width of [1025, 1280, 1366]) {
-    assert.equal(hasMediaDeclaration(".hs-pin", "position", "sticky", width, 768), false);
-    assert.equal(hasMediaDeclaration(".hgrid", "min-height", "calc(var(--hs-avail) * 2.2)", width, 768), true);
+test("desktop hero keeps copy and 3D scene pinned together across laptop and desktop heights", () => {
+  for (const width of [1025, 1280, 1366, 1920]) {
+    for (const height of [720, 768, 839, 840, 900]) {
+      assert.equal(hasMediaDeclaration(".hs-pin", "position", "sticky", width, height), true);
+      assert.equal(hasMediaDeclaration(".hs-track", "height", "calc(var(--hs-avail) * 3.1)", width, height), true);
+      assert.equal(hasMediaDeclaration(".hs-pin .hgrid", "height", "100%", width, height), true);
+      assert.equal(hasMediaDeclaration(".hgrid", "min-height", "calc(var(--hs-avail) * 2.2)", width, height), false);
+    }
   }
 
-  assert.equal(hasMediaDeclaration(".hs-pin", "position", "sticky", 1440, 900), true);
-  assert.equal(hasMediaDeclaration(".hgrid", "min-height", "calc(var(--hs-avail) * 2.2)", 1440, 900), false);
+  assert.equal(hasMediaDeclaration(".hs-pin", "position", "sticky", 1024, 768), false);
+  assert.equal(hasMediaDeclaration(".hs-pin", "position", "sticky", 1280, 600), false);
+  assert.equal(hasMediaDeclaration(".hfig", "position", "relative", 1280, 600), true);
 });

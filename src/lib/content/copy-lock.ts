@@ -27,7 +27,7 @@ export const PQC_RULE =
 
 /** Landing footer. These describe the current product surface and change when the underlying facts change. */
 export const FOOTER_PREVIEW =
-  "Wallet connection and Robinhood public reads are available in read-only mode. A wallet-authenticated three-stage research run has been demonstrated, but reports are not audits. Smart-account custody and swap execution are unavailable.";
+  "Robinhood Mainnet quotes depend on 0x configuration and liquidity. Wallet approvals are explicit; post-quantum custody remains under research.";
 export const FOOTER_ROBINHOOD =
   "Built for Robinhood Chain. Robinhood brand-use rules have not been checked yet, so the name appears only in plain text.";
 
