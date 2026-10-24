@@ -269,7 +269,7 @@ test("live run labels distinguish rate limits and explicit research lifecycle st
     {
       status: "completed" as const,
       agents: ["research", "analysis", "verification"].map((role) => ({ role: role as "research" | "analysis" | "verification", status: "completed" as const })),
-      expected: "Research completed",
+      expected: "Run completed",
     },
     { status: "failed" as const, errorCode: "provider_http_error", expected: "Research failed" },
     { status: "failed" as const, errorCode: "provider_rate_limited", expected: "Rate-limited" },

@@ -20,7 +20,7 @@ export const STAGE_ORDER: readonly ResearchAgentRole[] = ["research", "analysis"
 export const STAGE_META: Readonly<Record<ResearchAgentRole, { title: string; does: string }>> = {
   research: { title: "Research", does: "Reads the approved public sources and pulls out claims that quote them." },
   analysis: { title: "Analysis", does: "Weighs those claims: the risks, the assumptions, and what is still unknown." },
-  verification: { title: "Verification", does: "Checks each quote against the text that was fetched. It is not an audit." },
+  verification: { title: "Verification", does: "Checks whether each quote appears in fetched text. This is not independent security validation or an audit." },
 };
 
 /** What an agent is doing while it runs, in the present tense. Only shown for an agent that really is running (or in a visitor-started illustration). */
@@ -154,7 +154,7 @@ export function runBadge(run: SwarmRun): StatusBadge {
   if (agents.some((a) => a === "failed" || a === "blocked")) return { label: "Stopped with errors", tone: "bad", material: "solid" };
   if (s.status === "completed") {
     return agents.every((a) => a === "completed")
-      ? { label: "Research completed", tone: "neutral", material: "outline" }
+      ? { label: "Run completed", tone: "neutral", material: "outline" }
       : { label: "Finished with gaps", tone: "bad", material: "outline" };
   }
   if (s.status === "running") return { label: "Research running", tone: "exp", material: "outline" };
@@ -205,7 +205,7 @@ export function illustrationModel(step: number): PipelineModel {
 }
 
 /** The phases of one research run, as the visitor lives them. */
-export const JOURNEY: readonly string[] = ["Choose a topic", "Start a run", "Watch the agents", "Read the evidence"];
+export const JOURNEY: readonly string[] = ["Choose topic", "Start research", "Watch agents", "Review evidence"];
 
 /** Where the visitor is in that journey: 0 to 3. A finished or stopped run means the evidence is the thing to read. */
 export function journeyPhase(model: PipelineModel | null, selected: SwarmRun | undefined, canStart: boolean): number {

@@ -45,6 +45,15 @@ function summarizeAgentStatuses(agents: ResearchRunSummary["agents"]): string {
   }).join(" · ");
 }
 
+function currentActionMessage(message: string | undefined, runs: ResearchRunSummary[] | null | undefined): string | undefined {
+  if (!message) return undefined;
+  const queuedRunId = /^Live run ([^\s]+) queued\./.exec(message)?.[1];
+  if (!queuedRunId) return message;
+  const run = runs?.find((candidate) => candidate.id === queuedRunId);
+  if (run && run.status !== "queued" && run.status !== "running") return undefined;
+  return message;
+}
+
 export function toLiveSwarmRun(summary: ResearchRunSummary, detail?: ResearchRunDetail, detailUnavailable?: string): SwarmRun {
   const state = detail ?? summary;
   const safeDetail = detail ? appendProviderDiagnostics(detail) : undefined;
@@ -359,6 +368,7 @@ export function buildLiveAppModel(input: {
   const selectedChainId = NETWORKS.find((network) => network.id === selectedNetwork)?.chainId;
   const walletMismatch = wallet.address !== undefined && wallet.chainId !== undefined && wallet.chainId !== selectedChainId;
   const liveRuns = runs?.map((run) => toLiveSwarmRun(run)) ?? [];
+  const actionMessage = currentActionMessage(input.actionMessage, input.runs);
   const unavailableMessage = input.accessMessage ?? input.capabilitiesMessage ?? input.dataError;
   const securityStatus: AppModel["security"]["status"] = accessState !== "authenticated"
     ? "unavailable"
@@ -378,7 +388,7 @@ export function buildLiveAppModel(input: {
     isCreating: input.isCreating,
     hasMoreRuns: input.hasMoreRuns,
     ...(unavailableMessage ? { unavailableMessage } : {}),
-    ...(input.actionMessage ? { actionMessage: input.actionMessage } : {}),
+    ...(actionMessage ? { actionMessage } : {}),
   };
   const activity: ActivityView = {
     origin: "live",

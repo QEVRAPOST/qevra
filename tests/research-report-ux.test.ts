@@ -31,6 +31,18 @@ test("report limits render as separate limitations, assumptions, and recommendat
   assert.match(markup, /Verify the explorer against official documentation\./);
 });
 
+test("an empty limits section says nothing was recorded instead of implying none exist", () => {
+  const Component = reportUi.ReportLimitSections;
+  assert.equal(typeof Component, "function");
+  if (typeof Component !== "function") return;
+  const markup = render("src/components/dashboard/SwarmRunDetail", "ReportLimitSections", JSON.stringify({
+    limitations: [],
+    assumptions: [],
+    recommendations: [],
+  }));
+  assert.match(markup, /No limitations, assumptions, or recommendations were recorded/i);
+});
+
 test("recorded event timeline preserves event text and machine-readable UTC timestamps", () => {
   const Component = reportUi.RecordedEventTimeline;
   assert.equal(typeof Component, "function", "report should expose a recorded event timeline");
@@ -45,6 +57,14 @@ test("recorded event timeline preserves event text and machine-readable UTC time
   assert.match(markup, /source_retrieval/);
   assert.match(markup, /Fetching only approved source URLs\./);
   assert.match(markup, /historical|recorded/i);
+});
+
+test("an empty event timeline is identified as unrecorded", () => {
+  const Component = reportUi.RecordedEventTimeline;
+  assert.equal(typeof Component, "function");
+  if (typeof Component !== "function") return;
+  const markup = render("src/components/dashboard/SwarmRunDetail", "RecordedEventTimeline", JSON.stringify({ events: [] }));
+  assert.match(markup, /No run events were recorded/i);
 });
 
 test("ambiguous Testnet findings that cite the Mainnet explorer receive a local caveat", () => {
@@ -79,7 +99,7 @@ test("the explorer caveat appears beside the unchanged saved finding", () => {
     id: "55555555-5555-4555-8555-555555555555",
     role: "Research",
     goal: "Review Robinhood Testnet network configuration.",
-    status: { label: "Research completed", tone: "neutral", material: "outline" },
+    status: { label: "Run completed", tone: "neutral", material: "outline" },
     shows: "One saved network claim.",
     how: "One approved source was checked.",
     notShown: "No independent audit.",
@@ -102,7 +122,7 @@ test("the explorer caveat appears beside the unchanged saved finding", () => {
       sourceCount: 1,
       availableSourceCount: 1,
       findingCount: 1,
-      events: [],
+      events: [{ at: "2026-10-20T20:14:21.174Z", stage: "completed", message: "All three agents completed." }],
       sources: [{
         id: "robinhood-chain-docs",
         title: "Robinhood Chain developer documentation",
@@ -124,7 +144,7 @@ test("the explorer caveat appears beside the unchanged saved finding", () => {
         rationale: "The source lists both network configurations.",
       }],
       assumptions: [],
-      limitations: [],
+      limitations: ["No independent security validation was performed."],
       recommendations: [],
       deterministicTests: [],
       humanReview: { status: "not_reviewed" },
@@ -139,6 +159,8 @@ test("the explorer caveat appears beside the unchanged saved finding", () => {
   assert.match(markup, /Research<\/span><span>Completed/);
   assert.match(markup, /Analysis<\/span><span>Completed/);
   assert.match(markup, /Verification<\/span><span>Completed/);
+  assert.match(markup, /not independent security validation/i);
+  assert.match(markup, /Summary<\/button>[\s\S]*Findings \(1\)<\/button>[\s\S]*Sources \(1\)<\/button>[\s\S]*Limits<\/button>[\s\S]*Events \(1\)<\/button>/);
 });
 
 test("a completed zero-finding report says no substantiated findings without implying safety", () => {
@@ -147,7 +169,7 @@ test("a completed zero-finding report says no substantiated findings without imp
     id: "77777777-7777-4777-8777-777777777777",
     role: "Research",
     goal: "Review the approved source evidence.",
-    status: { label: "Research completed", tone: "neutral", material: "outline" },
+    status: { label: "Run completed", tone: "neutral", material: "outline" },
     shows: "The persisted research workflow completed.",
     how: "Three recorded stages processed approved sources.",
     notShown: "No independent security assessment.",
@@ -185,6 +207,7 @@ test("a completed zero-finding report says no substantiated findings without imp
   const markup = render("src/components/dashboard/SwarmRunDetail", "SwarmRunDetail", JSON.stringify({ run, headingId: "report-heading" }));
   assert.match(markup, /Completed with no substantiated findings/);
   assert.match(markup, /does not establish that the subject is secure or that no issues exist/i);
+  assert.match(markup, /Summary<\/button>[\s\S]*Findings \(0\)<\/button>[\s\S]*Sources \(0\)<\/button>[\s\S]*Limits<\/button>[\s\S]*Events \(0\)<\/button>/);
   assert.doesNotMatch(markup, /assessment passed|proves the system is secure/i);
 });
 

@@ -90,16 +90,20 @@ export function ReportLimitSections({
 
   return (
     <section className="dsec" aria-label="Limitations, assumptions and recommendations">
-      <div className="limit-groups">
-        {groups.map((group) => (
-          <section className="limit-group" key={group.title} aria-label={group.title}>
-            <h4>{group.title}</h4>
-            <ul>
-              {group.entries.map((entry, index) => <li key={`${group.title}-${index}`}>{entry}</li>)}
-            </ul>
-          </section>
-        ))}
-      </div>
+      {groups.length === 0 ? (
+        <p className="dnote">No limitations, assumptions, or recommendations were recorded in this report.</p>
+      ) : (
+        <div className="limit-groups">
+          {groups.map((group) => (
+            <section className="limit-group" key={group.title} aria-label={group.title}>
+              <h4>{group.title}</h4>
+              <ul>
+                {group.entries.map((entry, index) => <li key={`${group.title}-${index}`}>{entry}</li>)}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -107,22 +111,28 @@ export function ReportLimitSections({
 export function RecordedEventTimeline({ events }: { events: Array<{ at: string; stage: string; message: string }> }) {
   return (
     <section className="dsec" aria-label="Recorded agent execution timeline">
-      <p className="dnote">Recorded run events · historical sequence. No agents are running.</p>
-      <ol className="events-timeline">
-        {events.map((event, index) => (
-          <li key={`${event.at}-${index}`}>
-            <span className="event-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-            <div className="event-content">
-              <div className="event-meta">
-                <time dateTime={event.at}>{formatRecordedEventTime(event.at)}</time>
-                <span className="event-label">{recordedEventLabel(event.stage)}</span>
-                <code>{event.stage}</code>
-              </div>
-              <p>{event.message}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
+      {events.length === 0 ? (
+        <p className="dnote">No run events were recorded for this report.</p>
+      ) : (
+        <>
+          <p className="dnote">Recorded run events · historical sequence. No agents are running.</p>
+          <ol className="events-timeline">
+            {events.map((event, index) => (
+              <li key={`${event.at}-${index}`}>
+                <span className="event-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                <div className="event-content">
+                  <div className="event-meta">
+                    <time dateTime={event.at}>{formatRecordedEventTime(event.at)}</time>
+                    <span className="event-label">{recordedEventLabel(event.stage)}</span>
+                    <code>{event.stage}</code>
+                  </div>
+                  <p>{event.message}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
     </section>
   );
 }
@@ -149,11 +159,13 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
   const withDetail = live && !!detail;
 
   const tabs: Array<{ id: TabId; label: string }> = [{ id: "summary", label: "Summary" }];
-  if (withDetail && detail.findings.length > 0) tabs.push({ id: "findings", label: `Findings (${detail.findings.length})` });
-  if (withDetail && detail.sources.length > 0) tabs.push({ id: "sources", label: `Sources (${detail.sources.length})` });
-  if (withDetail && detail.deterministicTests.length > 0) tabs.push({ id: "tests", label: `Tests (${detail.deterministicTests.length})` });
-  if (withDetail && (detail.limitations.length > 0 || detail.assumptions.length > 0 || detail.recommendations.length > 0)) tabs.push({ id: "limits", label: "Limits" });
-  if (withDetail && detail.events.length > 0) tabs.push({ id: "events", label: `Events (${detail.events.length})` });
+  if (withDetail) {
+    tabs.push({ id: "findings", label: `Findings (${detail.findings.length})` });
+    tabs.push({ id: "sources", label: `Sources (${detail.sources.length})` });
+    tabs.push({ id: "limits", label: "Limits" });
+    tabs.push({ id: "events", label: `Events (${detail.events.length})` });
+    if (detail.deterministicTests.length > 0) tabs.push({ id: "tests", label: `Tests (${detail.deterministicTests.length})` });
+  }
   const [picked, setPicked] = useState<TabId>(withDetail && detail.findings.length > 0 ? "findings" : "summary");
   const tab = tabs.some((t) => t.id === picked) ? picked : "summary";
   const onKey = (e: React.KeyboardEvent, i: number) => {
@@ -281,6 +293,11 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
         {tab === "findings" && withDetail ? (
           <section className="dsec" aria-label="Findings and citations">
             <ul className="finds">
+              {detail.findings.length === 0 ? (
+                <EmptyState as="li" title="No findings were recorded.">
+                  This report does not establish that the subject is secure or that no issues exist.
+                </EmptyState>
+              ) : null}
               {detail.findings.map((f) => {
                 const a = ASSESSMENT[f.modelAssessment];
                 return (
@@ -322,13 +339,16 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
                 );
               })}
             </ul>
-            <p className="dnote">Quote matched means the quoted words appear in the fetched source. It does not show the claim is true.</p>
+            {detail.findings.length > 0 ? (
+              <p className="dnote">Quote matching confirms that quoted words appear in fetched source text. It is not independent security validation, an audit, or proof that a claim is true.</p>
+            ) : null}
           </section>
         ) : null}
 
         {tab === "sources" && withDetail ? (
           <section className="dsec" aria-label="Sources and provenance">
             <ul className="srcs">
+              {detail.sources.length === 0 ? <EmptyState as="li" title="No sources were recorded.">This report contains no source records.</EmptyState> : null}
               {detail.sources.map((s) => (
                 <li key={s.id}>
                   <Chip tone={s.status === "available" ? "neutral" : "unk"} material={s.status === "available" ? "outline" : "dotted"}>

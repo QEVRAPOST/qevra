@@ -48,5 +48,5 @@ export const INTENT_LOCK_CAPTION =
 export const PASSED_LEGEND_PASSED = "Passed";
 export const PASSED_LEGEND_BODY =
   "appears only for a named, deterministic test with a definition link. No test is shown as passed here.";
-export const PASSED_LEGEND_COMPLETED = "Research completed";
-export const PASSED_LEGEND_COMPLETED_BODY = "appears only for a real run.";
+export const PASSED_LEGEND_COMPLETED = "Run completed";
+export const PASSED_LEGEND_COMPLETED_BODY = "means all three reported stages finished; it is not an audit or security approval.";
