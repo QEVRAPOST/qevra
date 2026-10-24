@@ -97,7 +97,16 @@ export function toLiveSwarmRun(summary: ResearchRunSummary, detail?: ResearchRun
     unavailableSource: hasUnavailableSource,
     ...(detail?.status === "completed" && detail.findings.length === 0 ? { zeroFindings: true } : {}),
     humanReview: safeDetail?.humanReview.status === "reviewed" && safeDetail.humanReview.reviewer && safeDetail.humanReview.reviewedAt
-      ? { recorded: true, by: safeDetail.humanReview.reviewer, at: safeDetail.humanReview.reviewedAt }
+      ? {
+          recorded: true,
+          by: safeDetail.humanReview.reviewer,
+          at: safeDetail.humanReview.reviewedAt,
+          ...(safeDetail.humanReview.disposition ? { disposition: safeDetail.humanReview.disposition } : {}),
+          ...(safeDetail.humanReview.decision ? { decision: safeDetail.humanReview.decision } : {}),
+          ...(safeDetail.humanReview.notes ? { notes: safeDetail.humanReview.notes } : {}),
+          ...(safeDetail.humanReview.reviewKind ? { reviewKind: safeDetail.humanReview.reviewKind } : {}),
+          ...(safeDetail.humanReview.disclaimer ? { disclaimer: safeDetail.humanReview.disclaimer } : {}),
+        }
       : { recorded: false },
     liveSummary: summary,
     ...(safeDetail ? { liveDetail: safeDetail } : {}),

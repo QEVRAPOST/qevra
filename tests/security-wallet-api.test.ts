@@ -16,6 +16,7 @@ import { GET as getCapabilities } from "@/app/api/security/capabilities/route";
 import { POST as createResearchRun } from "@/app/api/security/runs/route";
 import { GET as listResearchRuns } from "@/app/api/security/runs/route";
 import { GET as getResearchRun } from "@/app/api/security/runs/[id]/route";
+import { POST as submitHumanReview } from "@/app/api/security/runs/[id]/review/route";
 import { createUserSession, USER_SESSION_COOKIE } from "@/features/security/wallet-auth";
 
 const origin = "http://localhost:3113";
@@ -51,6 +52,7 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
   let consumed = false;
   let liveWorkers = 1;
   const savedRuns = new Map<string, { ownerId: string; data: { id: string; createdAt: string; [key: string]: unknown } }>();
+  const savedReviews = new Map<string, { runId: string; reviewerId: string; decision: string; notes?: string; reviewedAt: Date }>();
   const rateLimitCounts = new Map<string, number>();
   const statements: Array<{ sql: string; values?: unknown[] }> = [];
   let admissionLockTail: Promise<void> = Promise.resolve();
@@ -148,9 +150,38 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
       savedRuns.set(data.id, { ownerId: String(values?.[5]), data });
       return { rows: [], rowCount: 1 };
     }
+    if (sql.includes("INSERT INTO qevra_security_human_reviews")) {
+      const runId = String(values?.[0]);
+      const reviewerId = String(values?.[1]);
+      const saved = savedRuns.get(runId);
+      const existing = savedReviews.get(runId);
+      if (!saved || saved.ownerId !== reviewerId || saved.data.status !== "completed" || (existing && existing.reviewerId !== reviewerId)) {
+        return { rows: [], rowCount: 0 };
+      }
+      const review = {
+        runId,
+        reviewerId,
+        decision: String(values?.[2]),
+        ...(values?.[3] ? { notes: String(values[3]) } : {}),
+        reviewedAt: new Date(),
+      };
+      savedReviews.set(runId, review);
+      return { rows: [{ run_id: review.runId, reviewer_id: review.reviewerId, decision: review.decision, notes: review.notes ?? null, reviewed_at: review.reviewedAt }], rowCount: 1 };
+    }
+    if (sql.includes("FROM qevra_security_human_reviews")) {
+      const review = savedReviews.get(String(values?.[0]));
+      const run = savedRuns.get(String(values?.[0]));
+      return review && run?.ownerId === values?.[1] && review.reviewerId === values?.[1]
+        ? { rows: [{ run_id: review.runId, reviewer_id: review.reviewerId, decision: review.decision, notes: review.notes ?? null, reviewed_at: review.reviewedAt }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    }
     if (sql.includes("SELECT data FROM qevra_research_runs WHERE id = $1 AND owner_id = $2")) {
       const saved = savedRuns.get(String(values?.[0]));
       return saved && saved.ownerId === values?.[1] ? { rows: [{ data: saved.data }], rowCount: 1 } : { rows: [], rowCount: 0 };
+    }
+    if (sql === "SELECT data FROM qevra_research_runs WHERE id = $1") {
+      const saved = savedRuns.get(String(values?.[0]));
+      return saved ? { rows: [{ data: saved.data }], rowCount: 1 } : { rows: [], rowCount: 0 };
     }
     if (sql.includes("SELECT data, created_at, id FROM qevra_research_runs")) {
       const ownerId = String(values?.[0]);
@@ -376,6 +407,147 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     assert.equal(statements.filter(({ sql }) => sql.includes("INSERT INTO qevra_research_runs")).length, 1);
     assert.equal(savedRuns.size, 1);
 
+    const reviewUrl = `${origin}/api/security/runs/${createdRun.run.id}/review`;
+    const reviewRequest = (cookie: string | undefined, body: string) => new Request(reviewUrl, {
+      method: "POST",
+      headers: {
+        origin,
+        host: "localhost:3113",
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body,
+    });
+    const queuedReview = await submitHumanReview(reviewRequest(walletCookie, JSON.stringify({ decision: "needs_investigation" })), {
+      params: Promise.resolve({ id: createdRun.run.id }),
+    });
+    if (!queuedReview) throw new Error("queued-run review should return a response");
+    assert.equal(queuedReview.status, 409);
+    assert.equal((await queuedReview.json() as { error: { code: string } }).error.code, "research_run_not_completed");
+
+    const savedRun = savedRuns.get(createdRun.run.id)!;
+    savedRun.data.status = "completed";
+    savedRun.data.completedAt = new Date().toISOString();
+    savedRun.data.sources = [{
+      id: "nist-fips-204",
+      title: "NIST FIPS 204",
+      url: "https://csrc.nist.gov/pubs/fips/204/final",
+      retrievedAt: new Date().toISOString(),
+      status: "available",
+      excerpt: "FIPS 204 specifies ML-DSA as a module-lattice-based digital signature standard.",
+      sha256: "a".repeat(64),
+    }];
+    savedRun.data.analysis = {
+      summary: "Source scope is limited.",
+      assumptions: ["The captured page represents the cited publication."],
+      risks: [{ id: "scope-gap", title: "Narrow source scope", severity: "medium", analysis: "The source does not describe application deployment controls.", sourceIds: ["nist-fips-204"] }],
+      unknowns: ["Deployment-specific controls were not assessed."],
+      recommendations: ["Review the implementation separately."],
+    };
+    savedRun.data.verification = {
+      summary: "One research claim has matching quotation text.",
+      claimChecks: [{
+        claimId: "fips-204-standard",
+        assessment: "supported",
+        evidence: [{ sourceId: "nist-fips-204", quote: "FIPS 204 specifies ML-DSA as a module-lattice-based digital signature standard." }],
+        rationale: "The supplied quotation matches the stored excerpt.",
+      }],
+      testArtifactChecks: [],
+      limitations: ["Exact quotation matching does not prove semantic truth."],
+    };
+
+    const unauthenticatedReview = await submitHumanReview(reviewRequest(undefined, JSON.stringify({ decision: "evidence_supported" })), {
+      params: Promise.resolve({ id: createdRun.run.id }),
+    });
+    if (!unauthenticatedReview) throw new Error("unauthenticated review should return a response");
+    assert.equal(unauthenticatedReview.status, 401);
+    const operatorReview = await submitHumanReview(reviewRequest(`qevra_session=${operatorSession.value}`, JSON.stringify({ decision: "evidence_supported" })), {
+      params: Promise.resolve({ id: createdRun.run.id }),
+    });
+    if (!operatorReview) throw new Error("operator review should return a response");
+    assert.equal(operatorReview.status, 403);
+    assert.equal((await operatorReview.json() as { error: { code: string } }).error.code, "wallet_user_authentication_required");
+
+    const invalidReview = await submitHumanReview(reviewRequest(walletCookie, JSON.stringify({ decision: "approved", extra: true })), {
+      params: Promise.resolve({ id: createdRun.run.id }),
+    });
+    if (!invalidReview) throw new Error("malformed review should return a response");
+    assert.equal(invalidReview.status, 400);
+    assert.equal((await invalidReview.json() as { error: { code: string } }).error.code, "invalid_human_review");
+    assert.equal(savedReviews.size, 0);
+
+    const ownerDetail = await getResearchRun(new Request(`${origin}/api/security/runs/${createdRun.run.id}`, {
+      headers: { cookie: walletCookie },
+    }), { params: Promise.resolve({ id: createdRun.run.id }) });
+    assert.equal(ownerDetail?.status, 200);
+    const ownerDetailBody = await ownerDetail!.json() as { run: { analysis?: { risks: unknown[]; unknowns: string[] }; verification?: { claimChecks: unknown[] }; humanReview: { status: string } } };
+    assert.equal(ownerDetailBody.run.analysis?.risks.length, 1);
+    assert.deepEqual(ownerDetailBody.run.analysis?.unknowns, ["Deployment-specific controls were not assessed."]);
+    assert.equal(ownerDetailBody.run.verification?.claimChecks.length, 1);
+    assert.equal(ownerDetailBody.run.humanReview.status, "not_reviewed");
+
+    const recordedReview = await submitHumanReview(reviewRequest(walletCookie, JSON.stringify({
+      decision: "needs_investigation",
+      notes: "Confirm whether application controls are documented elsewhere.",
+    })), { params: Promise.resolve({ id: createdRun.run.id }) });
+    if (!recordedReview) throw new Error("owner review should return a response");
+    assert.equal(recordedReview.status, 200);
+    const recordedBody = await recordedReview.json() as { review: { runId: string; reviewerId: string; decision: string; notes?: string; reviewedAt: string; reviewKind: string; disclaimer: string } };
+    assert.equal(recordedBody.review.runId, createdRun.run.id);
+    assert.equal(recordedBody.review.reviewerId.toLowerCase(), wallet.address.toLowerCase());
+    assert.equal(recordedBody.review.decision, "needs_investigation");
+    assert.equal(recordedBody.review.notes, "Confirm whether application controls are documented elsewhere.");
+    assert.ok(Date.parse(recordedBody.review.reviewedAt));
+    assert.equal(recordedBody.review.reviewKind, "owner_self_review");
+    assert.match(recordedBody.review.disclaimer, /not an independent security audit/i);
+    assert.equal(savedReviews.size, 1);
+
+    const reviewedDetail = await getResearchRun(new Request(`${origin}/api/security/runs/${createdRun.run.id}`, {
+      headers: { cookie: walletCookie },
+    }), { params: Promise.resolve({ id: createdRun.run.id }) });
+    assert.equal(reviewedDetail?.status, 200);
+    const reviewedDetailBody = await reviewedDetail!.json() as { run: { humanReview: { status: string; decision?: string; disposition?: string; reviewer?: string; reviewKind?: string } } };
+    assert.equal(reviewedDetailBody.run.humanReview.status, "reviewed");
+    assert.equal(reviewedDetailBody.run.humanReview.decision, "needs_investigation");
+    assert.equal(reviewedDetailBody.run.humanReview.disposition, "Needs investigation");
+    assert.equal(reviewedDetailBody.run.humanReview.reviewer?.toLowerCase(), wallet.address.toLowerCase());
+    assert.equal(reviewedDetailBody.run.humanReview.reviewKind, "owner_self_review");
+
+    const walletAppSession = authSession;
+    authSession = authSession ? {
+      ...authSession,
+      provider: "password",
+      subject: "researcher@example.invalid",
+      email: "researcher@example.invalid",
+      walletHash: undefined,
+    } : undefined;
+    const emailOnlyReview = await submitHumanReview(reviewRequest(appCookie, JSON.stringify({ decision: "evidence_supported" })), {
+      params: Promise.resolve({ id: createdRun.run.id }),
+    });
+    authSession = walletAppSession;
+    if (!emailOnlyReview) throw new Error("email-only review should return a response");
+    assert.equal(emailOnlyReview.status, 401, "email/password app sessions cannot submit wallet-owned reviews");
+
+    const operatorDetail = await getResearchRun(new Request(`${origin}/api/security/runs/${createdRun.run.id}`, {
+      headers: { cookie: `qevra_session=${operatorSession.value}` },
+    }), { params: Promise.resolve({ id: createdRun.run.id }) });
+    assert.equal(operatorDetail?.status, 200);
+    const operatorDetailBody = await operatorDetail!.json() as { run: { humanReview: { status: string; decision?: string; notes?: string } } };
+    assert.equal(operatorDetailBody.run.humanReview.status, "not_reviewed", "operator report access must not expose the owner-only review record");
+    assert.equal(operatorDetailBody.run.humanReview.decision, undefined);
+    assert.equal(operatorDetailBody.run.humanReview.notes, undefined);
+
+    const updatedReview = await submitHumanReview(reviewRequest(walletCookie, JSON.stringify({
+      decision: "insufficient_evidence",
+      notes: "The approved source scope is too narrow.",
+    })), { params: Promise.resolve({ id: createdRun.run.id }) });
+    if (!updatedReview) throw new Error("owner review update should return a response");
+    assert.equal(updatedReview.status, 200);
+    const updatedBody = await updatedReview.json() as { review: { decision: string; notes?: string; reviewerId: string } };
+    assert.equal(updatedBody.review.decision, "insufficient_evidence");
+    assert.equal(updatedBody.review.notes, "The approved source scope is too narrow.");
+    assert.equal(updatedBody.review.reviewerId.toLowerCase(), wallet.address.toLowerCase());
+
     const ownedDetail = await getResearchRun(new Request(`${origin}/api/security/runs/${createdRun.run.id}`, {
       headers: { cookie: walletCookie },
     }), { params: Promise.resolve({ id: createdRun.run.id }) });
@@ -389,6 +561,14 @@ test("wallet EIP-191 API restores the user session, scopes history, reports read
     if (!foreignDetail) throw new Error("foreign wallet lookup should return a response");
     assert.equal(foreignDetail.status, 404);
     assert.equal((await foreignDetail.json() as { error: { code: string } }).error.code, "run_not_found");
+
+    const foreignReview = await submitHumanReview(reviewRequest(`${USER_SESSION_COOKIE}=${otherWallet.value}`, JSON.stringify({ decision: "evidence_supported" })), {
+      params: Promise.resolve({ id: createdRun.run.id }),
+    });
+    if (!foreignReview) throw new Error("foreign review should return a response");
+    assert.equal(foreignReview.status, 404);
+    assert.equal((await foreignReview.json() as { error: { code: string } }).error.code, "run_not_found");
+    assert.equal(savedReviews.get(createdRun.run.id)?.reviewerId.toLowerCase(), wallet.address.toLowerCase());
 
     const replay = await completeWalletSignIn(new Request(`${origin}/api/auth/user/session`, {
       method: "POST",

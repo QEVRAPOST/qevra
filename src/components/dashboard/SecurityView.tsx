@@ -137,6 +137,10 @@ function SecurityResearchView({ accessNotice }: { accessNotice?: ReactNode } = {
   const blocker = live ? sessionBlocker ?? runCreationBlocker ?? capabilityMessage ?? startBlocker(sec.capabilities) : null;
   const availabilityMessage = live ? sessionBlocker ?? capabilityMessage : undefined;
   const canStart = live && researchAccess?.gate === "authenticated" && blocker === null;
+  const reviewSessionRole = live && researchAccess?.gate === "authenticated"
+    ? researchAccess.authenticationMethod
+    : undefined;
+  const canSubmitReview = reviewSessionRole === "wallet";
   const phase = journeyPhase(pipeline, illustrating ? undefined : selected, canStart);
 
   /* On a phone the history is below the pipeline: choosing a run brings its pipeline and detail into view. */
@@ -240,7 +244,13 @@ function SecurityResearchView({ accessNotice }: { accessNotice?: ReactNode } = {
                 </p>
               </aside>
             ) : sec.status === "ready" && selected ? (
-              <SwarmRunDetail key={selected.id} run={selected} headingId={`${detailId}-h`} />
+              <SwarmRunDetail
+                key={selected.id}
+                run={selected}
+                headingId={`${detailId}-h`}
+                canSubmitReview={canSubmitReview}
+                reviewSessionRole={reviewSessionRole}
+              />
             ) : live && researchAccess?.gate !== "authenticated" ? (
               <p className="dnote">Authorized saved reports display their actual sources, findings, limitations, stage events, and human-review status here. No historical report or agent activity is substituted.</p>
             ) : (

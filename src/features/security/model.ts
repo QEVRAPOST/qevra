@@ -1,4 +1,4 @@
-import type { ResearchAgentRole, ResearchRunStatus, ResearchTopicId } from "@/types/integrations";
+import type { ResearchAgentRole, ResearchHumanReviewRecord, ResearchRunStatus, ResearchTopicId } from "@/types/integrations";
 import type {
   AnalysisAgentOutput,
   ResearchAgentOutput,
@@ -118,6 +118,8 @@ export interface ResearchRunRecord {
     disposition?: string;
   };
 }
+
+export type StoredHumanReview = ResearchHumanReviewRecord;
 
 export function createQueuedRun(
   id: string,

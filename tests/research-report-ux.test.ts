@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import * as reportUiModule from "@/components/dashboard/SwarmRunDetail";
+import { SecurityApiClientError } from "@/features/security/client";
 import type { SwarmRun } from "@/types/security";
 
 const reportUi = reportUiModule as unknown as Record<string, unknown>;
@@ -21,11 +22,24 @@ test("report limits render as separate limitations, assumptions, and recommendat
     limitations: ["No independent audit."],
     assumptions: ["The network configuration applies to public networks."],
     recommendations: ["Verify the explorer against official documentation."],
+    analysis: {
+      summary: "The research source does not establish the implementation's security.",
+      assumptions: ["The network configuration applies to public networks."],
+      risks: [{ id: "source-scope", title: "Source scope is limited", severity: "medium", analysis: "The source does not describe application-level protections.", sourceIds: ["official-docs"] }],
+      unknowns: ["Application-level protections remain unassessed."],
+      recommendations: ["Verify the explorer against official documentation."],
+    },
+    sources: [{ id: "official-docs", title: "Official network docs", url: "https://example.test/network", retrievedAt: "2026-10-20T00:00:00.000Z", status: "available" }],
   }));
 
   assert.match(markup, /Limitations/);
   assert.match(markup, /Assumptions/);
-  assert.match(markup, /Recommendations/);
+  assert.match(markup, /Recommended next steps/);
+  assert.match(markup, /Source scope is limited/);
+  assert.match(markup, /medium severity/);
+  assert.match(markup, /Application-level protections remain unassessed\./);
+  assert.match(markup, /Evidence sources: <span><a href="https:\/\/example\.test\/network" target="_blank" rel="noopener noreferrer">Official network docs<\/a><\/span>/);
+  assert.match(markup, /not independent security validation/i);
   assert.match(markup, /No independent audit\./);
   assert.match(markup, /The network configuration applies to public networks\./);
   assert.match(markup, /Verify the explorer against official documentation\./);
@@ -41,6 +55,91 @@ test("an empty limits section says nothing was recorded instead of implying none
     recommendations: [],
   }));
   assert.match(markup, /No limitations, assumptions, or recommendations were recorded/i);
+  assert.match(markup, /Risk assessments are not available in the report data returned by the service\. Older reports may not include the Analysis fields\./);
+});
+
+test("human review presents a saved personal assessment without implying an audit", () => {
+  const Component = reportUi.HumanReviewStatus;
+  assert.equal(typeof Component, "function", "the report should clearly present its persisted human-review status");
+  if (typeof Component !== "function") return;
+  const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({
+    review: {
+      recorded: true,
+      by: "0x0000000000000000000000000000000000000001",
+      at: "2026-10-22T05:20:45.818Z",
+      decision: "needs_investigation",
+      notes: "Confirm the source context.",
+      reviewKind: "owner_self_review",
+      disclaimer: "This is the report owner's self-review, not an independent audit.",
+    },
+  }));
+
+  assert.match(markup, /Personal evidence assessment/);
+  assert.match(markup, /Needs investigation/);
+  assert.match(markup, /0x0000000000000000000000000000000000000001/);
+  assert.match(markup, /Confirm the source context\./);
+  assert.match(markup, /2026-10-22 05:20:45 UTC/);
+  assert.match(markup, /not an independent audit/i);
+  assert.doesNotMatch(markup, /<button|<form|<textarea|<select/);
+});
+
+test("unreviewed reports explain that no personal review is saved or submitted", () => {
+  const Component = reportUi.HumanReviewStatus;
+  assert.equal(typeof Component, "function");
+  if (typeof Component !== "function") return;
+  const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({ review: { recorded: false } }));
+
+  assert.match(markup, /Illustrative reports do not contain live personal evidence assessments\./);
+  assert.doesNotMatch(markup, /saved successfully|submit review/i);
+});
+
+test("a completed live report offers an explicit wallet-owner evidence review", () => {
+  const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({
+    review: { recorded: false },
+    runId: "55555555-5555-4555-8555-555555555555",
+    live: true,
+    completed: true,
+    canSubmit: true,
+    sessionRole: "wallet",
+  }));
+
+  assert.match(markup, /Assess the saved evidence/);
+  assert.match(markup, /Evidence supported/);
+  assert.match(markup, /Needs investigation/);
+  assert.match(markup, /Insufficient evidence/);
+  assert.match(markup, /name="review-55555555-5555-4555-8555-555555555555"/);
+  assert.match(markup, /Optional note/);
+  assert.match(markup, /maxLength="1000"/);
+  assert.match(markup, /Save assessment/);
+  assert.match(markup, /Only the verified report owner can save this self-review/);
+});
+
+test("operator sessions cannot submit or view a wallet owner's personal review", () => {
+  const markup = render("src/components/dashboard/SwarmRunDetail", "HumanReviewStatus", JSON.stringify({
+    review: { recorded: false },
+    runId: "55555555-5555-4555-8555-555555555555",
+    live: true,
+    completed: true,
+    canSubmit: false,
+    sessionRole: "operator",
+  }));
+
+  assert.match(markup, /Owner review not shown/);
+  assert.match(markup, /Operator sessions are read-only/);
+  assert.doesNotMatch(markup, /<form|<input|<textarea|Save assessment/);
+});
+
+test("human review shows distinct session, ownership, completion, rate-limit, and persistence errors", () => {
+  const message = reportUi.humanReviewErrorMessage as ((error: unknown) => string);
+  assert.equal(typeof message, "function");
+  if (typeof message !== "function") return;
+
+  assert.match(message(new SecurityApiClientError(401, "session_expired", "Unauthorized")), /session has expired/i);
+  assert.match(message(new SecurityApiClientError(403, "wallet_user_authentication_required", "Forbidden")), /Operator sessions are read-only/i);
+  assert.match(message(new SecurityApiClientError(404, "run_not_found", "Not found")), /not available to the currently authenticated wallet/i);
+  assert.match(message(new SecurityApiClientError(409, "research_run_not_completed", "Conflict")), /must finish all three stages/i);
+  assert.match(message(new SecurityApiClientError(429, "rate_limit_exceeded", "Limited", 30_000)), /30 seconds/);
+  assert.match(message(new SecurityApiClientError(503, "persistence_unavailable", "Unavailable")), /persistence is unavailable/i);
 });
 
 test("recorded event timeline preserves event text and machine-readable UTC timestamps", () => {
@@ -122,6 +221,7 @@ test("the explorer caveat appears beside the unchanged saved finding", () => {
       sourceCount: 1,
       availableSourceCount: 1,
       findingCount: 1,
+      summary: "The source lists the Testnet chain ID, but its explorer association needs confirmation.",
       events: [{ at: "2026-10-20T20:14:21.174Z", stage: "completed", message: "All three agents completed." }],
       sources: [{
         id: "robinhood-chain-docs",
@@ -143,6 +243,24 @@ test("the explorer caveat appears beside the unchanged saved finding", () => {
         }],
         rationale: "The source lists both network configurations.",
       }],
+      analysis: {
+        summary: "The source lists the Testnet chain ID, but its explorer association needs confirmation.",
+        assumptions: [],
+        risks: [],
+        unknowns: [],
+        recommendations: [],
+      },
+      verification: {
+        summary: "The finding has a quotation matched against the fetched source text.",
+        claimChecks: [{
+          claimId: "network-configuration",
+          assessment: "unclear",
+          evidence: [{ sourceId: "robinhood-chain-docs", quote: "Robinhood Chain Testnet Chain ID 46630 Block Explorer robinhoodchain.blockscout.com" }],
+          rationale: "The source lists both network configurations.",
+        }],
+        testArtifactChecks: [],
+        limitations: ["Quotation matching is not independent security validation."],
+      },
       assumptions: [],
       limitations: ["No independent security validation was performed."],
       recommendations: [],
@@ -156,6 +274,11 @@ test("the explorer caveat appears beside the unchanged saved finding", () => {
   assert.match(markup, /Network association to verify/);
   assert.match(markup, /Robinhood Mainnet explorer/);
   assert.match(markup, /Recorded stage status/);
+  assert.match(markup, /Research question/);
+  assert.match(markup, /Outcome/);
+  assert.match(markup, /The source lists the Testnet chain ID, but its explorer association needs confirmation\./);
+  assert.match(markup, /The finding has a quotation matched against the fetched source text\./);
+  assert.match(markup, /<b>Next step\.<\/b> Compare each finding with its saved quotation and source/);
   assert.match(markup, /Research<\/span><span>Completed/);
   assert.match(markup, /Analysis<\/span><span>Completed/);
   assert.match(markup, /Verification<\/span><span>Completed/);

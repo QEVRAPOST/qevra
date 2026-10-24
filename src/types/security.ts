@@ -26,7 +26,16 @@ export interface SwarmRun {
   zeroFindings?: boolean;
   /** an evidence source that could not be read; the claim is not verified */
   unavailableSource?: boolean;
-  humanReview: { recorded: false } | { recorded: true; by: string; at: string };
+  humanReview: { recorded: false } | {
+    recorded: true;
+    by: string;
+    at: string;
+    disposition?: string;
+    decision?: NonNullable<ResearchRunDetail["humanReview"]["decision"]>;
+    notes?: string;
+    reviewKind?: "owner_self_review";
+    disclaimer?: string;
+  };
   /** fixture runs carry EXAMPLE; real runs leave this undefined */
   exampleTag?: string;
   /** what the pipeline shows for a fixture run: Research, Analysis and Verification, in that order. Nothing ran. */

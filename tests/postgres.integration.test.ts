@@ -25,6 +25,9 @@ test("isolated PostgreSQL schema, durable history, leases, concurrency, and rest
   const firstId = randomUUID();
   const secondId = randomUUID();
   const thirdId = randomUUID();
+  const reviewRunId = randomUUID();
+  const reviewOwner = `0x${"a".repeat(40)}`;
+  const otherReviewOwner = `0x${"b".repeat(40)}`;
   const workerOne = `integration-${randomUUID()}`;
   const workerTwo = `integration-${randomUUID()}`;
   const workerRestarted = `integration-${randomUUID()}`;
@@ -106,6 +109,27 @@ test("isolated PostgreSQL schema, durable history, leases, concurrency, and rest
     assert.ok(history.runs.some((run) => run.id === firstId));
     assert.ok(history.runs.some((run) => run.id === secondId));
 
+    const completedReviewRun = createQueuedRun(reviewRunId, "security-evidence", "PostgreSQL human review integration run");
+    completedReviewRun.status = "completed";
+    completedReviewRun.completedAt = new Date().toISOString();
+    await store.createRun(completedReviewRun, reviewOwner);
+    const savedReview = await store.saveHumanReview(reviewRunId, reviewOwner, "needs_investigation", "Check the source scope.");
+    assert.ok(savedReview);
+    assert.equal(savedReview.runId, reviewRunId);
+    assert.equal(savedReview.reviewerId, reviewOwner);
+    assert.equal(savedReview.decision, "needs_investigation");
+    assert.equal(savedReview.notes, "Check the source scope.");
+    assert.ok(Date.parse(savedReview.reviewedAt));
+    assert.deepEqual(await store.getHumanReview(reviewRunId, reviewOwner), savedReview);
+    assert.equal(await store.getHumanReview(reviewRunId, otherReviewOwner), undefined, "review data must remain owner-scoped");
+    assert.equal(await store.saveHumanReview(reviewRunId, otherReviewOwner, "evidence_supported"), undefined, "another wallet cannot create or replace the owner review");
+    const updatedReview = await store.saveHumanReview(reviewRunId, reviewOwner, "insufficient_evidence", "The source scope is too narrow.");
+    assert.ok(updatedReview);
+    assert.equal(updatedReview.decision, "insufficient_evidence");
+    assert.equal(updatedReview.notes, "The source scope is too narrow.");
+    assert.deepEqual(await store.getHumanReview(reviewRunId, reviewOwner), updatedReview);
+    assert.equal(await store.saveHumanReview(secondId, reviewOwner, "evidence_supported"), undefined, "non-completed reports cannot be reviewed");
+
     reclaimed.status = "failed";
     reclaimed.errorCode = "integration_cleanup";
     reclaimed.completedAt = new Date().toISOString();
@@ -130,7 +154,7 @@ test("isolated PostgreSQL schema, durable history, leases, concurrency, and rest
 
     await store.stopWorker(workerRestarted);
   } finally {
-    await pool.query("DELETE FROM qevra_research_runs WHERE id = ANY($1::uuid[])", [[firstId, secondId, thirdId]]).catch(() => undefined);
+    await pool.query("DELETE FROM qevra_research_runs WHERE id = ANY($1::uuid[])", [[firstId, secondId, thirdId, reviewRunId]]).catch(() => undefined);
     await pool.query("DELETE FROM qevra_security_workers WHERE worker_id = ANY($1::text[])", [[workerOne, workerTwo, workerRestarted]]).catch(() => undefined);
     await pool.query("DELETE FROM qevra_rate_limits WHERE bucket_key = $1", [groqFreeSlot]).catch(() => undefined);
     await store.close().catch(() => undefined);

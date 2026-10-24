@@ -122,6 +122,17 @@ export const runListQuerySchema = z.object({
 
 export const runIdSchema = z.string().uuid();
 
+export const humanReviewDecisionSchema = z.enum([
+  "evidence_supported",
+  "needs_investigation",
+  "insufficient_evidence",
+]);
+
+export const humanReviewRequestSchema = z.object({
+  decision: humanReviewDecisionSchema,
+  notes: z.string().trim().min(1).max(1_000).optional(),
+}).strict();
+
 export const sessionRequestSchema = z
   .object({ token: z.string().min(32).max(512) })
   .strict();

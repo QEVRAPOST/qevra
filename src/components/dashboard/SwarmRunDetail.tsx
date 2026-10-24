@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Chip } from "@/components/ui/Chip";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SimTag } from "@/components/ui/SimTag";
 import { StatusMaterial } from "@/components/ui/StatusMaterial";
 import { pipelineFor, STATUS_TEXT } from "@/lib/swarm-view";
 import type { DeterministicTestSummary, ResearchFinding, SwarmRun } from "@/types";
+import type { ResearchAnalysisDetail, ResearchEvidenceSource, ResearchHumanReviewDecision } from "@/types/integrations";
+import { saveSecurityRunReview, SecurityApiClientError } from "@/features/security/client";
 
 const ASSESSMENT: Record<ResearchFinding["modelAssessment"], { label: string; tone: "neutral" | "exp" | "unk"; material: "outline" | "dotted" }> = {
-  supported: { label: "Model: supported", tone: "neutral", material: "outline" },
-  contradicted: { label: "Model: contradicted", tone: "exp", material: "outline" },
-  unclear: { label: "Model: unclear", tone: "unk", material: "dotted" },
+  supported: { label: "Verification: supported", tone: "neutral", material: "outline" },
+  contradicted: { label: "Verification: contradicted", tone: "exp", material: "outline" },
+  unclear: { label: "Verification: unclear", tone: "unk", material: "dotted" },
 };
 
 /** Only a deterministic test that really passed is lime ("ok"); every other state is plainly not that. */
@@ -77,19 +80,63 @@ export function ReportLimitSections({
   limitations,
   assumptions,
   recommendations,
+  analysis,
+  sources = [],
 }: {
   limitations: string[];
   assumptions: string[];
   recommendations: string[];
+  analysis?: ResearchAnalysisDetail;
+  sources?: ResearchEvidenceSource[];
 }) {
+  const unknowns = analysis?.unknowns ?? [];
+  const limitationEntries = limitations.filter((entry) => !unknowns.includes(entry));
   const groups = [
-    { title: "Limitations", entries: limitations },
-    { title: "Assumptions", entries: assumptions },
-    { title: "Recommendations", entries: recommendations },
+    { title: "Remaining unknowns", entries: unknowns },
+    { title: "Limitations", entries: limitationEntries },
+    { title: "Assumptions", entries: analysis?.assumptions ?? assumptions },
+    { title: "Recommended next steps", entries: recommendations },
   ].filter((group) => group.entries.length > 0);
+  const sourceById = new Map(sources.map((source) => [source.id, source]));
 
   return (
-    <section className="dsec" aria-label="Limitations, assumptions and recommendations">
+    <section className="dsec" aria-label="Risk assessments, limitations, assumptions, and recommended next steps">
+      <section className="limit-group" aria-label="Risk assessments">
+        <h4>Risk assessments</h4>
+        {analysis ? (
+          analysis.risks.length > 0 ? (
+            <ul className="analysis-risks">
+              {analysis.risks.map((risk) => (
+                <li key={risk.id}>
+                  <div className="analysis-risk-heading">
+                    <strong>{risk.title}</strong>
+                    <Chip tone={risk.severity === "critical" || risk.severity === "high" ? "exp" : "unk"} material="outline">
+                      {risk.severity} severity
+                    </Chip>
+                  </div>
+                  <p>{risk.analysis}</p>
+                  <p className="risk-sources">
+                    Evidence sources: {risk.sourceIds.map((sourceId, index) => {
+                      const source = sourceById.get(sourceId);
+                      const sourceTitle = source?.title ?? sourceId;
+                      const href = source && source.status === "available" ? safeHref(source.url) : undefined;
+                      return (
+                        <span key={`${sourceId}-${index}`}>
+                          {index > 0 ? ", " : null}
+                          {href ? <a href={href} target="_blank" rel="noopener noreferrer">{sourceTitle}</a> : sourceTitle}
+                        </span>
+                      );
+                    })}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="dnote">The Analysis stage recorded no risk assessments for this report.</p>
+        ) : (
+          <p className="dnote">Risk assessments are not available in the report data returned by the service. Older reports may not include the Analysis fields.</p>
+        )}
+        <p className="dnote">Analysis risks are model-generated research signals, not independent security validation.</p>
+      </section>
       {groups.length === 0 ? (
         <p className="dnote">No limitations, assumptions, or recommendations were recorded in this report.</p>
       ) : (
@@ -104,6 +151,168 @@ export function ReportLimitSections({
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+function reviewDecisionLabel(decision: ResearchHumanReviewDecision | undefined, fallback?: string): string {
+  if (decision === "evidence_supported") return "Evidence supported";
+  if (decision === "needs_investigation") return "Needs investigation";
+  if (decision === "insufficient_evidence") return "Insufficient evidence";
+  return fallback ?? "No decision was recorded.";
+}
+
+export function humanReviewErrorMessage(error: unknown): string {
+  if (!(error instanceof SecurityApiClientError)) return "The evidence assessment could not be saved. Try again when the service is available.";
+  if (error.status === 401) return "Your wallet research session has expired. Sign in again with the wallet that owns this report.";
+  if (error.status === 403 && error.code === "wallet_user_authentication_required") return "Only a verified wallet-user session can save this owner self-review. Operator sessions are read-only.";
+  if (error.status === 404) return "This report is not available to the currently authenticated wallet.";
+  if (error.status === 409 && error.code === "research_run_not_completed") return "This report must finish all three stages before it can be reviewed.";
+  if (error.status === 409) return "The review could not be updated. Reload this report and try again.";
+  if (error.status === 429) return error.retryAfterMs
+    ? `The review service is rate limited. Try again in ${Math.ceil(error.retryAfterMs / 1_000)} seconds.`
+    : "The review service is rate limited. Wait before trying again.";
+  if (error.status === 503) return "The review could not be saved because research persistence is unavailable.";
+  return error.message;
+}
+
+const REVIEW_OPTIONS: Array<{ value: ResearchHumanReviewDecision; label: string; description: string }> = [
+  { value: "evidence_supported", label: "Evidence supported", description: "The saved evidence supports the report's central claim." },
+  { value: "needs_investigation", label: "Needs investigation", description: "More evidence or follow-up is needed." },
+  { value: "insufficient_evidence", label: "Insufficient evidence", description: "The saved sources do not support a clear conclusion." },
+];
+
+export function HumanReviewStatus({
+  review,
+  runId,
+  live = false,
+  completed = false,
+  canSubmit = false,
+  sessionRole,
+}: {
+  review: SwarmRun["humanReview"];
+  runId?: string;
+  live?: boolean;
+  completed?: boolean;
+  canSubmit?: boolean;
+  sessionRole?: "wallet" | "operator";
+}) {
+  const [savedReview, setSavedReview] = useState(review);
+  const [decision, setDecision] = useState<ResearchHumanReviewDecision | "">(review.recorded ? review.decision ?? "" : "");
+  const [notes, setNotes] = useState(review.recorded ? review.notes ?? "" : "");
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: "success" | "error"; message: string }>();
+
+  async function submitReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!runId || !decision || !canSubmit || !completed || saving) return;
+    setSaving(true);
+    setFeedback(undefined);
+    try {
+      const response = await saveSecurityRunReview(runId, {
+        decision,
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+      });
+      const persisted = response.review;
+      setSavedReview({
+        recorded: true,
+        by: persisted.reviewerId,
+        at: persisted.reviewedAt,
+        decision: persisted.decision,
+        ...(persisted.notes ? { notes: persisted.notes } : {}),
+        reviewKind: persisted.reviewKind,
+        disclaimer: persisted.disclaimer,
+      });
+      setDecision(persisted.decision);
+      setNotes(persisted.notes ?? "");
+      setFeedback({ kind: "success", message: "Your personal evidence assessment was saved." });
+    } catch (error) {
+      setFeedback({ kind: "error", message: humanReviewErrorMessage(error) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const statusKnown = !live || sessionRole === "wallet";
+  return (
+    <section className="dock review-status" aria-label="Human review status">
+      <i className={statusKnown && savedReview.recorded ? "lit" : undefined} aria-hidden="true" />
+      <div className="review-status-copy">
+        <div className="review-status-title">
+          <strong>Personal evidence assessment</strong>
+          <Chip tone={statusKnown && savedReview.recorded ? "neutral" : "unk"} material={statusKnown && savedReview.recorded ? "outline" : "dotted"}>
+            {!statusKnown ? "Owner review not shown" : savedReview.recorded ? "Recorded" : "Not recorded"}
+          </Chip>
+        </div>
+        {statusKnown && savedReview.recorded ? (
+          <>
+            <dl className="review-status-meta">
+              <div><dt>Decision</dt><dd>{reviewDecisionLabel(savedReview.decision, savedReview.disposition)}</dd></div>
+              <div><dt>Reviewer</dt><dd>{savedReview.by}</dd></div>
+              <div><dt>Saved</dt><dd><time dateTime={savedReview.at}>{formatRecordedEventTime(savedReview.at)}</time></dd></div>
+            </dl>
+            {savedReview.notes ? <p className="review-saved-note"><b>Reviewer note.</b> {savedReview.notes}</p> : null}
+            <p className="dnote">{savedReview.disclaimer ?? "This is a personal evidence assessment, not an independent security review, audit, or certification."}</p>
+          </>
+        ) : !statusKnown ? (
+          <p className="dnote">Owner self-review data is available only in a verified wallet-owner session. Operator sessions are read-only.</p>
+        ) : savedReview.recorded ? null : live && sessionRole === "wallet" ? (
+          <p className="dnote">No personal evidence assessment has been recorded.</p>
+        ) : live && sessionRole === "operator" ? (
+          <p className="dnote">Operator sessions cannot view or submit a wallet owner&apos;s personal evidence assessment.</p>
+        ) : live ? (
+          <p className="dnote">A verified wallet-owner session is required to view or submit a personal evidence assessment.</p>
+        ) : (
+          <p className="dnote">Illustrative reports do not contain live personal evidence assessments.</p>
+        )}
+        {live && !completed ? <p className="dnote">A personal evidence assessment is available after the report completes.</p> : null}
+        {live && completed && !canSubmit && sessionRole === "wallet" ? (
+          <p className="dnote">This report is read-only in the current session. Only its verified owner can save an assessment.</p>
+        ) : null}
+        {live && completed && canSubmit && runId ? (
+          <form className="review-form" onSubmit={submitReview} aria-busy={saving}>
+            <fieldset disabled={saving}>
+              <legend>{savedReview.recorded ? "Update your assessment" : "Assess the saved evidence"}</legend>
+              <div className="review-options">
+                {REVIEW_OPTIONS.map((option) => {
+                  const id = `review-${runId}-${option.value}`;
+                  return (
+                    <label className="review-option" htmlFor={id} key={option.value}>
+                      <input
+                        id={id}
+                        type="radio"
+                        name={`review-${runId}`}
+                        value={option.value}
+                        checked={decision === option.value}
+                        onChange={() => setDecision(option.value)}
+                      />
+                      <span><b>{option.label}</b><small>{option.description}</small></span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+            <label className="review-notes-label" htmlFor={`review-notes-${runId}`}>Optional note</label>
+            <textarea
+              id={`review-notes-${runId}`}
+              value={notes}
+              onChange={(event) => setNotes(event.currentTarget.value)}
+              maxLength={1_000}
+              rows={3}
+              placeholder="Record what evidence you considered or what needs follow-up."
+              disabled={saving}
+            />
+            <div className="review-form-footer">
+              <span>{notes.length}/1,000</span>
+              <Button type="submit" variant="primary" disabled={!decision || saving}>
+                {saving ? "Saving assessment…" : savedReview.recorded ? "Save updated assessment" : "Save assessment"}
+              </Button>
+            </div>
+            {feedback ? <p className={`review-feedback is-${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</p> : null}
+            <p className="dnote">Only the verified report owner can save this self-review. It records your evidence assessment; it does not create an independent audit or certification.</p>
+          </form>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -145,7 +354,17 @@ type TabId = "summary" | "findings" | "sources" | "tests" | "limits" | "events";
  * deterministic tests, limits and recorded events, as real lists. Nothing here is a live region: the short status sentence in
  * the pipeline is the only thing a screen reader is told about as the run changes.
  */
-export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: string }) {
+export function SwarmRunDetail({
+  run,
+  headingId,
+  canSubmitReview = false,
+  reviewSessionRole,
+}: {
+  run: SwarmRun;
+  headingId: string;
+  canSubmitReview?: boolean;
+  reviewSessionRole?: "wallet" | "operator";
+}) {
   const review = run.humanReview;
   const detail = run.liveDetail;
   const live = run.origin === "live";
@@ -180,6 +399,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
   return (
     <aside className={`drawer${example ? " is-example" : ""}`} aria-labelledby={headingId}>
       <header className="report-heading">
+        <p className="report-question-label">Research question</p>
         <h3 id={headingId}>{run.goal}</h3>
         <div className="dm">
           <Chip tone={run.status.tone} material={run.status.material}>{run.status.label}</Chip>
@@ -189,6 +409,26 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
           {example ? <SimTag /> : null}
         </div>
       </header>
+
+      <section className="report-outcome" aria-label="Research outcome">
+        <div>
+          <p className="report-question-label">Outcome</p>
+          <p className="report-outcome-copy">
+            {detail?.summary ?? detail?.analysis?.summary ?? (live
+              ? detail
+                ? "No summary was included in the report data returned by the service. Review the recorded findings, sources, and limitations."
+                : "The report outcome is not available while saved report details load."
+              : run.shows)}
+          </p>
+        </div>
+        {live && detail?.status === "completed" ? (
+          <p className="report-next-step">
+            <b>Next step.</b> {detail.findings.length > 0
+              ? "Compare each finding with its saved quotation and source, then review the limitations and recommended next steps."
+              : "Review source availability and limitations. A completed report with no substantiated findings is not evidence of safety."}
+          </p>
+        ) : null}
+      </section>
 
       {pipeline ? (
         <section className="report-stage-overview" aria-label={pipeline.example ? "Illustration stage order" : "Recorded stage status"}>
@@ -251,10 +491,7 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
         {tab === "summary" ? (
           <>
             <dl className="dfacts">
-              <div>
-                <dt>What this shows</dt>
-                <dd>{run.shows}</dd>
-              </div>
+              {!withDetail ? <div><dt>What this shows</dt><dd>{run.shows}</dd></div> : null}
               <div>
                 <dt>How it was measured</dt>
                 <dd>{run.how}</dd>
@@ -292,6 +529,13 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
 
         {tab === "findings" && withDetail ? (
           <section className="dsec" aria-label="Findings and citations">
+            {detail.verification?.summary ? (
+              <div className="verification-summary">
+                <h4>Verification stage</h4>
+                <p>{detail.verification.summary}</p>
+              </div>
+            ) : null}
+            <p className="dnote">The Verification stage checks source quotations against fetched text. Quote matching is not independent security validation, an audit, or proof that a claim is true.</p>
             <ul className="finds">
               {detail.findings.length === 0 ? (
                 <EmptyState as="li" title="No findings were recorded.">
@@ -339,9 +583,6 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
                 );
               })}
             </ul>
-            {detail.findings.length > 0 ? (
-              <p className="dnote">Quote matching confirms that quoted words appear in fetched source text. It is not independent security validation, an audit, or proof that a claim is true.</p>
-            ) : null}
           </section>
         ) : null}
 
@@ -396,6 +637,8 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
             limitations={detail.limitations}
             assumptions={detail.assumptions}
             recommendations={detail.recommendations}
+            analysis={detail.analysis}
+            sources={detail.sources}
           />
         ) : null}
 
@@ -404,14 +647,15 @@ export function SwarmRunDetail({ run, headingId }: { run: SwarmRun; headingId: s
         ) : null}
       </div>
 
-      <div className="dock">
-        <i className={review.recorded ? "lit" : undefined} aria-hidden="true" />
-        <span>
-          {review.recorded
-            ? `Human review recorded by ${review.by}, ${review.at}.`
-            : "Human review dock: unlit. No human review has been recorded."}
-        </span>
-      </div>
+      <HumanReviewStatus
+        key={`${run.id}-${review.recorded ? review.at : "not-reviewed"}`}
+        review={review}
+        runId={run.id}
+        live={live}
+        completed={detail?.status === "completed"}
+        canSubmit={canSubmitReview}
+        sessionRole={reviewSessionRole}
+      />
       <p className="wrapnote">By design, a run has no access to keys, signing or funds.</p>
     </aside>
   );

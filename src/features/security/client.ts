@@ -1,6 +1,9 @@
 "use client";
 
 import type {
+  ResearchHumanReviewDecision,
+  ResearchHumanReviewRequest,
+  ResearchHumanReviewResponse,
   ResearchRunDetail,
   ResearchRunSummary,
   SecurityResearchCapabilities,
@@ -8,7 +11,7 @@ import type {
 import type { NetworkId } from "@/types/network";
 import { isAddress } from "viem";
 import type { ReadOnlyEip1193Provider } from "@/features/wallet/read-only";
-import { createResearchRunRequestSchema, runIdSchema, runListQuerySchema } from "./schemas";
+import { createResearchRunRequestSchema, humanReviewRequestSchema, runIdSchema, runListQuerySchema } from "./schemas";
 import type { z } from "zod";
 
 export type CreateResearchRunInput = z.input<typeof createResearchRunRequestSchema>;
@@ -205,6 +208,43 @@ export async function getSecurityRun(id: string): Promise<ResearchRunDetail> {
   const runId = runIdSchema.parse(id);
   const response = await requestJson<{ run: ResearchRunDetail }>(`/api/security/runs/${encodeURIComponent(runId)}`);
   return response.run;
+}
+
+const HUMAN_REVIEW_DECISIONS: readonly ResearchHumanReviewDecision[] = [
+  "evidence_supported",
+  "needs_investigation",
+  "insufficient_evidence",
+];
+
+function isHumanReviewResponse(value: unknown, expectedRunId: string): value is ResearchHumanReviewResponse {
+  if (!value || typeof value !== "object" || !("review" in value)) return false;
+  const review = (value as { review?: unknown }).review;
+  if (!review || typeof review !== "object") return false;
+  const candidate = review as Partial<ResearchHumanReviewResponse["review"]>;
+  return candidate.runId === expectedRunId
+    && typeof candidate.reviewerId === "string" && isAddress(candidate.reviewerId)
+    && typeof candidate.decision === "string" && HUMAN_REVIEW_DECISIONS.includes(candidate.decision as ResearchHumanReviewDecision)
+    && (candidate.notes === undefined || (typeof candidate.notes === "string" && candidate.notes.length <= 1_000))
+    && typeof candidate.reviewedAt === "string" && Number.isFinite(Date.parse(candidate.reviewedAt))
+    && candidate.reviewKind === "owner_self_review"
+    && typeof candidate.disclaimer === "string" && candidate.disclaimer.length > 0 && candidate.disclaimer.length <= 500;
+}
+
+export async function saveSecurityRunReview(
+  id: string,
+  input: ResearchHumanReviewRequest,
+): Promise<ResearchHumanReviewResponse> {
+  const runId = runIdSchema.parse(id);
+  const parsed = humanReviewRequestSchema.parse(input);
+  const response = await requestJson<unknown>(`/api/security/runs/${encodeURIComponent(runId)}/review`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(parsed),
+  });
+  if (!isHumanReviewResponse(response, runId)) {
+    throw new SecurityApiClientError(502, "invalid_human_review_response", "The review service returned an invalid saved review.");
+  }
+  return response;
 }
 
 export async function createSecurityRun(input: CreateResearchRunInput): Promise<ResearchRunSummary> {

@@ -18,6 +18,7 @@ import { GET as getSecurityCapabilities } from "@/app/api/security/capabilities/
 import {
   analysisAgentOutputSchema,
   createResearchRunRequestSchema,
+  humanReviewRequestSchema,
   researchAgentOutputSchema,
   verificationAgentOutputSchema,
 } from "@/features/security/schemas";
@@ -100,6 +101,53 @@ test("unauthenticated Security API messages use the configured project name", as
     if (originalProjectName === undefined) delete process.env.NEXT_PUBLIC_PROJECT_NAME;
     else process.env.NEXT_PUBLIC_PROJECT_NAME = originalProjectName;
   }
+});
+
+test("research report serialization preserves validated Analysis and Verification details", async () => {
+  const run = createQueuedRun("88888886-8888-4888-8888-888888888886", "mldsa-key-registration", "FIPS evidence question");
+  run.status = "completed";
+  const analysis = {
+    ...analysisOutput,
+    risks: [{
+      id: "source-provenance-gap",
+      title: "Source scope is narrow",
+      severity: "medium" as const,
+      analysis: "The reviewed excerpt does not describe application deployment controls.",
+      sourceIds: [source.id],
+    }],
+  };
+  run.analysis = analysis;
+  run.assumptions = analysis.assumptions;
+  run.recommendations = analysis.recommendations;
+  run.limitations = analysis.unknowns;
+  run.verification = verificationOutput;
+
+  const detail = await toResearchRunDetail(run);
+  assert.deepEqual(detail.analysis, analysis);
+  assert.deepEqual(detail.verification, verificationOutput);
+  assert.equal(detail.humanReview.status, "not_reviewed");
+
+  const historical = await toResearchRunDetail(createQueuedRun(
+    "88888887-8888-4888-8888-888888888887",
+    "mldsa-key-registration",
+    "Historical report without structured agent outputs",
+  ));
+  assert.equal(historical.analysis, undefined);
+  assert.equal(historical.verification, undefined);
+  assert.equal(historical.humanReview.status, "not_reviewed");
+});
+
+test("human review accepts only supported owner evidence decisions and bounded optional notes", () => {
+  assert.equal(humanReviewRequestSchema.safeParse({ decision: "evidence_supported" }).success, true);
+  assert.equal(humanReviewRequestSchema.safeParse({ decision: "insufficient_evidence" }).success, true);
+  assert.deepEqual(humanReviewRequestSchema.parse({ decision: "needs_investigation", notes: "  Verify the missing source context.  " }), {
+    decision: "needs_investigation",
+    notes: "Verify the missing source context.",
+  });
+  assert.equal(humanReviewRequestSchema.safeParse({ decision: "insufficient_evidence", notes: "   " }).success, false);
+  assert.equal(humanReviewRequestSchema.safeParse({ decision: "approved" }).success, false);
+  assert.equal(humanReviewRequestSchema.safeParse({ decision: "evidence_supported", extra: true }).success, false);
+  assert.equal(humanReviewRequestSchema.safeParse({ decision: "evidence_supported", notes: "x".repeat(1_001) }).success, false);
 });
 
 test("provider capability labels distinguish ready, missing credentials, and awaiting authorization", () => {

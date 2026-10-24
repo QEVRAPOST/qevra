@@ -84,6 +84,60 @@ export interface ResearchFinding {
   rationale: string;
 }
 
+export interface ResearchAnalysisDetail {
+  summary: string;
+  assumptions: string[];
+  risks: Array<{
+    id: string;
+    title: string;
+    severity: "critical" | "high" | "medium" | "low" | "unknown";
+    analysis: string;
+    sourceIds: string[];
+  }>;
+  unknowns: string[];
+  recommendations: string[];
+}
+
+export interface ResearchVerificationDetail {
+  summary: string;
+  claimChecks: Array<{
+    claimId: string;
+    assessment: "supported" | "contradicted" | "unclear";
+    evidence: Array<{ sourceId: string; quote: string }>;
+    rationale: string;
+  }>;
+  testArtifactChecks: Array<{
+    artifactId: string;
+    assessment: "supports" | "contradicts" | "inconclusive";
+    rationale: string;
+  }>;
+  limitations: string[];
+}
+
+export type ResearchHumanReviewDecision = "evidence_supported" | "needs_investigation" | "insufficient_evidence";
+
+export interface ResearchHumanReviewRequest {
+  decision: ResearchHumanReviewDecision;
+  notes?: string;
+}
+
+export interface ResearchHumanReviewRecord {
+  runId: string;
+  reviewerId: string;
+  decision: ResearchHumanReviewDecision;
+  notes?: string;
+  reviewedAt: string;
+}
+
+export interface ResearchHumanReviewSubmission extends ResearchHumanReviewRecord {
+  reviewKind: "owner_self_review";
+  disclaimer: string;
+}
+
+export interface ResearchHumanReviewResponse {
+  review: ResearchHumanReviewSubmission;
+}
+
 export interface ResearchRunSummary {
   id: string;
   topicId: ResearchTopicId;
@@ -103,13 +157,26 @@ export interface ResearchRunSummary {
 
 export interface ResearchRunDetail extends ResearchRunSummary {
   summary?: string;
+  /** Original validated Analysis output; absent on older reports without the persisted stage output. */
+  analysis?: ResearchAnalysisDetail;
+  /** Original validated Verification checks; absent on older reports without the persisted stage output. */
+  verification?: ResearchVerificationDetail;
   sources: ResearchEvidenceSource[];
   findings: ResearchFinding[];
   assumptions: string[];
   limitations: string[];
   recommendations: string[];
   deterministicTests: DeterministicTestSummary[];
-  humanReview: { status: "not_reviewed" | "reviewed"; reviewer?: string; reviewedAt?: string; disposition?: string };
+  humanReview: {
+    status: "not_reviewed" | "reviewed";
+    reviewer?: string;
+    reviewedAt?: string;
+    disposition?: string;
+    decision?: ResearchHumanReviewDecision;
+    notes?: string;
+    reviewKind?: "owner_self_review";
+    disclaimer?: string;
+  };
   verificationNote?: string;
   errorMessage?: string;
 }

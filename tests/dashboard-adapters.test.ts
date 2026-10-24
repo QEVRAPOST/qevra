@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { toLiveDashboardSnapshot, toLiveSecurityRun } from "@/features/dashboard/live-adapters";
-import { createSecurityRun, getSecuritySessionStatus, SecurityApiClientError } from "@/features/security/client";
+import { createSecurityRun, getSecuritySessionStatus, saveSecurityRunReview, SecurityApiClientError } from "@/features/security/client";
 import { buildLiveAppModel, newestFirstResearchRuns, reconcileResearchRunHistory, toLiveSwarmRun } from "@/features/dashboard/live-model";
 import { createResearchRunRequestSchema } from "@/features/security/schemas";
 import { buildDemoModel } from "@/lib/demo/model";
@@ -46,7 +46,15 @@ test("live dashboard adapter keeps live provenance separate from demo fixtures a
     limitations: ["No independent audit."],
     recommendations: [],
     deterministicTests: [],
-    humanReview: { status: "not_reviewed" },
+    humanReview: {
+      status: "reviewed",
+      reviewer: "0x0000000000000000000000000000000000000001",
+      reviewedAt: "2026-10-18T00:02:00.000Z",
+      decision: "needs_investigation",
+      notes: "Check the source context.",
+      reviewKind: "owner_self_review",
+      disclaimer: "Owner self-review, not an independent security audit.",
+    },
   };
 
   const snapshot = toLiveDashboardSnapshot({ capabilities, wallet, runs: [run] });
@@ -58,6 +66,15 @@ test("live dashboard adapter keeps live provenance separate from demo fixtures a
   assert.equal(snapshot.security.runs[0]?.origin, "live");
   assert.equal(snapshot.security.runs[0]?.events[0]?.stage, "completed");
   assert.equal(snapshot.security.runs[0]?.sourceCount, 1);
+  assert.deepEqual(toLiveSwarmRun(run, run).humanReview, {
+    recorded: true,
+    by: "0x0000000000000000000000000000000000000001",
+    at: "2026-10-18T00:02:00.000Z",
+    decision: "needs_investigation",
+    notes: "Check the source context.",
+    reviewKind: "owner_self_review",
+    disclaimer: "Owner self-review, not an independent security audit.",
+  });
   assert.equal("exampleTag" in (snapshot.security.runs[0] ?? {}), false);
   const detail = toLiveSecurityRun(run);
   assert.equal(detail.summary, "One source-backed claim.");
@@ -102,6 +119,40 @@ test("security client preserves bounded Retry-After metadata for a rate-limited 
       getSecuritySessionStatus(),
       (error: unknown) => error instanceof SecurityApiClientError && error.status === 429 && error.retryAfterMs === 30_000,
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("wallet owner review client submits the declared decision contract and validates the persisted response", async () => {
+  const originalFetch = globalThis.fetch;
+  const runId = "55555555-5555-4555-8555-555555555555";
+  const reviewerId = "0x0000000000000000000000000000000000000001";
+  let capturedUrl = "";
+  let capturedInit: RequestInit | undefined;
+  globalThis.fetch = async (input, init) => {
+    capturedUrl = String(input);
+    capturedInit = init;
+    return Response.json({
+      review: {
+        runId,
+        reviewerId,
+        decision: "needs_investigation",
+        notes: "Check the source context.",
+        reviewedAt: "2026-10-18T00:02:00.000Z",
+        reviewKind: "owner_self_review",
+        disclaimer: "Owner self-review, not an independent security audit.",
+      },
+    });
+  };
+  try {
+    const result = await saveSecurityRunReview(runId, { decision: "needs_investigation", notes: "Check the source context." });
+    assert.equal(capturedUrl, `/api/security/runs/${runId}/review`);
+    assert.equal(capturedInit?.method, "POST");
+    assert.equal(capturedInit?.credentials, "same-origin");
+    assert.deepEqual(JSON.parse(String(capturedInit?.body)), { decision: "needs_investigation", notes: "Check the source context." });
+    assert.equal(result.review.reviewerId, reviewerId);
+    assert.equal(result.review.reviewKind, "owner_self_review");
   } finally {
     globalThis.fetch = originalFetch;
   }

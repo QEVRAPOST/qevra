@@ -14,7 +14,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const run = await access.store.getRun(id, access.ownerId);
     if (!run) return apiError(404, "run_not_found", "The research run was not found.");
-    return Response.json({ run: toResearchRunDetail(run) }, { headers: { "cache-control": "no-store" } });
+    const review = access.role === "user" && access.ownerId
+      ? await access.store.getHumanReview(id, access.ownerId)
+      : undefined;
+    return Response.json({ run: toResearchRunDetail(run, review) }, { headers: { "cache-control": "no-store" } });
   } catch {
     return apiError(503, "persistence_unavailable", "Security research persistence is currently unavailable.");
   }

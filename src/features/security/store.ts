@@ -3,7 +3,8 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { isGroqGptOssProfile } from "./groq-profile";
-import type { ResearchRunRecord } from "./model";
+import type { ResearchHumanReviewRecord } from "@/types/integrations";
+import type { ResearchRunRecord, StoredHumanReview } from "./model";
 import {
   evaluateResearchRunAdmission,
   type ResearchRunAdmissionLimits,
@@ -148,6 +149,13 @@ export class PostgresResearchStore {
         ON qevra_research_runs (owner_id, created_at DESC, id DESC);
       CREATE INDEX IF NOT EXISTS qevra_research_runs_queue_idx
         ON qevra_research_runs (status, lease_until, created_at);
+      CREATE TABLE IF NOT EXISTS qevra_security_human_reviews (
+        run_id uuid PRIMARY KEY REFERENCES qevra_research_runs(id) ON DELETE CASCADE,
+        reviewer_id text NOT NULL,
+        decision text NOT NULL CHECK (decision IN ('evidence_supported', 'needs_investigation', 'insufficient_evidence')),
+        notes text CHECK (notes IS NULL OR length(notes) BETWEEN 1 AND 1000),
+        reviewed_at timestamptz NOT NULL DEFAULT now()
+      );
       CREATE TABLE IF NOT EXISTS qevra_rate_limits (
         bucket_key char(64) PRIMARY KEY,
         window_started_at timestamptz NOT NULL,
@@ -750,6 +758,70 @@ export class PostgresResearchStore {
        WHERE id = $1`,
       [run.id, run.topicId, run.status, run.updatedAt, JSON.stringify(run)],
     );
+  }
+
+  async saveHumanReview(
+    runId: string,
+    reviewerId: string,
+    decision: ResearchHumanReviewRecord["decision"],
+    notes?: string,
+  ): Promise<StoredHumanReview | undefined> {
+    if (!/^[0-9a-f-]{36}$/i.test(runId)) throw new Error("Invalid research run ID for human review.");
+    if (!/^0x[a-f0-9]{40}$/i.test(reviewerId)) throw new Error("Invalid authenticated human reviewer.");
+    const normalizedReviewerId = reviewerId.toLowerCase();
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      run_id: string;
+      reviewer_id: string;
+      decision: ResearchHumanReviewRecord["decision"];
+      notes: string | null;
+      reviewed_at: Date | string;
+    }>(
+      `INSERT INTO qevra_security_human_reviews (run_id, reviewer_id, decision, notes, reviewed_at)
+       SELECT run.id, run.owner_id, $3, $4, now()
+       FROM qevra_research_runs AS run
+       WHERE run.id = $1 AND run.owner_id = $2 AND run.status = 'completed'
+       ON CONFLICT (run_id) DO UPDATE
+         SET decision = EXCLUDED.decision, notes = EXCLUDED.notes, reviewed_at = now()
+         WHERE qevra_security_human_reviews.reviewer_id = EXCLUDED.reviewer_id
+       RETURNING run_id, reviewer_id, decision, notes, reviewed_at`,
+      [runId, normalizedReviewerId, decision, notes ?? null],
+    );
+    const row = result.rows[0];
+    return row ? {
+      runId: row.run_id,
+      reviewerId: row.reviewer_id,
+      decision: row.decision,
+      ...(row.notes ? { notes: row.notes } : {}),
+      reviewedAt: new Date(row.reviewed_at).toISOString(),
+    } : undefined;
+  }
+
+  async getHumanReview(runId: string, ownerId: string): Promise<StoredHumanReview | undefined> {
+    if (!/^[0-9a-f-]{36}$/i.test(runId)) throw new Error("Invalid research run ID for human review.");
+    if (!/^0x[a-f0-9]{40}$/i.test(ownerId)) throw new Error("Invalid authenticated research owner.");
+    await this.ensureSchema();
+    const result = await this.pool.query<{
+      run_id: string;
+      reviewer_id: string;
+      decision: ResearchHumanReviewRecord["decision"];
+      notes: string | null;
+      reviewed_at: Date | string;
+    }>(
+      `SELECT review.run_id, review.reviewer_id, review.decision, review.notes, review.reviewed_at
+       FROM qevra_security_human_reviews AS review
+       INNER JOIN qevra_research_runs AS run ON run.id = review.run_id
+       WHERE review.run_id = $1 AND run.owner_id = $2 AND review.reviewer_id = $2`,
+      [runId, ownerId.toLowerCase()],
+    );
+    const row = result.rows[0];
+    return row ? {
+      runId: row.run_id,
+      reviewerId: row.reviewer_id,
+      decision: row.decision,
+      ...(row.notes ? { notes: row.notes } : {}),
+      reviewedAt: new Date(row.reviewed_at).toISOString(),
+    } : undefined;
   }
 
   async listRuns(limit: number, cursor?: string, ownerId?: string): Promise<{ runs: ResearchRunRecord[]; nextCursor?: string }> {
