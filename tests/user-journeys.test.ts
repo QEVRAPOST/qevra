@@ -161,24 +161,26 @@ test("billing-disabled execution is explained while saved reports remain availab
   assert.match(blocker ?? "", /saved reports remain available/i);
 });
 
-test("Activity distinguishes authenticated persisted research from unavailable live transactions", () => {
+test("Activity distinguishes persisted research from browser-local Mainnet transaction receipts", () => {
   const markup = renderWithLiveModel(ActivityView);
 
   assert.match(markup, /Research History/);
   assert.match(markup, /persisted Security Swarm runs/i);
   assert.match(markup, /wallet or operator research session/i);
-  assert.match(markup, /Transactions.*unavailable/i);
-  assert.match(markup, /transaction-history integration/i);
+  assert.match(markup, /Transactions/);
+  assert.match(markup, /wallet-returned Mainnet approval and swap hashes/i);
+  assert.match(markup, /does not scan every transaction for an address/i);
+  assert.match(markup, /not a complete wallet history/i);
 });
 
-test("Simple Swap explains its intended review journey and why live execution is unavailable", () => {
+test("Simple Swap keeps Mainnet quotes gated behind wallet connection and quotes no route by default", () => {
   const markup = renderWithLiveModel(SwapView);
 
-  assert.match(markup, /select tokens.*enter an amount.*review/i);
-  assert.match(markup, /preview only/i);
-  assert.match(markup, /No reviewed swap route is configured\./);
-  assert.match(markup, /illustrative.*not.*on-chain/i);
-  assert.match(markup, /No transaction was requested or sent\./);
+  assert.match(markup, /Robinhood Mainnet · 4663 only/i);
+  assert.match(markup, /canonical Robinhood Mainnet ETH, WETH, and USDG/i);
+  assert.match(markup, /Connect wallet before requesting Mainnet quotes/);
+  assert.match(markup, /No route quoted/);
+  assert.match(markup, /never Settler/i);
 });
 
 test("watch-only address inspection names its controls and keeps copy feedback accessible", () => {

@@ -83,8 +83,15 @@ interface LiveResearchAccessValue {
 
 const LiveResearchAccessContext = createContext<LiveResearchAccessValue | null>(null);
 
+const WalletExecutionProviderContext = createContext<ReadOnlyEip1193Provider | undefined>(undefined);
+
 export function useLiveResearchAccess(): LiveResearchAccessValue | null {
   return useContext(LiveResearchAccessContext);
+}
+
+/** The injected provider selected through the existing wallet picker; consumers must still gate writes on explicit user actions. */
+export function useLiveWalletExecutionProvider(): ReadOnlyEip1193Provider | undefined {
+  return useContext(WalletExecutionProviderContext);
 }
 
 /** Place this around Security Swarm history/actions; public app routes remain mounted around it. */
@@ -1127,17 +1134,19 @@ export function LiveAppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <LiveResearchAccessContext.Provider value={access}>
-      <ModelContext.Provider value={value}>
-        {children}
-        <WalletPickerDialog
-          open={walletPickerOpen}
-          choices={walletChoices}
-          isDiscovering={walletDiscoveryLoading}
-          error={walletDiscoveryError}
-          onSelect={selectWallet}
-          onClose={closeWalletPicker}
-        />
-      </ModelContext.Provider>
+      <WalletExecutionProviderContext.Provider value={wallet.address ? providerRef.current : undefined}>
+        <ModelContext.Provider value={value}>
+          {children}
+          <WalletPickerDialog
+            open={walletPickerOpen}
+            choices={walletChoices}
+            isDiscovering={walletDiscoveryLoading}
+            error={walletDiscoveryError}
+            onSelect={selectWallet}
+            onClose={closeWalletPicker}
+          />
+        </ModelContext.Provider>
+      </WalletExecutionProviderContext.Provider>
     </LiveResearchAccessContext.Provider>
   );
 }

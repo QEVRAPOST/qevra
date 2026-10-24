@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +15,7 @@ import { MiniPipeline } from "./SwarmPipeline";
 import { STATUS_TEXT } from "@/lib/swarm-view";
 import { useLiveResearchAccess } from "@/features/dashboard/LiveAppProvider";
 import type { ResearchGateState } from "@/features/dashboard/live-ui-state";
+import { readStoredSwapTransactions, toMainnetActivityRow, type StoredSwapTransaction } from "@/features/swap/activity";
 
 type View = "runs" | "transactions";
 type RunFilter = "all" | "progress" | "completed" | "stopped";
@@ -175,16 +176,63 @@ function Runs() {
 function Transactions() {
   const { model } = useAppModel();
   const a = model.activity;
+  const live = model.mode === "live";
+  const [stored, setStored] = useState<StoredSwapTransaction[]>([]);
+  const [receiptStates, setReceiptStates] = useState<Record<string, { state: "pending" | "confirmed" | "reverted"; blockNumber?: string }>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<TxFilter>("all");
-  const rows = filter === "all" ? a.rows : a.rows.filter((r) => txGroup(r) === filter);
+  useEffect(() => {
+    if (!live) return;
+    let cancelled = false;
+    const refresh = async () => {
+      const transactions = readStoredSwapTransactions();
+      if (cancelled) return;
+      setStored(transactions);
+      const recent = transactions.slice(0, 20);
+      const results = await Promise.all(recent.map(async (transaction) => {
+        try {
+          const response = await fetch("/api/swap/receipt", {
+            method: "POST",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: { "content-type": "application/json", accept: "application/json" },
+            body: JSON.stringify({ hash: transaction.hash, account: transaction.account }),
+          });
+          if (!response.ok) return undefined;
+          const result = await response.json() as { status?: unknown; blockNumber?: unknown };
+          if (result.status === "confirmed" || result.status === "reverted") {
+            return [transaction.hash, { state: result.status, ...(typeof result.blockNumber === "string" ? { blockNumber: result.blockNumber } : {}) }] as const;
+          }
+          if (result.status === "pending" || result.status === "not_observed") return [transaction.hash, { state: "pending" as const }] as const;
+          return undefined;
+        } catch { return undefined; }
+      }));
+      if (cancelled) return;
+      setReceiptStates((current) => {
+        const next = { ...current };
+        for (const result of results) if (result) next[result[0].toLowerCase()] = result[1];
+        return next;
+      });
+    };
+    void refresh();
+    const interval = window.setInterval(() => { void refresh(); }, 15_000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [live]);
+  const activityRows = live
+    ? stored.map((transaction) => {
+        const receipt = receiptStates[transaction.hash.toLowerCase()];
+        return toMainnetActivityRow(transaction, receipt?.state ?? "pending", receipt?.blockNumber);
+      })
+    : a.rows;
+  const activityStatus = live ? (stored.length > 0 ? "ready" : "empty") : a.status;
+  const rows = filter === "all" ? activityRows : activityRows.filter((r) => txGroup(r) === filter);
   const selected = rows.find((r) => r.id === selectedId) ?? rows[0];
-  const count = (g: TxFilter) => (g === "all" ? a.rows.length : a.rows.filter((r) => txGroup(r) === g).length);
+  const count = (g: TxFilter) => (g === "all" ? activityRows.length : activityRows.filter((r) => txGroup(r) === g).length);
 
   return (
     <>
       <p className="ac-lede">Blockchain transactions only. Research runs are in the other view.</p>
-      {a.status === "ready" ? (
+      {activityStatus === "ready" ? (
         <ToggleGroup
           label="Filter transactions"
           value={filter}
@@ -199,7 +247,7 @@ function Transactions() {
       ) : null}
       <div className="ac-body">
         <ul className="acts" aria-label={a.origin === "demo" ? "Simulated transactions" : "Live transaction activity"}>
-          {a.status === "ready" &&
+          {activityStatus === "ready" &&
             rows.map((r) => (
               <li key={r.id}>
                 <button type="button" className="act" aria-pressed={r.id === selected?.id} onClick={() => setSelectedId(r.id)}>
@@ -211,21 +259,21 @@ function Transactions() {
                 </button>
               </li>
             ))}
-          {a.status === "empty" && (
+          {activityStatus === "empty" && (
             <EmptyState as="li" title="No transactions yet.">
-              Swaps are switched off, so none can be made. When they exist, each appears here with a plain sentence and a link to the block explorer.
+              {live ? "There are no locally saved Robinhood Mainnet approvals or swaps in this browser. This is not a complete address-wide history." : "Example transaction rows are simulations; no wallet activity is connected in demo mode."}
             </EmptyState>
           )}
-          {a.status === "unavailable" && (
+          {!live && activityStatus === "unavailable" && (
             <EmptyState as="li" title="Transactions unavailable.">
               {a.origin === "live"
                 ? "Live transaction history is not connected in this read-only dashboard. No transaction was requested or sent. This does not mean there are none."
                 : "The transaction feed is not connected, so no transactions can be shown. This is not a statement that there are none."}
             </EmptyState>
           )}
-          {a.status === "ready" && rows.length === 0 ? <EmptyState as="li" title="No transactions match this filter.">Choose All to see every transaction.</EmptyState> : null}
+          {activityStatus === "ready" && rows.length === 0 ? <EmptyState as="li" title="No transactions match this filter.">Choose All to see every transaction.</EmptyState> : null}
         </ul>
-        {a.status === "ready" && selected ? (
+        {activityStatus === "ready" && selected ? (
           <aside className="actd ac-detail" key={selected.id} aria-labelledby="act-detail-h">
             <h2 id="act-detail-h">{selected.sentence}</h2>
             <p className="note">{selected.note}</p>
@@ -295,7 +343,9 @@ export function ActivityView() {
   const [view, setView] = useState<View>("runs");
   return (
     <section className="route ac" aria-labelledby="h-act">
-      <PageHead id="h-act" kicker="Activity · history" title="Activity" lede="Research History and Transactions are separate records. Research History contains saved Security Swarm runs; Transactions contains blockchain activity only." />
+      <PageHead id="h-act" kicker="Activity · history" title="Activity" lede={live
+        ? "Research History and Transactions are separate records. Transaction records are saved in this browser and checked against Robinhood Mainnet RPC; they are not a complete wallet history."
+        : "Research History and Transactions are separate records. Transaction rows in demo mode are labelled examples, not wallet activity."} />
       <div className="ac-context" aria-label="Activity data sources">
         <section>
           <h2>Research History</h2>
@@ -304,7 +354,7 @@ export function ActivityView() {
         <section>
           <h2>Transactions</h2>
           <p>{live
-            ? "Unavailable until a real transaction-history integration is connected. This dashboard does not create or submit transactions."
+            ? "This browser saves wallet-returned Mainnet approval and swap hashes, then reads genuine receipts. It does not scan every transaction for an address."
             : "Example transaction rows are simulations, not wallet activity. A real transaction-history integration is not connected."}</p>
         </section>
       </div>
@@ -314,7 +364,7 @@ export function ActivityView() {
         onChange={setView}
         options={[
           { value: "runs", label: "Research history" },
-          { value: "transactions", label: live ? "Transactions · unavailable" : "Transactions · examples" },
+          { value: "transactions", label: live ? "Transactions · local records" : "Transactions · examples" },
         ]}
       />
       <div className="ac-view" key={view}>

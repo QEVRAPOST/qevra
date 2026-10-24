@@ -9,6 +9,13 @@ The isolated Phase 0 harness under `src/phase0` and `phase0-tests` is research
 code only. It is not a production account implementation and must not receive
 funds.
 
+The deployment and readiness rows below describe VEYRA-owned Solidity
+contracts. The web application has a separate Robinhood Mainnet external-wallet
+integration through server-side 0x Swap API v2; it does not require these
+contracts for a provider route. A configured live quote and route still require
+runtime preflight, and this application integration does not remove the
+on-chain PQ custody and authorization blockers documented here.
+
 ## Proposed ten-contract architecture
 
 These are proposed protocol roles, not existing source files or approval to

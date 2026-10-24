@@ -20,6 +20,7 @@ import {
 import { useMediaQuery } from "@/lib/use-media-query";
 import { useAppModel } from "./DemoAppProvider";
 import { IntentLockPanel } from "./IntentLockPanel";
+import { MainnetSwapPanel } from "./MainnetSwapPanel";
 import { PageHead } from "./PageHead";
 
 /** A token's mark: a ring and the letter of its name. The two preview tokens differ by the ring, so they are never confused. */
@@ -104,6 +105,20 @@ export function SwapView() {
     { name: "Route", note: "Not configured" },
     { name: "Sign and send", note: "Not available" },
   ];
+
+  if (live) {
+    return (
+      <section className="route sp" aria-labelledby="h-swap">
+        <PageHead
+          id="h-swap"
+          kicker="Robinhood Mainnet · wallet-authorized"
+          title="Simple swap"
+          lede="Real 0x Mainnet quotes are checked against chain 4663 contract reads. Approval and swap transactions require separate, explicit wallet confirmation. No Testnet fallback is used."
+        />
+        <MainnetSwapPanel />
+      </section>
+    );
+  }
 
   return (
     <section className="route sp" aria-labelledby="h-swap">

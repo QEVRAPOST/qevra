@@ -100,7 +100,7 @@ test("quote discovery returns unavailable on both chains while no reviewed route
   });
 });
 
-test("swap quote API returns a no-store unavailable result without contacting a quote provider", async () => {
+test("swap quote API rejects Testnet because live swap support is Mainnet only", async () => {
   const response = await requestSwapQuote(new Request("https://veyra.example/api/swap/quote", {
     method: "POST",
     headers: {
@@ -110,15 +110,7 @@ test("swap quote API returns a no-store unavailable result without contacting a 
     },
     body: JSON.stringify(request),
   }));
-  assert.equal(response.status, 503);
+  assert.equal(response.status, 400);
   assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await response.json(), {
-    status: "unavailable",
-    reason: "no_verified_route",
-    networkId: "testnet",
-    chainId: 46_630,
-    quote: null,
-    signingEnabled: false,
-    executionEnabled: false,
-  });
+  assert.deepEqual(await response.json(), { error: { code: "invalid_swap_request", message: "Robinhood Mainnet swap parameters are invalid." } });
 });

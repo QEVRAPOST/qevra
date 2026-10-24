@@ -114,7 +114,7 @@ export function PublicAddressInspector() {
           <p className="ne-section-index">02 · WATCH-ONLY ADDRESS</p>
           <h2 id="h-public-address-inspector" className="ov-h">Inspect Public Address</h2>
         </div>
-        <p className="ne-separation">Public chain data only. No wallet connection or account permission is used.</p>
+        <p className="ne-separation">Public chain data only. This inspection network is independent of VEYRA&apos;s selected application network. No wallet connection or account permission is used.</p>
       </header>
 
       <div role="group" aria-label="Select inspection network" className="ne-picker-actions">

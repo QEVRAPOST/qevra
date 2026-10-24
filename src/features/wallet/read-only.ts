@@ -4,10 +4,14 @@ import { formatEther, isAddress, type Address } from "viem";
 import type { PublicNativeBalance, ReadOnlyWalletState } from "@/types/integrations";
 import { PROJECT_NAME } from "@/lib/project-brand";
 
-type ReadOnlyMethod = "eth_requestAccounts" | "eth_accounts" | "eth_chainId" | "eth_getBalance" | "eth_getBlockByNumber";
+export type WalletProviderMethod =
+  | "eth_requestAccounts" | "eth_accounts" | "eth_chainId" | "eth_getBalance" | "eth_getBlockByNumber"
+  | "eth_getCode" | "eth_call" | "eth_estimateGas" | "eth_gasPrice" | "eth_getTransactionCount"
+  | "eth_sendTransaction" | "wallet_switchEthereumChain" | "wallet_addEthereumChain";
 
 export interface ReadOnlyEip1193Provider {
-  request(args: { method: ReadOnlyMethod; params?: readonly unknown[] }): Promise<unknown>;
+  /** Provider calls remain user initiated at call sites; write methods are never invoked by read-only refresh code. */
+  request(args: { method: WalletProviderMethod; params?: readonly unknown[] }): Promise<unknown>;
   providerName?: string;
   on?(event: "accountsChanged" | "chainChanged" | "disconnect", listener: (...args: unknown[]) => void): void;
   removeListener?(event: "accountsChanged" | "chainChanged" | "disconnect", listener: (...args: unknown[]) => void): void;

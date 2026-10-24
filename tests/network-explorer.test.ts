@@ -155,6 +155,7 @@ test("network explorer provides a separate empty watch-only public address inspe
   assert.match(markup, /Mainnet · 4663/);
   assert.match(markup, /name="public-address"/);
   assert.match(markup, /No wallet connection or account permission is used/);
+  assert.match(markup, /inspection network is independent of VEYRA.*selected application network/i);
   assert.doesNotMatch(markup, /0xfA142bF0383782Caa349C5C56A7B7D565eEFA562/);
 });
 
