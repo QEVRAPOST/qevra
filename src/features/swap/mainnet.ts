@@ -310,13 +310,13 @@ export function normalizeZeroXSwapQuote(
   if (allowance?.spender && quote.allowanceTarget && !same(allowance.spender, quote.allowanceTarget)) {
     return { status: "invalid", reason: "provider_allowance_target_mismatch" };
   }
-  if (!spender) {
+  const allowanceRequired = !tokens.sell.native;
+  if (allowanceRequired && !spender) {
     return { status: "invalid", reason: "missing_or_forbidden_allowance_spender" };
   }
-  // This handler only calls 0x's AllowanceHolder endpoint. Its API-reported
-  // allowance target is also the route's entry point; reject a response that
-  // splits those roles or redirects execution to a different deployed contract.
-  if (!same(spender, quote.transaction.to)) {
+  // Native sell tokens need no ERC-20 approval. If a spender is reported,
+  // still require it to match the route entry point and verified deployment.
+  if (spender && !same(spender, quote.transaction.to)) {
     return { status: "invalid", reason: "allowance_holder_execution_target_mismatch" };
   }
   if (spender && (same(spender, contracts.latestSettler)

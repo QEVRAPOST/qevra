@@ -10,6 +10,7 @@ const handleSwapQuote = createSwapQuoteHandler({
   now: Date.now,
   getTokenMetadata: getVerifiedMainnetTokenMetadata,
   verifyContracts: verifyMainnetZeroXContracts,
+  onDiagnostic: (diagnostic) => console.error(JSON.stringify(diagnostic)),
 });
 
 export const POST = handleSwapQuote;

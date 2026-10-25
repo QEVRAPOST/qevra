@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   ROBINHOOD_MAINNET_TOKENS,
+  NATIVE_ETH_ADDRESS,
   parseRobinhoodSwapRequest,
   normalizeZeroXSwapQuote,
   normalizeZeroXSwapPrice,
@@ -85,6 +86,52 @@ test("firm 0x quote requires the exact official AllowanceHolder and current on-c
   assert.equal(result.executionEnabled, true);
   assert.equal(result.minimumReceived, "995000");
   assert.match(result.quoteDigest, /^0x[0-9a-f]{64}$/);
+});
+
+test("native ETH firm quote does not require an ERC-20 allowance but ERC-20 firm quotes still do", () => {
+  const nativeRequest: RobinhoodSwapRequest = {
+    ...request,
+    tokenIn: "ETH",
+    tokenOut: "USDG",
+    amount: "0.0001",
+  };
+  const nativeQuote = providerQuote({
+    sellAmount: "100000000000000",
+    sellToken: NATIVE_ETH_ADDRESS,
+    allowanceTarget: null,
+    issues: {
+      allowance: null,
+      balance: { actual: "200000000000000", expected: "100000000000000" },
+      simulationIncomplete: false,
+      invalidSourcesPassed: [],
+    },
+    route: { fills: [{ from: NATIVE_ETH_ADDRESS, to: ROBINHOOD_MAINNET_TOKENS.USDG.address, source: "Uniswap_V3", proportionBps: 10_000 }], tokens: [] },
+    transaction: { ...providerQuote().transaction, value: "100000000000000" },
+  });
+  const nativeVerification: ZeroXContractVerification = {
+    ...verification,
+    allowanceSpender: null,
+    allowanceSpenderCodePresent: false,
+  };
+  const nativeResult = normalizeZeroXSwapQuote(nativeQuote, nativeRequest, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.ETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, nativeVerification, 1_800_000_000_000);
+  assert.equal(nativeResult.status, "ready");
+  if (nativeResult.status === "ready" && nativeResult.mode === "quote") {
+    assert.equal(nativeResult.allowance.spender, null);
+    assert.equal(nativeResult.allowance.requiredAmount, "100000000000000");
+    assert.equal(nativeResult.transaction.value, "100000000000000");
+  }
+
+  const erc20WithoutSpender = normalizeZeroXSwapQuote(providerQuote({
+    allowanceTarget: null,
+    issues: { ...providerQuote().issues, allowance: null },
+  }), request, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, { ...verification, allowanceSpender: null, allowanceSpenderCodePresent: false }, 1_800_000_000_000);
+  assert.deepEqual(erc20WithoutSpender, { status: "invalid", reason: "missing_or_forbidden_allowance_spender" });
 });
 
 test("firm quote rejects a deployed but noncanonical spender and execution target", () => {
@@ -282,6 +329,187 @@ test("indicative price uses the dedicated 0x price endpoint and cannot enable si
   assert.equal(body.mode, "price");
   assert.equal(body.signingEnabled, false);
   assert.equal(body.executionEnabled, false);
+});
+
+test("price and firm quote send the same ETH/USDG request parameters and log a firm-only validation rejection safely", async () => {
+  const observedRequest: RobinhoodSwapRequest = {
+    ...request,
+    tokenIn: "ETH",
+    tokenOut: "USDG",
+    amount: "0.0001",
+    slippageBps: 50,
+  };
+  const otherTarget = "0x3333333333333333333333333333333333333333";
+  const apiQuote = providerQuote({
+    sellAmount: "100000000000000",
+    sellToken: NATIVE_ETH_ADDRESS,
+    allowanceTarget: otherTarget,
+    issues: { ...providerQuote().issues, allowance: { actual: "0", spender: verifiedAllowanceTarget } },
+    route: { fills: [{ from: NATIVE_ETH_ADDRESS, to: ROBINHOOD_MAINNET_TOKENS.USDG.address, source: "Uniswap_V3", proportionBps: 10_000 }], tokens: [] },
+  });
+  const urls: string[] = [];
+  const diagnostics: Array<Record<string, unknown>> = [];
+  const makeHandler = () => createSwapQuoteHandler({
+    appMode: "live",
+    apiKey: "test-only-provider-key",
+    fetch: async (input) => { urls.push(String(input)); return Response.json(apiQuote); },
+    now: () => 1_800_000_000_000,
+    getTokenMetadata: async (id) => ({ ...ROBINHOOD_MAINNET_TOKENS[id], decimals: id === "USDG" ? 6 : 18 }),
+    verifyContracts: async () => verification,
+    onDiagnostic: (entry) => diagnostics.push(entry as unknown as Record<string, unknown>),
+  });
+  const makeRequest = (mode: "price" | "quote") => new Request("https://veyra.example/api/swap/quote", {
+    method: "POST",
+    headers: { origin: "https://veyra.example", host: "veyra.example", "content-type": "application/json", "x-request-id": `firm-test-${mode}` },
+    body: JSON.stringify({ ...observedRequest, mode }),
+  });
+
+  const priceResponse = await makeHandler()(makeRequest("price"));
+  const quoteResponse = await makeHandler()(makeRequest("quote"));
+  assert.equal(priceResponse.status, 200);
+  assert.equal(quoteResponse.status, 502);
+  assert.equal(quoteResponse.headers.get("x-veyra-request-id"), "firm-test-quote");
+  const expected = {
+    chainId: "4663",
+    sellToken: NATIVE_ETH_ADDRESS,
+    buyToken: ROBINHOOD_MAINNET_TOKENS.USDG.address,
+    sellAmount: "100000000000000",
+    taker: observedRequest.taker,
+    recipient: observedRequest.taker,
+    slippageBps: "50",
+  };
+  for (const url of urls) {
+    const parsed = new URL(url);
+    assert.deepEqual(Object.fromEntries(parsed.searchParams), expected);
+  }
+  assert.match(urls[0]!, /\/price\?/);
+  assert.match(urls[1]!, /\/quote\?/);
+  const failure = diagnostics[0];
+  assert.equal(failure?.requestId, "firm-test-quote");
+  assert.equal(failure?.mode, "quote");
+  assert.equal(failure?.upstreamHttpStatus, 200);
+  assert.equal(failure?.applicationValidationCategory, "provider_allowance_target_mismatch");
+  assert.equal(typeof failure?.requestDurationMs, "number");
+  assert.equal(JSON.stringify(diagnostics).includes("test-only-provider-key"), false);
+  assert.equal(JSON.stringify(diagnostics).includes(observedRequest.taker), false);
+  assert.equal((await quoteResponse.text()).includes("test-only-provider-key"), false);
+});
+
+test("server returns an independently verified native ETH firm quote without an ERC-20 spender", async () => {
+  const nativeRequest: RobinhoodSwapRequest = {
+    ...request,
+    tokenIn: "ETH",
+    tokenOut: "USDG",
+    amount: "0.0001",
+  };
+  const nativeQuote = providerQuote({
+    sellAmount: "100000000000000",
+    sellToken: NATIVE_ETH_ADDRESS,
+    allowanceTarget: null,
+    issues: {
+      allowance: null,
+      balance: { actual: "200000000000000", expected: "100000000000000" },
+      simulationIncomplete: false,
+      invalidSourcesPassed: [],
+    },
+    route: { fills: [{ from: NATIVE_ETH_ADDRESS, to: ROBINHOOD_MAINNET_TOKENS.USDG.address, source: "Uniswap_V3", proportionBps: 10_000 }], tokens: [] },
+    transaction: { ...providerQuote().transaction, value: "100000000000000" },
+  });
+  const handler = createSwapQuoteHandler({
+    appMode: "live",
+    apiKey: "test-only-provider-key",
+    fetch: async (input) => {
+      assert.match(String(input), /\/swap\/allowance-holder\/quote\?/);
+      return Response.json(nativeQuote);
+    },
+    now: () => 1_800_000_000_000,
+    getTokenMetadata: async (id) => ({ ...ROBINHOOD_MAINNET_TOKENS[id], decimals: id === "USDG" ? 6 : 18 }),
+    verifyContracts: async (spender, target) => {
+      assert.equal(spender, undefined);
+      assert.equal(target, verifiedAllowanceTarget);
+      return { ...verification, allowanceSpender: null, allowanceSpenderCodePresent: false };
+    },
+  });
+  const response = await handler(new Request("https://veyra.example/api/swap/quote", {
+    method: "POST",
+    headers: { origin: "https://veyra.example", host: "veyra.example", "content-type": "application/json" },
+    body: JSON.stringify(nativeRequest),
+  }));
+  assert.equal(response.status, 200);
+  const body = await response.json() as { allowance: { spender: string | null }; executionEnabled: boolean };
+  assert.deepEqual(body.allowance, { spender: null, actual: null, requiredAmount: "100000000000000" });
+  assert.equal(body.executionEnabled, true);
+});
+
+test("provider rejection logs status and safe classification without exposing provider response data", async () => {
+  const diagnostics: Array<Record<string, unknown>> = [];
+  const handler = createSwapQuoteHandler({
+    appMode: "live",
+    apiKey: "private-provider-marker",
+    fetch: async () => new Response("private response body marker", { status: 422 }),
+    now: () => 1_800_000_000_000,
+    getTokenMetadata: async (id) => ({ ...ROBINHOOD_MAINNET_TOKENS[id], decimals: id === "USDG" ? 6 : 18 }),
+    verifyContracts: async () => verification,
+    onDiagnostic: (entry) => diagnostics.push(entry as unknown as Record<string, unknown>),
+  });
+  const response = await handler(new Request("https://veyra.example/api/swap/quote", {
+    method: "POST",
+    headers: { origin: "https://veyra.example", host: "veyra.example", "content-type": "application/json", "x-request-id": "provider-reject-test" },
+    body: JSON.stringify(request),
+  }));
+  const responseText = await response.text();
+  assert.equal(response.status, 502);
+  assert.equal(response.headers.get("x-veyra-request-id"), "provider-reject-test");
+  assert.equal(responseText.includes("private-provider-marker"), false);
+  assert.equal(responseText.includes("private response body marker"), false);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0]?.upstreamHttpStatus, 422);
+  assert.equal(diagnostics[0]?.providerErrorClassification, "upstream_rejected");
+  assert.equal(diagnostics[0]?.requestId, "provider-reject-test");
+  assert.equal(JSON.stringify(diagnostics).includes("private-provider-marker"), false);
+  assert.equal(JSON.stringify(diagnostics).includes("private response body marker"), false);
+});
+
+test("RPC failures and unexpected server exceptions are classified without leaking exception messages", async () => {
+  const diagnostics: Array<Record<string, unknown>> = [];
+  const common = {
+    appMode: "live",
+    apiKey: "private-provider-marker",
+    fetch: async () => Response.json(providerQuote()),
+    now: () => 1_800_000_000_000,
+    getTokenMetadata: async (id: keyof typeof ROBINHOOD_MAINNET_TOKENS) => ({ ...ROBINHOOD_MAINNET_TOKENS[id], decimals: id === "USDG" ? 6 : 18 }),
+    onDiagnostic: (entry: unknown) => diagnostics.push(entry as Record<string, unknown>),
+  };
+  const rpcHandler = createSwapQuoteHandler({
+    ...common,
+    verifyContracts: async (_spender, _target, onRpcFailure) => {
+      onRpcFailure?.("rpc_settler_registry_read_failed");
+      return { ...verification, chainIdVerified: false, latestSettler: null, settlerCodePresent: false };
+    },
+  });
+  const rpcResponse = await rpcHandler(new Request("https://veyra.example/api/swap/quote", {
+    method: "POST",
+    headers: { origin: "https://veyra.example", host: "veyra.example", "content-type": "application/json", "x-request-id": "rpc-failure-test" },
+    body: JSON.stringify(request),
+  }));
+  assert.equal(rpcResponse.status, 503);
+  assert.deepEqual(diagnostics[0]?.rpcFailureCategories, ["rpc_settler_registry_read_failed"]);
+
+  const exceptionHandler = createSwapQuoteHandler({
+    ...common,
+    getTokenMetadata: async () => { throw new Error("private exception payload marker"); },
+    verifyContracts: async () => verification,
+  });
+  const exceptionResponse = await exceptionHandler(new Request("https://veyra.example/api/swap/quote", {
+    method: "POST",
+    headers: { origin: "https://veyra.example", host: "veyra.example", "content-type": "application/json", "x-request-id": "internal-exception-test" },
+    body: JSON.stringify(request),
+  }));
+  const exceptionText = await exceptionResponse.text();
+  assert.equal(exceptionResponse.status, 500);
+  assert.equal(exceptionText.includes("private exception payload marker"), false);
+  assert.equal(diagnostics[1]?.internalExceptionCategory, "unexpected_exception");
+  assert.equal(diagnostics[1]?.requestId, "internal-exception-test");
 });
 
 test("client rejects an indicative price for a different token address or sell amount", async () => {
