@@ -142,14 +142,14 @@ export interface ZeroXContractVerification {
 
 const quoteResponseSchema = z.object({
   allowanceTarget: z.string().regex(ADDRESS).nullable().optional(),
-  buyAmount: z.string().regex(UINT),
-  minBuyAmount: z.string().regex(UINT),
-  sellAmount: z.string().regex(UINT),
+  buyAmount: z.string().regex(UINT).nullable(),
+  minBuyAmount: z.string().regex(UINT).nullable(),
+  sellAmount: z.string().regex(UINT).nullable(),
   sellToken: z.string().regex(ADDRESS),
   buyToken: z.string().regex(ADDRESS),
   liquidityAvailable: z.literal(true),
-  gas: z.string().regex(UINT),
-  gasPrice: z.string().regex(UINT).optional(),
+  gas: z.string().regex(UINT).nullable().optional(),
+  gasPrice: z.string().regex(UINT).nullable().optional(),
   totalNetworkFee: z.string().regex(UINT).nullable().optional(),
   fees: z.unknown().optional(),
   issues: z.object({
@@ -165,11 +165,75 @@ const quoteResponseSchema = z.object({
   transaction: z.object({
     to: z.string().regex(ADDRESS),
     data: z.string().regex(DATA),
-    value: z.string().regex(UINT),
-    gas: z.string().regex(UINT).optional(),
-    gasPrice: z.string().regex(UINT).optional(),
+    value: z.string().regex(UINT).nullable().optional(),
+    gas: z.string().regex(UINT).nullable().optional(),
+    gasPrice: z.string().regex(UINT).nullable().optional(),
   }).passthrough(),
 }).passthrough();
+
+export type ZeroXQuoteSchemaFailureField = {
+  path: string;
+  issueCode: string;
+  expectedType: string | null;
+  receivedType: "missing" | "null" | "string" | "number" | "boolean" | "array" | "object" | "other";
+};
+
+export type ZeroXQuoteSchemaFailure = {
+  category: string;
+  fields: ZeroXQuoteSchemaFailureField[];
+};
+
+function valueAtPath(input: unknown, path: readonly (string | number | symbol)[]): { found: boolean; value: unknown } {
+  let current = input;
+  for (const part of path) {
+    if (!current || typeof current !== "object") return { found: false, value: undefined };
+    if (typeof part === "symbol") return { found: false, value: undefined };
+    if (Array.isArray(current)) {
+      if (typeof part !== "number" || !Object.prototype.hasOwnProperty.call(current, part)) return { found: false, value: undefined };
+      current = current[part];
+      continue;
+    }
+    if (typeof part !== "string" || !Object.prototype.hasOwnProperty.call(current, part)) return { found: false, value: undefined };
+    current = (current as Record<string, unknown>)[part];
+  }
+  return { found: true, value: current };
+}
+
+function providerValueType(found: boolean, value: unknown): ZeroXQuoteSchemaFailureField["receivedType"] {
+  if (!found) return "missing";
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "string") return "string";
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "object") return "object";
+  return "other";
+}
+
+function summarizeQuoteSchemaFailure(input: unknown, error: z.ZodError): ZeroXQuoteSchemaFailure {
+  const fields = error.issues.slice(0, 12).map((issue): ZeroXQuoteSchemaFailureField => {
+    const safeParts = issue.path.map((part) => typeof part === "number"
+      ? `[${part}]`
+      : typeof part === "string" && /^[A-Za-z][A-Za-z0-9_]*$/.test(part) ? part : "field");
+    const path = safeParts.join(".").replace(/\.\[/g, "[").slice(0, 120);
+    const actual = valueAtPath(input, issue.path);
+    return {
+      path: path || "response",
+      issueCode: ["invalid_type", "invalid_format", "invalid_value", "too_small", "too_big", "custom"].includes(issue.code)
+        ? issue.code
+        : "schema_invalid",
+      expectedType: "expected" in issue && typeof issue.expected === "string" ? issue.expected : null,
+      receivedType: providerValueType(actual.found, actual.value),
+    };
+  });
+  const first = fields[0];
+  let category = "provider_schema_mismatch";
+  if (first?.path === "transaction.value") category = "invalid_transaction_value_type";
+  else if (first?.path === "transaction.to" || first?.path === "transaction.data") category = "invalid_transaction_field_type";
+  else if (["buyAmount", "sellAmount", "minBuyAmount"].includes(first?.path ?? "")) category = "invalid_buy_sell_amount";
+  else if (first?.receivedType === "null") category = "unsupported_nullable_field_representation";
+  return { category, fields };
+}
 
 export type NormalizedRobinhoodSwapQuote = {
   status: "ready";
@@ -280,12 +344,19 @@ export function normalizeZeroXSwapQuote(
   tokens: { sell: RobinhoodSwapTokenMetadata; buy: RobinhoodSwapTokenMetadata },
   contracts: ZeroXContractVerification,
   now: number,
+  reportSchemaFailure?: (failure: ZeroXQuoteSchemaFailure) => void,
 ): NormalizedQuoteResult {
   const parsed = quoteResponseSchema.safeParse(input);
-  if (!parsed.success) return { status: "invalid", reason: "malformed_provider_quote" };
+  if (!parsed.success) {
+    reportSchemaFailure?.(summarizeQuoteSchemaFailure(input, parsed.error));
+    return { status: "invalid", reason: "malformed_provider_quote" };
+  }
   const quote = parsed.data;
   const amountIn = amountToBaseUnits(request.amount, tokens.sell.decimals);
   if (!amountIn) return { status: "invalid", reason: "amount_precision_exceeds_token_decimals" };
+  if (quote.sellAmount === null || quote.buyAmount === null || quote.minBuyAmount === null) {
+    return { status: "invalid", reason: "provider_required_quote_amount_missing" };
+  }
   const same = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
   if (!same(quote.sellToken, tokens.sell.address) || !same(quote.buyToken, tokens.buy.address) || quote.sellAmount !== amountIn) {
     return { status: "invalid", reason: "provider_quote_request_mismatch" };
@@ -327,9 +398,30 @@ export function normalizeZeroXSwapQuote(
   if (!contracts.executionTarget || !same(contracts.executionTarget, quote.transaction.to) || !contracts.executionTargetCodePresent) {
     return { status: "unavailable", reason: "provider_execution_target_not_verified_on_robinhood_mainnet" };
   }
-  if (quote.transaction.data === "0x" || BigInt(quote.gas) <= BigInt(0) || BigInt(quote.buyAmount) <= BigInt(0) || BigInt(quote.minBuyAmount) <= BigInt(0)
+  const estimatedGas = quote.transaction.gas ?? quote.gas;
+  if (!estimatedGas || BigInt(estimatedGas) <= BigInt(0)) {
+    return { status: "unavailable", reason: "provider_gas_estimate_unavailable" };
+  }
+  if (quote.transaction.data === "0x" || BigInt(quote.buyAmount) <= BigInt(0) || BigInt(quote.minBuyAmount) <= BigInt(0)
     || BigInt(quote.minBuyAmount) > BigInt(quote.buyAmount)) {
     return { status: "invalid", reason: "provider_quote_has_invalid_execution_values" };
+  }
+  let transactionValue: string;
+  if (tokens.sell.native) {
+    if (quote.transaction.value === undefined || quote.transaction.value === null) {
+      return { status: "invalid", reason: "provider_native_value_unavailable" };
+    }
+    if (quote.transaction.value !== amountIn) {
+      return { status: "invalid", reason: "provider_native_value_mismatch" };
+    }
+    transactionValue = quote.transaction.value;
+  } else {
+    if (quote.transaction.value !== undefined && quote.transaction.value !== null && quote.transaction.value !== "0") {
+      return { status: "invalid", reason: "provider_erc20_transaction_value_nonzero" };
+    }
+    // 0x documents null transaction.value for ERC-20 swaps; in EVM a missing
+    // value field means zero native currency, so retain that exact semantics.
+    transactionValue = quote.transaction.value ?? "0";
   }
   const slippageFloor = BigInt(quote.buyAmount) * BigInt(10_000 - request.slippageBps) / BigInt(10_000);
   if (BigInt(quote.minBuyAmount) < slippageFloor) return { status: "invalid", reason: "provider_quote_exceeds_requested_slippage" };
@@ -337,12 +429,13 @@ export function normalizeZeroXSwapQuote(
   const balanceActual = balance?.actual ?? null;
   const balanceExpected = balance?.expected ?? amountIn;
   const sufficientBalance = balanceActual !== null && BigInt(balanceActual) >= BigInt(balanceExpected);
+  const quotedGasPrice = quote.transaction.gasPrice ?? quote.gasPrice ?? undefined;
   const transaction = {
     to: quote.transaction.to,
     data: quote.transaction.data,
-    value: quote.transaction.value,
-    gas: quote.transaction.gas ?? quote.gas,
-    ...(quote.transaction.gasPrice ?? quote.gasPrice ? { gasPrice: quote.transaction.gasPrice ?? quote.gasPrice } : {}),
+    value: transactionValue,
+    gas: estimatedGas,
+    ...(quotedGasPrice !== undefined ? { gasPrice: quotedGasPrice } : {}),
   };
   const quotedAt = new Date(now).toISOString();
   const expiresAt = new Date(now + 30_000).toISOString();
@@ -361,8 +454,8 @@ export function normalizeZeroXSwapQuote(
     settlerAddress: contracts.latestSettler!,
     quotedAt,
     expiresAt,
-    estimatedGas: quote.gas,
-    gasPrice: quote.transaction.gasPrice ?? quote.gasPrice,
+    estimatedGas,
+    gasPrice: quotedGasPrice,
     totalNetworkFee: quote.totalNetworkFee ?? undefined,
     fees: quote.fees,
     route: quote.route.fills,
@@ -388,8 +481,8 @@ export function normalizeZeroXSwapQuote(
     quoteDigest,
     quotedAt,
     expiresAt,
-    estimatedGas: quote.gas,
-    ...(quote.transaction.gasPrice ?? quote.gasPrice ? { gasPrice: quote.transaction.gasPrice ?? quote.gasPrice } : {}),
+    estimatedGas,
+    ...(quotedGasPrice !== undefined ? { gasPrice: quotedGasPrice } : {}),
     ...(quote.totalNetworkFee ? { totalNetworkFee: quote.totalNetworkFee } : {}),
     ...(quote.fees !== undefined ? { fees: quote.fees } : {}),
     route: quote.route.fills,

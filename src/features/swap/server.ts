@@ -16,6 +16,8 @@ import {
   type RobinhoodSwapTokenId,
   type RobinhoodSwapTokenMetadata,
   type ZeroXContractVerification,
+  type ZeroXQuoteSchemaFailure,
+  type ZeroXQuoteSchemaFailureField,
 } from "./mainnet";
 
 const chain = defineChain({
@@ -59,6 +61,7 @@ export type SwapQuoteFailureDiagnostic = {
   providerErrorClassification: string | null;
   rpcFailureCategories: SwapRpcFailureCategory[];
   applicationValidationCategory: string | null;
+  providerSchemaFailures: ZeroXQuoteSchemaFailureField[];
   requestDurationMs: number;
   internalExceptionCategory: "timeout" | "type_error" | "unexpected_exception" | null;
 };
@@ -225,6 +228,29 @@ function classifyProviderHttpStatus(status: number): string {
   return "upstream_http_error";
 }
 
+function classifyQuoteValidation(reason: string): string {
+  switch (reason) {
+    case "provider_quote_request_mismatch":
+    case "provider_required_quote_amount_missing":
+      return "invalid_buy_sell_amount_or_token";
+    case "provider_allowance_target_mismatch":
+      return "allowance_target_mismatch";
+    case "allowance_holder_execution_target_mismatch":
+    case "provider_allowance_holder_address_not_verified_for_robinhood_mainnet":
+    case "provider_execution_target_not_verified_on_robinhood_mainnet":
+      return "execution_target_mismatch";
+    case "provider_native_value_unavailable":
+      return "invalid_transaction_value_type";
+    case "provider_native_value_mismatch":
+    case "provider_erc20_transaction_value_nonzero":
+      return "invalid_transaction_value";
+    case "provider_gas_estimate_unavailable":
+      return "missing_required_gas_estimate";
+    default:
+      return reason;
+  }
+}
+
 function classifyInternalException(error: unknown): SwapQuoteFailureDiagnostic["internalExceptionCategory"] {
   if (!(error instanceof Error)) return "unexpected_exception";
   if (error.name === "AbortError" || error.name === "TimeoutError") return "timeout";
@@ -264,6 +290,7 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
     let providerErrorClassification: string | null = null;
     let applicationValidationCategory: string | null = null;
     let internalExceptionCategory: SwapQuoteFailureDiagnostic["internalExceptionCategory"] = null;
+    let providerSchemaFailures: ZeroXQuoteSchemaFailureField[] = [];
     const rpcFailureCategories = new Set<SwapRpcFailureCategory>();
     const reportRpcFailure: ReportRpcFailure = (category) => rpcFailureCategories.add(category);
     const fail = (status: number, code: string, message: string) => {
@@ -276,6 +303,7 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
           providerErrorClassification,
           rpcFailureCategories: [...rpcFailureCategories],
           applicationValidationCategory,
+          providerSchemaFailures,
           requestDurationMs: Math.max(0, Date.now() - startedAt),
           internalExceptionCategory,
         };
@@ -386,9 +414,18 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
         return Response.json(price, { headers: responseHeaders });
       }
       const contracts = await dependencies.verifyContracts(readProviderAllowanceSpender(body), readProviderExecutionTarget(body), reportRpcFailure);
-      const quote = normalizeZeroXSwapQuote(body, requestData, { sell: sellToken, buy: buyToken }, contracts, dependencies.now());
+      let schemaFailure: ZeroXQuoteSchemaFailure | undefined;
+      const quote = normalizeZeroXSwapQuote(
+        body,
+        requestData,
+        { sell: sellToken, buy: buyToken },
+        contracts,
+        dependencies.now(),
+        (failure) => { schemaFailure = failure; },
+      );
       if (quote.status !== "ready") {
-        applicationValidationCategory = quote.reason;
+        applicationValidationCategory = schemaFailure?.category ?? classifyQuoteValidation(quote.reason);
+        providerSchemaFailures = schemaFailure?.fields ?? [];
         return fail(quote.status === "invalid" ? 502 : 503, quote.reason, "The firm quote failed independent Mainnet route and deployment checks.");
       }
       return Response.json(quote, { headers: responseHeaders });

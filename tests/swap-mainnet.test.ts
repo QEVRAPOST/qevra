@@ -88,6 +88,99 @@ test("firm 0x quote requires the exact official AllowanceHolder and current on-c
   assert.match(result.quoteDigest, /^0x[0-9a-f]{64}$/);
 });
 
+test("firm quote accepts the documented 0x shape with gas only in transaction", () => {
+  const quoteWithNestedGasOnly = Object.fromEntries(
+    Object.entries(providerQuote()).filter(([key]) => key !== "gas" && key !== "gasPrice"),
+  );
+  const result = normalizeZeroXSwapQuote(quoteWithNestedGasOnly, request, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, verification, 1_800_000_000_000);
+
+  assert.equal(result.status, "ready");
+  if (result.status === "ready" && result.mode === "quote") {
+    assert.equal(result.estimatedGas, "180000");
+    assert.equal(result.transaction.gas, "180000");
+    assert.equal(result.gasPrice, "1000000000");
+  }
+});
+
+test("firm quote handles documented nullable transaction fields without weakening native value checks", () => {
+  const quoteWithNullableOptionalFields = Object.fromEntries(
+    Object.entries(providerQuote({
+      transaction: { ...providerQuote().transaction, value: null, gasPrice: null },
+    })).filter(([key]) => key !== "gas" && key !== "gasPrice"),
+  );
+  const erc20Result = normalizeZeroXSwapQuote(quoteWithNullableOptionalFields, request, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, verification, 1_800_000_000_000);
+
+  assert.equal(erc20Result.status, "ready");
+  if (erc20Result.status === "ready" && erc20Result.mode === "quote") {
+    assert.equal(erc20Result.transaction.value, "0");
+    assert.equal(erc20Result.transaction.gas, "180000");
+    assert.equal(erc20Result.gasPrice, undefined);
+  }
+
+  const nativeRequest = { ...request, tokenIn: "ETH" as const, amount: "0.0001" };
+  const nativeQuote = providerQuote({
+    sellToken: ROBINHOOD_MAINNET_TOKENS.ETH.address,
+    sellAmount: "100000000000000",
+    allowanceTarget: null,
+    issues: { ...providerQuote().issues, allowance: null },
+    route: { fills: [{ from: ROBINHOOD_MAINNET_TOKENS.ETH.address, to: ROBINHOOD_MAINNET_TOKENS.USDG.address, source: "Uniswap_V3", proportionBps: 10_000 }] },
+    transaction: { ...providerQuote().transaction, value: null },
+  });
+  const nativeResult = normalizeZeroXSwapQuote(nativeQuote, nativeRequest, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.ETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, { ...verification, allowanceSpender: null, allowanceSpenderCodePresent: false }, 1_800_000_000_000);
+  assert.deepEqual(nativeResult, { status: "invalid", reason: "provider_native_value_unavailable" });
+});
+
+test("firm quote rejects missing amounts or gas and rejects inconsistent native or ERC-20 transaction value", () => {
+  const tokens = {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  };
+  const noGas = Object.fromEntries(
+    Object.entries(providerQuote({ transaction: { ...providerQuote().transaction, gas: null } }))
+      .filter(([key]) => key !== "gas"),
+  );
+  assert.deepEqual(
+    normalizeZeroXSwapQuote(noGas, request, tokens, verification, 1_800_000_000_000),
+    { status: "unavailable", reason: "provider_gas_estimate_unavailable" },
+  );
+  assert.deepEqual(
+    normalizeZeroXSwapQuote(providerQuote({ buyAmount: null }), request, tokens, verification, 1_800_000_000_000),
+    { status: "invalid", reason: "provider_required_quote_amount_missing" },
+  );
+  assert.deepEqual(
+    normalizeZeroXSwapQuote(providerQuote({
+      transaction: { ...providerQuote().transaction, value: "1" },
+    }), request, tokens, verification, 1_800_000_000_000),
+    { status: "invalid", reason: "provider_erc20_transaction_value_nonzero" },
+  );
+
+  const nativeRequest = { ...request, tokenIn: "ETH" as const, amount: "0.0001" };
+  const nativeQuote = providerQuote({
+    sellToken: ROBINHOOD_MAINNET_TOKENS.ETH.address,
+    sellAmount: "100000000000000",
+    allowanceTarget: null,
+    issues: { ...providerQuote().issues, allowance: null },
+    route: { fills: [{ from: ROBINHOOD_MAINNET_TOKENS.ETH.address, to: ROBINHOOD_MAINNET_TOKENS.USDG.address, source: "Uniswap_V3", proportionBps: 10_000 }] },
+    transaction: { ...providerQuote().transaction, value: "99999999999999" },
+  });
+  assert.deepEqual(
+    normalizeZeroXSwapQuote(nativeQuote, nativeRequest, {
+      sell: { ...ROBINHOOD_MAINNET_TOKENS.ETH, decimals: 18 },
+      buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+    }, { ...verification, allowanceSpender: null, allowanceSpenderCodePresent: false }, 1_800_000_000_000),
+    { status: "invalid", reason: "provider_native_value_mismatch" },
+  );
+});
+
 test("native ETH firm quote does not require an ERC-20 allowance but ERC-20 firm quotes still do", () => {
   const nativeRequest: RobinhoodSwapRequest = {
     ...request,
@@ -388,7 +481,7 @@ test("price and firm quote send the same ETH/USDG request parameters and log a f
   assert.equal(failure?.requestId, "firm-test-quote");
   assert.equal(failure?.mode, "quote");
   assert.equal(failure?.upstreamHttpStatus, 200);
-  assert.equal(failure?.applicationValidationCategory, "provider_allowance_target_mismatch");
+  assert.equal(failure?.applicationValidationCategory, "allowance_target_mismatch");
   assert.equal(typeof failure?.requestDurationMs, "number");
   assert.equal(JSON.stringify(diagnostics).includes("test-only-provider-key"), false);
   assert.equal(JSON.stringify(diagnostics).includes(observedRequest.taker), false);
@@ -468,6 +561,42 @@ test("provider rejection logs status and safe classification without exposing pr
   assert.equal(diagnostics[0]?.requestId, "provider-reject-test");
   assert.equal(JSON.stringify(diagnostics).includes("private-provider-marker"), false);
   assert.equal(JSON.stringify(diagnostics).includes("private response body marker"), false);
+});
+
+test("malformed firm quote diagnostics identify only the failed field and safe value type", async () => {
+  const diagnostics: Array<Record<string, unknown>> = [];
+  const malformedQuote = providerQuote({
+    transaction: { ...providerQuote().transaction, data: null },
+  });
+  const handler = createSwapQuoteHandler({
+    appMode: "live",
+    apiKey: "private-provider-marker",
+    fetch: async () => Response.json(malformedQuote),
+    now: () => 1_800_000_000_000,
+    getTokenMetadata: async (id) => ({ ...ROBINHOOD_MAINNET_TOKENS[id], decimals: id === "USDG" ? 6 : 18 }),
+    verifyContracts: async () => verification,
+    onDiagnostic: (entry) => diagnostics.push(entry as unknown as Record<string, unknown>),
+  });
+  const response = await handler(new Request("https://veyra.example/api/swap/quote", {
+    method: "POST",
+    headers: { origin: "https://veyra.example", host: "veyra.example", "content-type": "application/json", "x-request-id": "schema-failure-test" },
+    body: JSON.stringify(request),
+  }));
+
+  assert.equal(response.status, 502);
+  const diagnostic = diagnostics[0];
+  assert.equal(diagnostic?.requestId, "schema-failure-test");
+  assert.equal(diagnostic?.applicationValidationCategory, "invalid_transaction_field_type");
+  assert.deepEqual(diagnostic?.providerSchemaFailures, [{
+    path: "transaction.data",
+    issueCode: "invalid_type",
+    expectedType: "string",
+    receivedType: "null",
+  }]);
+  const serialized = JSON.stringify(diagnostics);
+  assert.equal(serialized.includes("private-provider-marker"), false);
+  assert.equal(serialized.includes("0x" + "ab".repeat(64)), false);
+  assert.equal((await response.text()).includes("transaction.data"), false);
 });
 
 test("RPC failures and unexpected server exceptions are classified without leaking exception messages", async () => {
