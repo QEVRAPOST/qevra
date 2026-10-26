@@ -103,3 +103,36 @@ test("network route rejects malformed inspected addresses without making an RPC 
     globalThis.fetch = originalFetch;
   }
 });
+
+test("Mainnet infrastructure route is fixed to chain 4663 and rejects Testnet selection", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (_input, init) => {
+    calls += 1;
+    const body = JSON.parse(String(init?.body)) as { id: number; method: string };
+    const result = body.method === "eth_chainId" ? "0x1237"
+      : body.method === "eth_blockNumber" ? "0x2a"
+      : body.method === "eth_call" ? `0x${"0".repeat(24)}${"3".repeat(40)}`
+          : "0x60016000";
+    return Response.json({ jsonrpc: "2.0", id: body.id, result });
+  };
+  try {
+    const testnetResponse = await GET(new Request("http://localhost/api/network/testnet?infrastructure=1"), {
+      params: Promise.resolve({ networkId: "testnet" }),
+    });
+    assert.equal(testnetResponse.status, 400);
+    assert.equal(calls, 0);
+
+    const mainnetResponse = await GET(new Request("http://localhost/api/network/mainnet?infrastructure=1"), {
+      params: Promise.resolve({ networkId: "mainnet" }),
+    });
+    const body = await mainnetResponse.json() as { networkId: string; chainId: number; contracts: { currentSettler: { address: string | null } } };
+    assert.equal(mainnetResponse.status, 200);
+    assert.equal(body.networkId, "mainnet");
+    assert.equal(body.chainId, 4_663);
+    assert.equal(body.contracts.currentSettler.address, `0x${"3".repeat(40)}`);
+    assert.ok(calls > 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

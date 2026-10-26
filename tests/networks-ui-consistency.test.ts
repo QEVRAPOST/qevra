@@ -131,10 +131,20 @@ test("deployment registry follows the selected network, caps slots at ten, and e
   ];
   const testnetMarkup = renderNetworks(records);
   const mainnetMarkup = renderNetworks(records, "mainnet");
+  const networkRegistrySection = (markup: string) => {
+    const start = markup.indexOf('class="ne-section ne-registry"');
+    const end = markup.indexOf('class="ne-section ne-infrastructure"', start);
+    assert.notEqual(start, -1);
+    assert.notEqual(end, -1);
+    return markup.slice(start, end);
+  };
+  const testnetRegistry = networkRegistrySection(testnetMarkup);
+  const mainnetRegistry = networkRegistrySection(mainnetMarkup);
 
   assert.match(testnetMarkup, /Robinhood Testnet/);
   assert.doesNotMatch(testnetMarkup, /id="h-ne-registry-mainnet"/);
-  assert.equal((testnetMarkup.match(/class="ne-contract"/g) ?? []).length, 10);
+  assert.equal((testnetRegistry.match(/class="ne-contract"/g) ?? []).length, 10);
+  assert.equal((testnetMarkup.match(/class="ne-contract"/g) ?? []).length, 15, "the five read-only infrastructure rows stay outside the ten architecture rows");
   assert.match(testnetMarkup, /testnet contract 10/);
   assert.doesNotMatch(testnetMarkup, /testnet contract 11/);
   assert.doesNotMatch(testnetMarkup, /mainnet contract 101/);
@@ -145,10 +155,10 @@ test("deployment registry follows the selected network, caps slots at ten, and e
   assert.match(testnetMarkup, /Block number/);
   assert.match(testnetMarkup, /Verified on-chain record/);
   assert.match(testnetMarkup, /NOT REPORTED/);
-  assert.match(testnetMarkup, /aria-label="View transaction"/);
+  assert.match(testnetMarkup, /aria-label="View deployment evidence"/);
   assert.match(testnetMarkup, /\/tx\/0x/);
-  assert.match(testnetMarkup, /aria-label="View contract"/);
-  assert.equal((mainnetMarkup.match(/class="ne-contract"/g) ?? []).length, 1);
+  assert.match(testnetMarkup, /aria-label="Open explorer"/);
+  assert.equal((mainnetRegistry.match(/class="ne-contract"/g) ?? []).length, 1);
   assert.match(mainnetMarkup, /mainnet contract 101/);
   assert.doesNotMatch(mainnetMarkup, /testnet contract 1/);
   assert.match(mainnetMarkup, /0\/5<\/strong> MVP contracts deployed/);
@@ -186,7 +196,7 @@ test("standalone Evidence Anchor is displayed separately and excluded from roadm
   assert.match(markup, /Full contract address/);
   assert.match(markup, /Deployer/);
   assert.match(markup, /Block number/);
-  assert.match(markup, /aria-label="View transaction"/);
+  assert.match(markup, /aria-label="View deployment evidence"/);
 });
 
 test("transaction explorer URLs accept only hashes for configured public networks", () => {

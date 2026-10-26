@@ -3,8 +3,36 @@ import { test } from "node:test";
 import { parseDeploymentArgs, simulateDeployment } from "../scripts/deploy-simulate";
 import mainnetManifest from "../contracts/deployments/robinhood-mainnet.json";
 import testnetManifest from "../contracts/deployments/robinhood-testnet.json";
+import {
+  ROBINHOOD_MAINNET_TOKENS,
+  ZEROX_ALLOWANCE_HOLDER,
+  ZEROX_SETTLER_REGISTRY,
+} from "../src/lib/config/robinhood-mainnet-contracts";
 
 const jsonRpc = (id: number, result: string) => Response.json({ jsonrpc: "2.0", id, result });
+
+function mainnetInfrastructureFixture(options: { unavailableAddress?: string } = {}) {
+  const currentSettler = "0x00000000000000000000000000000000000000a5";
+  const calls: Array<{ method: string; params: unknown[] }> = [];
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const request = JSON.parse(String(init?.body)) as { id: number; method: string; params: unknown[] };
+    calls.push({ method: request.method, params: request.params });
+    if (request.method === "eth_chainId") return jsonRpc(request.id, "0x1237");
+    if (request.method === "eth_blockNumber") return jsonRpc(request.id, "0x2a");
+    if (request.method === "eth_call") {
+      return jsonRpc(request.id, `0x${"0".repeat(24)}${currentSettler.slice(2).toLowerCase()}`);
+    }
+    if (request.method === "eth_getCode") {
+      const [address] = request.params as [string, string];
+      if (address.toLowerCase() === options.unavailableAddress?.toLowerCase()) {
+        return new Response("rpc observation unavailable", { status: 503 });
+      }
+      return jsonRpc(request.id, "0x60006000");
+    }
+    return new Response("unexpected RPC method", { status: 400 });
+  };
+  return { currentSettler, calls, fetchImpl };
+}
 
 test("prints a read-only Testnet preflight using the configured chain and RPC", async () => {
   const calls: Array<{ url: string; method: string }> = [];
@@ -68,6 +96,63 @@ test("shows Mainnet deployment readiness through configured chain and RPC reads"
   assert.match(result.output, /0\/5 MVP contracts deployed/i);
   assert.doesNotMatch(result.output, /TESTNET/);
   assert.doesNotMatch(result.output, /0x10A47a16A6A903574Ed4058B67750073cC992632/);
+});
+
+test("renders Mainnet in the shared terminal shell and shows chain-pinned external infrastructure bytecode", async () => {
+  const fixture = mainnetInfrastructureFixture();
+  const result = await simulateDeployment("mainnet", {
+    projectName: "VEYRA",
+    color: false,
+    columns: 100,
+    fetchImpl: fixture.fetchImpl,
+  });
+  const flattenedOutput = result.output.replace(/[|│]/g, " ").replace(/\s+/g, " ");
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /VEYRA \/ ROBINHOOD NETWORK READINESS/);
+  assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+4663/);
+  assert.match(result.output, /ROBINHOOD MAINNET FIVE-CONTRACT MVP REGISTRY/);
+  assert.match(result.output, /0\/5 MVP contracts deployed/);
+  assert.match(result.output, /EXTERNAL MAINNET INFRASTRUCTURE/);
+  assert.match(flattenedOutput, /Mainnet firm quotes require live provider and contract validation/);
+  assert.match(flattenedOutput, /this terminal does not request quotes or execute swaps/);
+  assert.match(result.output, /0x0000000000001fF3684f28c67538d4D072C22734/);
+  assert.match(result.output, /0x00000000000004533Fe15556B1E086BB1A72cEae/);
+  assert.match(result.output, /0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73/);
+  assert.match(result.output, /0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168/);
+  assert.match(result.output, new RegExp(fixture.currentSettler, "i"));
+  assert.match(result.output, /BYTECODE STATUS\s+│\s+PRESENT/);
+  assert.match(result.output, /FINAL READINESS SUMMARY/);
+  assert.match(result.output, /READ-ONLY STATUS DISPLAY; NO TRANSACTION IS SIMULATED/);
+  assert.ok(fixture.calls.some(({ method, params }) => method === "eth_getCode"
+    && params[1] === "0x2a"), "contract code should be checked at the observed Mainnet block");
+  assert.ok(fixture.calls.some(({ method, params }) => method === "eth_call"
+    && params[1] === "0x2a"), "the current Settler should be resolved at the observed Mainnet block");
+  assert.equal(result.output.includes(ROBINHOOD_MAINNET_TOKENS.ETH.address), false, "native ETH is not a deployed contract");
+  assert.ok(result.output.includes(ZEROX_ALLOWANCE_HOLDER));
+  assert.ok(result.output.includes(ZEROX_SETTLER_REGISTRY));
+  assert.ok(result.output.includes(ROBINHOOD_MAINNET_TOKENS.WETH.address));
+  assert.ok(result.output.includes(ROBINHOOD_MAINNET_TOKENS.USDG.address));
+
+  const narrow = await simulateDeployment("mainnet", {
+    color: false,
+    columns: 44,
+    fetchImpl: mainnetInfrastructureFixture().fetchImpl,
+  });
+  assert.ok(narrow.output.split("\n").every((line) => line.length <= 44), "each Mainnet line should fit the narrow terminal");
+});
+
+test("keeps unavailable Mainnet bytecode observations explicitly unavailable", async () => {
+  const fixture = mainnetInfrastructureFixture({ unavailableAddress: ROBINHOOD_MAINNET_TOKENS.WETH.address });
+  const result = await simulateDeployment("mainnet", {
+    color: false,
+    fetchImpl: fixture.fetchImpl,
+  });
+
+  assert.equal(result.exitCode, 0, "an external infrastructure code read does not invalidate the network preflight");
+  assert.match(result.output, /EXTERNAL MAINNET INFRASTRUCTURE/);
+  assert.match(result.output, /WETH[\s\S]*?BYTECODE STATUS\s+│\s+UNAVAILABLE/);
+  assert.doesNotMatch(result.output, /WETH[\s\S]*?BYTECODE STATUS\s+│\s+PASSED/);
 });
 
 test("keeps deployment disabled and reports 403 and 429 RPC responses without response content", async () => {

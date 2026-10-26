@@ -4,14 +4,16 @@ import Link from "next/link";
 import { Check, ChevronDown, Copy, ExternalLink, FileText } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
 import { Button, buttonVariants } from "@/components/ui/Button";
 import { copyTextToClipboard } from "@/features/wallet/clipboard";
-import { getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
+import { getRobinhoodMainnetInfrastructure, getRobinhoodNetworkStatus, NetworkStatusClientError } from "@/features/wallet/network-client";
+import type { RobinhoodContractBytecodeStatus, RobinhoodMainnetInfrastructureSnapshot } from "@/features/wallet/public-rpc";
 import { getExplorerAddressUrl, getExplorerTransactionUrl } from "@/lib/config/networks";
+import { ROBINHOOD_MAINNET_TOKENS, ZEROX_ALLOWANCE_HOLDER, ZEROX_SETTLER_REGISTRY } from "@/lib/config/robinhood-mainnet-contracts";
 import { PublicAddressInspector } from "@/components/dashboard/PublicAddressInspector";
 import {
   getVerifiedVeyraDeployments,
-  isSwapExecutionInactiveSlot,
   type VerifiedVeyraDeploymentEvidence,
   type VerifiedVeyraDeployment,
   type VerifiedVeyraStandaloneDeployment,
@@ -24,6 +26,137 @@ import { PageHead } from "./PageHead";
 
 const MVP_ARCHITECTURE_SLOT_RANGE = { first: 6, last: 10 } as const;
 const MVP_ARCHITECTURE_SLOT_COUNT = MVP_ARCHITECTURE_SLOT_RANGE.last - MVP_ARCHITECTURE_SLOT_RANGE.first + 1;
+const TESTNET_DEPLOYMENT_COPY = "These contracts are deployed on Robinhood Testnet. Product integration and security readiness are tracked separately. Deployment does not imply Mainnet availability or security approval.";
+
+function compactAddress(address: string) {
+  return `${address.slice(0, 8)}…${address.slice(-6)}`;
+}
+
+export type MainnetInfrastructureReadState =
+  | { status: "not_requested" }
+  | { status: "loading" }
+  | { status: "available"; snapshot: RobinhoodMainnetInfrastructureSnapshot }
+  | { status: "unavailable"; message: string };
+
+type MainnetInfrastructureResult = Exclude<MainnetInfrastructureReadState, { status: "not_requested" }>;
+
+type InfrastructureRow = {
+  key: "allowanceHolder" | "settlerRegistry" | "currentSettler" | "weth" | "usdg";
+  name: string;
+  address: string | null;
+  bytecode?: RobinhoodContractBytecodeStatus;
+  note?: string;
+};
+
+function infrastructureBytecodeLabel(status: RobinhoodContractBytecodeStatus | undefined, selectedNetwork: NetworkId, state: MainnetInfrastructureReadState): string {
+  if (selectedNetwork !== "mainnet") return "Bytecode not checked";
+  if (state.status === "loading") return "Checking bytecode…";
+  if (state.status === "unavailable") return "Bytecode unavailable";
+  if (state.status !== "available" || status === undefined) return "Bytecode not checked";
+  if (status === "present") return "Bytecode present";
+  if (status === "absent") return "Bytecode absent";
+  return "Bytecode unavailable";
+}
+
+export function MainnetExternalInfrastructurePanel({
+  selectedNetwork,
+  state,
+  onRefresh,
+}: {
+  selectedNetwork: NetworkId;
+  state: MainnetInfrastructureReadState;
+  onRefresh: () => void;
+}) {
+  const snapshot = state.status === "available" ? state.snapshot : undefined;
+  const currentSettler = snapshot?.contracts.currentSettler;
+  const registryBytecode = snapshot?.contracts.settlerRegistry.bytecode;
+  const currentSettlerNote = currentSettler?.status === "not_assigned"
+    ? "No current Settler address was returned by the registry at this block."
+    : selectedNetwork !== "mainnet"
+      ? "Select Robinhood Mainnet to read the configured registry."
+      : state.status === "loading"
+        ? "Reading the current Settler from token ID 2 in the registry."
+        : state.status === "unavailable" || currentSettler?.status === "unavailable"
+          ? registryBytecode === "absent"
+            ? "Registry bytecode is absent at the observed block; the Settler address could not be read."
+            : registryBytecode === "unavailable"
+              ? "Registry bytecode could not be checked; the Settler address could not be read."
+              : "The Settler Registry did not return an address for token ID 2."
+          : undefined;
+  const rows: InfrastructureRow[] = [
+    { key: "allowanceHolder", name: "0x AllowanceHolder", address: ZEROX_ALLOWANCE_HOLDER, bytecode: snapshot?.contracts.allowanceHolder.bytecode, note: "Configured external allowance target." },
+    { key: "settlerRegistry", name: "Settler Registry", address: ZEROX_SETTLER_REGISTRY, bytecode: snapshot?.contracts.settlerRegistry.bytecode, note: "Configured 0x Settler registry." },
+    { key: "currentSettler", name: "Current Settler", address: currentSettler?.address ?? null, bytecode: currentSettler?.bytecode, note: currentSettlerNote },
+    { key: "weth", name: "WETH", address: ROBINHOOD_MAINNET_TOKENS.WETH.address, bytecode: snapshot?.contracts.weth.bytecode, note: "Configured wrapped native token." },
+    { key: "usdg", name: "USDG", address: ROBINHOOD_MAINNET_TOKENS.USDG.address, bytecode: snapshot?.contracts.usdg.bytecode, note: "Configured Mainnet stablecoin." },
+  ];
+  const actionLabel = selectedNetwork !== "mainnet"
+    ? "Select Mainnet to read bytecode"
+    : state.status === "loading" ? "Checking Mainnet bytecode…"
+      : state.status === "unavailable" ? "Retry Mainnet read"
+        : state.status === "available" ? "Refresh Mainnet read"
+          : "Read Mainnet infrastructure";
+
+  return (
+    <section className="ne-section ne-infrastructure" aria-labelledby="h-ne-infrastructure">
+      <header className="ne-section-head">
+        <div className="ne-section-title">
+          <p className="ne-section-index">ROBINHOOD MAINNET · EXTERNAL INFRASTRUCTURE</p>
+          <h2 id="h-ne-infrastructure" className="ov-h">External Infrastructure</h2>
+        </div>
+        <p className="ne-separation">Configured third-party contracts on Robinhood Mainnet · chain ID 4663. This section is separate from VEYRA-owned deployments.</p>
+      </header>
+
+      {state.status === "unavailable" ? <p className="ne-error" role="status">{state.message}</p> : null}
+      {selectedNetwork !== "mainnet" ? <p className="ne-separation">Select Robinhood Mainnet to read configured contract bytecode.</p> : null}
+      {snapshot ? <p className="ne-infrastructure-observation">Observed at Mainnet block {snapshot.latestBlock} · {snapshot.observedAt}</p> : null}
+
+      <div className="ne-contract-table-wrap ne-infrastructure-table-wrap">
+        <table className="ne-contract-table ne-infrastructure-table" aria-label="External Robinhood Mainnet infrastructure contracts">
+        <caption className="sr">Configured external Mainnet contracts, compact addresses, read-only bytecode status, and explorer actions.</caption>
+          <thead>
+                    <tr><th scope="col">Contract</th><th scope="col">Mainnet address</th><th scope="col">Bytecode status</th><th scope="col">Actions</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const explorerUrl = row.address ? getExplorerAddressUrl("mainnet", row.address) : undefined;
+              return (
+                <tr className="ne-contract" key={row.key}>
+                  <th scope="row" className="ne-contract-name" data-label="Contract">
+                    <span className="ne-contract-title"><strong>{row.name}</strong><small>{row.note}</small></span>
+                  </th>
+                  <td className="ne-address-cell" data-label="Mainnet address">
+                    {row.address && explorerUrl
+                      ? <a className="ne-address-link" href={explorerUrl} target="_blank" rel="noopener noreferrer" title={row.address} aria-label={`View ${row.name} address ${row.address} on Robinhood Mainnet explorer`}><code><span className="ne-address-full">{row.address}</span><span className="ne-address-compact" aria-hidden="true">{compactAddress(row.address)}</span></code></a>
+                      : <span className="ne-no-address">{row.note ?? "Unavailable from the registry read."}</span>}
+                  </td>
+                  <td className="ne-infrastructure-code-status" data-label="Bytecode status">
+                    <span>{infrastructureBytecodeLabel(row.bytecode, selectedNetwork, state)}</span>
+                    {row.key === "currentSettler" && currentSettler?.status !== "available" && state.status === "available"
+                      ? <small>{currentSettlerNote ?? "Current Settler address unavailable."}</small>
+                      : null}
+                  </td>
+                  <td className="ne-contract-actions" data-label="Actions">
+                    <div className="ne-infrastructure-actions">
+                      {row.address ? <RegistryCopyAction address={row.address} /> : <span className="ne-no-actions">—</span>}
+                      {explorerUrl ? <RegistryLinkAction href={explorerUrl} label="Open explorer"><ExternalLink aria-hidden="true" /></RegistryLinkAction> : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="ne-infrastructure-disclaimer">Bytecode presence does not verify Solidity source or establish a security audit. Source verification: not checked. Security audit: not assessed.</p>
+      <div className="ne-section-actions">
+        <Button type="button" variant="ghost" size="small" disabled={selectedNetwork !== "mainnet" || state.status === "loading"} onClick={onRefresh}>{actionLabel}</Button>
+        <p className="ne-readonly">Public RPC reads only. No wallet permission, signing, or contract calls that change state.</p>
+      </div>
+    </section>
+  );
+}
 
 function RegistryCopyAction({ address }: { address: string }) {
   const tooltipId = useId();
@@ -67,7 +200,7 @@ function RegistryLinkAction({
   children,
 }: {
   href: string;
-  label: "View contract" | "View transaction";
+  label: "Open explorer" | "View deployment evidence";
   children: ReactNode;
 }) {
   const tooltipId = useId();
@@ -106,7 +239,6 @@ function DeploymentTableRow({
   const reason = slot?.reason;
   const addressUrl = deployment ? getExplorerAddressUrl(networkId, deployment.address) : undefined;
   const transactionUrl = deployment ? getExplorerTransactionUrl(networkId, deployment.transactionHash) : undefined;
-  const swapInactive = Boolean(deployment && slot && isSwapExecutionInactiveSlot(slot.slot));
   const sourceStatus = !deployment
     ? "NOT APPLICABLE"
     : deployment.sourceVerification === "verified"
@@ -115,24 +247,19 @@ function DeploymentTableRow({
         ? "NOT VERIFIED"
         : "NOT REPORTED";
   const readiness = slot?.readiness?.toLowerCase();
-  const operationalStatus = standalone
+  const productUseLabel = standalone
     ? "NOT APPLICABLE"
-    : swapInactive
-      ? "INACTIVE"
+    : deployment && readiness === "restricted_testnet"
+      ? "RESTRICTED"
       : deployment && (readiness === "active" || readiness === "ready")
-        ? "ACTIVE"
-        : readiness === "blocked" || readiness === "hard_no_go"
-          ? "SECURITY BLOCKED"
-          : "INACTIVE";
+        ? "ENABLED"
+        : deployment
+          ? "NOT ENABLED"
+          : readiness === "blocked" || readiness === "hard_no_go"
+            ? "SECURITY BLOCKED"
+            : "NOT ENABLED";
   const summary = reason ?? deployment?.purpose ?? "No readiness reason provided by the manifest.";
   const networkLabel = networkId === "testnet" ? "Robinhood Testnet" : "Robinhood Mainnet";
-  const operationalClass = operationalStatus === "ACTIVE"
-    ? "active"
-    : operationalStatus === "SECURITY BLOCKED"
-      ? "blocked"
-      : operationalStatus === "INACTIVE"
-        ? "inactive"
-        : "na";
 
   return (
     <>
@@ -159,25 +286,22 @@ function DeploymentTableRow({
         <td className="ne-address-cell" data-label="Contract Address">
             {deployment ? addressUrl ? (
             <a className="ne-address-link" href={addressUrl} target="_blank" rel="noopener noreferrer" title={deployment.address} aria-label={`View deployed address ${deployment.address} on ${networkLabel}`}>
-                <code>{deployment.address}</code>
+                <code><span className="ne-address-full">{deployment.address}</span><span className="ne-address-compact" aria-hidden="true">{compactAddress(deployment.address)}</span></code>
             </a>
-            ) : <code>{deployment.address}</code> : <span className="ne-no-address" aria-label="No verified deployed address">—</span>}
-        </td>
-        <td className={`ne-status-cell ne-operational-status ne-status-${operationalClass}`} data-label="Readiness">
-          <span>{operationalStatus}</span>
+            ) : <code><span className="ne-address-full">{deployment.address}</span><span className="ne-address-compact" aria-hidden="true">{compactAddress(deployment.address)}</span></code> : <span className="ne-no-address" aria-label="No verified deployed address">—</span>}
         </td>
         <td className="ne-contract-actions" data-label="Actions">
           {deployment ? (
             <>
               <RegistryCopyAction address={deployment.address} />
-              {addressUrl ? <RegistryLinkAction href={addressUrl} label="View contract"><ExternalLink aria-hidden="true" /></RegistryLinkAction> : null}
-              {transactionUrl ? <RegistryLinkAction href={transactionUrl} label="View transaction"><FileText aria-hidden="true" /></RegistryLinkAction> : null}
+              {addressUrl ? <RegistryLinkAction href={addressUrl} label="Open explorer"><ExternalLink aria-hidden="true" /></RegistryLinkAction> : null}
+              {transactionUrl ? <RegistryLinkAction href={transactionUrl} label="View deployment evidence"><FileText aria-hidden="true" /></RegistryLinkAction> : null}
             </>
           ) : <span className="ne-no-actions" aria-label="No deployment actions">—</span>}
         </td>
       </tr>
       <tr className="ne-detail-row" id={detailsId} hidden={!expanded}>
-        <td colSpan={5}>
+        <td colSpan={4}>
           <dl className="ne-contract-details">
             <div><dt>On-chain deployment</dt><dd>{deployment ? "On-chain deployment confirmed" : "No verified deployment record"}</dd></div>
             {deployment && addressUrl ? <div><dt>Full contract address</dt><dd><a className="ne-evidence-link" href={addressUrl} target="_blank" rel="noopener noreferrer"><code>{deployment.address}</code></a></dd></div> : null}
@@ -194,7 +318,8 @@ function DeploymentTableRow({
                 ) : null}
               </dd>
             </div>
-            <div><dt>Operational readiness</dt><dd>{operationalStatus}</dd></div>
+            <div><dt>Product use</dt><dd>{productUseLabel}</dd></div>
+            <div><dt>Manifest readiness</dt><dd>{slot?.readiness ? <code>{slot.readiness}</code> : "Not reported"}</dd></div>
             {deployment?.runtimeBytecodeHash ? <div><dt>Runtime bytecode hash</dt><dd><code>{deployment.runtimeBytecodeHash}</code></dd></div> : null}
             {deployment?.purpose ? <div className="ne-detail-purpose"><dt>Contract purpose</dt><dd>{deployment.purpose}</dd></div> : null}
             {reason ? <div className="ne-detail-purpose"><dt>Manifest readiness reason</dt><dd>{reason}</dd></div> : null}
@@ -202,8 +327,10 @@ function DeploymentTableRow({
               <dt>Operational restrictions</dt>
               <dd>{standalone
                 ? "Standalone research utility; excluded from architecture progress. Registry actions are read-only."
-                : deployment && operationalStatus === "INACTIVE"
-                  ? "Deployment is confirmed, but this contract is not enabled for real swaps or asset authorization. Registry actions are read-only."
+                : deployment && productUseLabel === "NOT ENABLED"
+                  ? "Live product operations are disabled. See the recorded manifest readiness and reason above for security status. Registry actions are read-only."
+                  : deployment && productUseLabel === "RESTRICTED"
+                    ? "This Testnet deployment retains the restricted permissions and purpose recorded above. Registry actions are read-only."
                   : deployment
                     ? "Deployment evidence is separate from operational readiness. The registry does not initiate contract actions."
                     : "This contract has not been deployed. Deployment and related execution remain disabled until the manifest blocker is resolved."}</dd>
@@ -225,13 +352,12 @@ function DeploymentTable({
   return (
     <div className="ne-contract-table-wrap">
       <table className="ne-contract-table" aria-label={label}>
-        <caption className="sr">Deployment, source verification, and operational readiness. Expand a row for full manifest details.</caption>
+        <caption className="sr">Deployment records. Expand a row for product-use status, full manifest readiness, evidence, and security limitations.</caption>
         <thead>
           <tr>
             <th scope="col">Contract</th>
             <th scope="col">Deployment</th>
             <th scope="col">Contract Address</th>
-            <th scope="col">Readiness</th>
             <th scope="col">Actions</th>
           </tr>
         </thead>
@@ -266,6 +392,13 @@ export function NetworksView({
     state: { status: "loading" },
   });
   const [previewRetry, setPreviewRetry] = useState(0);
+  const [mainnetInfrastructureResult, setMainnetInfrastructureResult] = useState<{ requestKey: number; state: MainnetInfrastructureResult } | null>(null);
+  const [mainnetInfrastructureRetry, setMainnetInfrastructureRetry] = useState(0);
+  const mainnetInfrastructure: MainnetInfrastructureReadState = model.network.selected !== "mainnet"
+    ? { status: "not_requested" }
+    : mainnetInfrastructureResult?.requestKey === mainnetInfrastructureRetry
+      ? mainnetInfrastructureResult.state
+      : { status: "loading" };
   const selected = model.network.options.find((network) => network.id === model.network.selected);
   const deploymentNetworks = model.network.options.filter((network) => network.available);
   const deploymentGroups = deploymentNetworks.filter((network) => network.id === model.network.selected).map((network) => {
@@ -302,6 +435,13 @@ export function NetworksView({
   const walletNetwork = wallet?.networkName === "Unsupported network"
     ? "Unknown / unsupported (name unavailable from this wallet read)"
     : wallet?.networkName ?? "Unavailable";
+  const walletBalance = wallet?.status === "connected" && !model.network.walletMismatch ? wallet.balance : undefined;
+  const walletChainNetwork = wallet?.chainId === undefined
+    ? undefined
+    : model.network.options.find((network) => network.chainId === wallet.chainId);
+  const walletExplorerUrl = wallet?.address && walletChainNetwork
+    ? getExplorerAddressUrl(walletChainNetwork.id, wallet.address)
+    : undefined;
 
   useEffect(() => {
     if (model.mode !== "demo") return;
@@ -335,6 +475,25 @@ export function NetworksView({
     return () => { active = false; };
   }, [model.mode, model.network.selected, previewRetry]);
 
+  useEffect(() => {
+    if (model.network.selected !== "mainnet") return;
+    let active = true;
+    const requestKey = mainnetInfrastructureRetry;
+    void getRobinhoodMainnetInfrastructure().then((snapshot) => {
+      if (active) setMainnetInfrastructureResult({ requestKey, state: { status: "available", snapshot } });
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setMainnetInfrastructureResult({
+        requestKey,
+        state: {
+          status: "unavailable",
+          message: error instanceof NetworkStatusClientError ? error.message : "The public Robinhood Mainnet RPC could not be reached.",
+        },
+      });
+    });
+    return () => { active = false; };
+  }, [model.network.selected, mainnetInfrastructureRetry]);
+
   const rpc = model.mode === "live"
     ? model.network.rpc
     : previewRpc.networkId === model.network.selected && previewRpc.attempt === previewRetry
@@ -343,6 +502,9 @@ export function NetworksView({
   const refreshPublicRpc = () => {
     if (model.mode === "live") actions.refreshNetwork?.();
     else setPreviewRetry((current) => current + 1);
+  };
+  const refreshMainnetInfrastructure = () => {
+    if (model.network.selected === "mainnet") setMainnetInfrastructureRetry((current) => current + 1);
   };
 
   return (
@@ -374,7 +536,10 @@ export function NetworksView({
                   variant={network.id === model.network.selected ? "primary" : "ghost"}
                   aria-pressed={network.id === model.network.selected}
                   disabled={!network.available}
-                  onClick={() => actions.setNetwork(network.id)}
+                  onClick={() => {
+                    actions.setNetwork(network.id);
+                    if (network.id === "mainnet") setMainnetInfrastructureRetry((current) => current + 1);
+                  }}
                 >
                   {network.label} · {network.chainId}
                 </Button>
@@ -395,6 +560,31 @@ export function NetworksView({
                 <div><dt>Wallet network</dt><dd>{walletNetwork}</dd></div>
                 <div><dt>Wallet chain ID</dt><dd>{wallet.chainId ?? "Unavailable"}</dd></div>
                 <div><dt>Wallet/app network</dt><dd>{model.network.walletMismatch ? "Mismatch" : "Match"}</dd></div>
+                <div className="ne-wallet-address-fact">
+                  <dt>Connected external wallet address</dt>
+                  <dd className="ne-wallet-account">
+                    <code>{wallet.address}</code>
+                    <span className="ne-wallet-account-actions">
+                      <CopyAddressButton address={wallet.address} label="Copy Address" />
+                      {walletExplorerUrl ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={walletExplorerUrl} target="_blank" rel="noopener noreferrer">Open wallet in Explorer</a> : null}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Wallet native balance</dt>
+                  <dd>
+                    {model.network.walletMismatch
+                      ? "Not shown · network mismatch"
+                      : wallet.status === "loading"
+                        ? "Reading wallet RPC…"
+                        : walletBalance
+                          ? `${walletBalance.amount} ETH`
+                          : "Unavailable"}
+                  </dd>
+                </div>
+                {walletBalance ? (
+                  <div><dt>Wallet balance source</dt><dd>{walletBalance.provider} · block {walletBalance.blockNumber}</dd></div>
+                ) : null}
               </>
             ) : null}
             {rpc.observedAt ? <div><dt>Observed at</dt><dd><time dateTime={rpc.observedAt}>{rpc.observedAt}</time></dd></div> : null}
@@ -403,7 +593,7 @@ export function NetworksView({
 
           {wallet?.address && model.network.walletMismatch ? (
             <p className="ne-warning" role="status">
-              {wallet.providerName ?? "Your wallet"} is on {walletNetwork} (chain ID {wallet.chainId ?? "unavailable"}). Manually select {selected?.label ?? "the selected network"} (chain ID {selected?.chainId ?? "unknown"}) in your wallet to match. VEYRA will not switch it.
+              {wallet.providerName ?? "Your wallet"} is on {walletNetwork} (chain ID {wallet.chainId ?? "unavailable"}). Manually select {selected?.label ?? "the selected network"} (chain ID {selected?.chainId ?? "unknown"}) in your wallet to match. No balance is shown while this mismatch remains. VEYRA will not switch it.
             </p>
           ) : null}
           {rpc.message ? <p className="ne-error" role="status">{rpc.message}</p> : null}
@@ -466,9 +656,9 @@ export function NetworksView({
                       {`No deployed ${PROJECT_NAME} MVP contracts on ${network.label}.`}
                     </p>
                   )}
-                  {deployedMvpSlots.length > 0 ? (
+                  {deployedMvpSlots.length > 0 && network.id === "testnet" ? (
                     <p className="ne-registry-network-note">
-                      Inactive means deployment is confirmed, but contracts are not enabled for real swaps or asset authorization.
+                      {TESTNET_DEPLOYMENT_COPY}
                     </p>
                   ) : null}
                   {futureResearchSlots.length > 0 ? (
@@ -515,6 +705,12 @@ export function NetworksView({
             })}
           </div>
         </section>
+
+        <MainnetExternalInfrastructurePanel
+          selectedNetwork={model.network.selected}
+          state={mainnetInfrastructure}
+          onRefresh={refreshMainnetInfrastructure}
+        />
       </div>
     </section>
   );

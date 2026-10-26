@@ -1,7 +1,8 @@
 import { NETWORKS } from "@/lib/config/networks";
 import type { NetworkId } from "@/types/network";
 import { isAddress } from "viem";
-import type { RobinhoodNetworkSnapshot, RobinhoodPublicAddressSnapshot } from "./public-rpc";
+import type { RobinhoodMainnetInfrastructureSnapshot, RobinhoodNetworkSnapshot, RobinhoodPublicAddressSnapshot } from "./public-rpc";
+import { ROBINHOOD_MAINNET_TOKENS, ZEROX_ALLOWANCE_HOLDER, ZEROX_SETTLER_REGISTRY } from "@/lib/config/robinhood-mainnet-contracts";
 
 export class NetworkStatusClientError extends Error {
   constructor(readonly code: string, readonly status: number, message: string) {
@@ -61,6 +62,36 @@ function isPublicAddressSnapshot(
     && /^\d+$/.test(snapshot.observedBlock)
     && typeof snapshot.observedAt === "string"
     && Number.isFinite(Date.parse(snapshot.observedAt));
+}
+
+function isMainnetInfrastructureSnapshot(value: unknown): value is RobinhoodMainnetInfrastructureSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const snapshot = value as Partial<RobinhoodMainnetInfrastructureSnapshot>;
+  const contracts = snapshot.contracts;
+  const isCodeStatus = (status: unknown): status is "present" | "absent" | "unavailable" =>
+    status === "present" || status === "absent" || status === "unavailable";
+  const hasStaticAddress = (record: unknown, expected: string): boolean => {
+    if (!record || typeof record !== "object") return false;
+    const item = record as { address?: unknown; bytecode?: unknown };
+    return typeof item.address === "string"
+      && item.address.toLowerCase() === expected.toLowerCase()
+      && isAddress(item.address)
+      && isCodeStatus(item.bytecode);
+  };
+  if (snapshot.networkId !== "mainnet" || snapshot.chainId !== 4_663
+    || typeof snapshot.latestBlock !== "string" || !/^\d+$/.test(snapshot.latestBlock)
+    || typeof snapshot.observedAt !== "string" || !Number.isFinite(Date.parse(snapshot.observedAt))
+    || !contracts
+    || !hasStaticAddress(contracts.allowanceHolder, ZEROX_ALLOWANCE_HOLDER)
+    || !hasStaticAddress(contracts.settlerRegistry, ZEROX_SETTLER_REGISTRY)
+    || !hasStaticAddress(contracts.weth, ROBINHOOD_MAINNET_TOKENS.WETH.address)
+    || !hasStaticAddress(contracts.usdg, ROBINHOOD_MAINNET_TOKENS.USDG.address)) return false;
+
+  const currentSettler = contracts.currentSettler;
+  if (!currentSettler || !isCodeStatus(currentSettler.bytecode)) return false;
+  if (currentSettler.status === "available") return typeof currentSettler.address === "string" && isAddress(currentSettler.address);
+  return currentSettler.address === null
+    && (currentSettler.status === "not_assigned" || currentSettler.status === "unavailable");
 }
 
 export async function getRobinhoodNetworkStatus(
@@ -156,6 +187,52 @@ export async function getRobinhoodPublicAddress(
     throw new NetworkStatusClientError("rpc_invalid_response", response.status, PUBLIC_ERROR_MESSAGES.rpc_invalid_response!);
   }
   if (!isPublicAddressSnapshot(body, networkId, address)) {
+    throw new NetworkStatusClientError("rpc_invalid_response", response.status, PUBLIC_ERROR_MESSAGES.rpc_invalid_response!);
+  }
+  return body;
+}
+
+/** Reads fixed, public Mainnet infrastructure through the same-origin Robinhood RPC route. */
+export async function getRobinhoodMainnetInfrastructure(
+  fetchImpl: typeof fetch = fetch,
+): Promise<RobinhoodMainnetInfrastructureSnapshot> {
+  let response: Response;
+  try {
+    response = await fetchImpl("/api/network/mainnet?infrastructure=1", {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: AbortSignal.timeout(9_000),
+    });
+  } catch (error) {
+    const code = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+      ? "rpc_timeout"
+      : "rpc_unavailable";
+    throw new NetworkStatusClientError(code, 0, PUBLIC_ERROR_MESSAGES[code]!);
+  }
+
+  if (!response.ok) {
+    let code = response.status === 403 || response.status === 429 ? "rpc_http_error" : "rpc_unavailable";
+    let upstreamMessage: unknown;
+    try {
+      const body = await response.json() as { error?: { code?: unknown; message?: unknown } };
+      if (typeof body.error?.code === "string" && PUBLIC_ERROR_MESSAGES[body.error.code]) code = body.error.code;
+      upstreamMessage = body.error?.message;
+    } catch {
+      // Keep public error details fixed when an upstream response is malformed.
+    }
+    const message = code === "rpc_http_error"
+      ? publicHttpErrorMessage(response.status, upstreamMessage)
+      : PUBLIC_ERROR_MESSAGES[code]!;
+    throw new NetworkStatusClientError(code, response.status, message);
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new NetworkStatusClientError("rpc_invalid_response", response.status, PUBLIC_ERROR_MESSAGES.rpc_invalid_response!);
+  }
+  if (!isMainnetInfrastructureSnapshot(body)) {
     throw new NetworkStatusClientError("rpc_invalid_response", response.status, PUBLIC_ERROR_MESSAGES.rpc_invalid_response!);
   }
   return body;

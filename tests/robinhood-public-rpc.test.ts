@@ -24,6 +24,28 @@ function getPublicAddressReader(): PublicAddressReader {
   return reader!;
 }
 
+type MainnetInfrastructureSnapshot = {
+  networkId: "mainnet";
+  chainId: 4_663;
+  latestBlock: string;
+  observedAt: string;
+  contracts: {
+    allowanceHolder: { address: string; bytecode: "present" | "absent" | "unavailable" };
+    settlerRegistry: { address: string; bytecode: "present" | "absent" | "unavailable" };
+    currentSettler: { address: string | null; status: "available" | "not_assigned" | "unavailable"; bytecode: "present" | "absent" | "unavailable" };
+    weth: { address: string; bytecode: "present" | "absent" | "unavailable" };
+    usdg: { address: string; bytecode: "present" | "absent" | "unavailable" };
+  };
+};
+
+type MainnetInfrastructureReader = (fetchImpl?: typeof fetch) => Promise<MainnetInfrastructureSnapshot>;
+
+function getMainnetInfrastructureReader(): MainnetInfrastructureReader {
+  const reader = (publicRpc as unknown as { readRobinhoodMainnetInfrastructure?: MainnetInfrastructureReader }).readRobinhoodMainnetInfrastructure;
+  assert.equal(typeof reader, "function", "the public RPC adapter should expose Mainnet infrastructure reads");
+  return reader!;
+}
+
 test("public RPC health verifies the selected network's chain ID and latest block", async () => {
   const calls: Array<{ url: string; body: { id: number; method: string } }> = [];
   const snapshot = await readRobinhoodNetwork("testnet", async (input, init) => {
@@ -129,6 +151,49 @@ test("public address reads stop before balance access when the RPC reports a dif
       return rpcResponse(body.id, "0x1");
     }),
     (error: unknown) => error instanceof RobinhoodRpcError && error.code === "rpc_chain_id_mismatch" && error.observedChainId === 1,
+  );
+  assert.equal(calls, 1);
+});
+
+test("Mainnet infrastructure reads resolve the live Settler and bytecode at one verified Mainnet block", async () => {
+  const currentSettler = "0x2222222222222222222222222222222222222222";
+  const methods: Array<{ method: string; params: unknown[] }> = [];
+  const snapshot = await getMainnetInfrastructureReader()(async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { id: number; method: string; params: unknown[] };
+    methods.push({ method: body.method, params: body.params });
+    let result = "0x60016000";
+    if (body.method === "eth_chainId") result = "0x1237";
+    else if (body.method === "eth_blockNumber") result = "0x2a";
+    else if (body.method === "eth_call") result = `0x${currentSettler.slice(2).padStart(64, "0")}`;
+    else if (body.method === "eth_getCode" && body.params[0] === "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168") result = "0x";
+    return rpcResponse(body.id, result);
+  });
+
+  assert.equal(snapshot.networkId, "mainnet");
+  assert.equal(snapshot.chainId, 4_663);
+  assert.equal(snapshot.latestBlock, "42");
+  assert.equal(snapshot.contracts.allowanceHolder.address, "0x0000000000001fF3684f28c67538d4D072C22734");
+  assert.equal(snapshot.contracts.settlerRegistry.address, "0x00000000000004533Fe15556B1E086BB1A72cEae");
+  assert.deepEqual(snapshot.contracts.currentSettler, { address: currentSettler, status: "available", bytecode: "present" });
+  assert.equal(snapshot.contracts.weth.address, "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
+  assert.equal(snapshot.contracts.usdg.address, "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
+  assert.equal(snapshot.contracts.usdg.bytecode, "absent");
+  assert.equal(snapshot.contracts.allowanceHolder.bytecode, "present");
+  assert.ok(methods.every(({ method, params }) => method !== "eth_getBalance"
+    && (method !== "eth_getCode" || params[1] === "0x2a")
+    && (method !== "eth_call" || params[1] === "0x2a")));
+  assert.match(snapshot.observedAt, /^\d{4}-\d\d-\d\dT/);
+});
+
+test("Mainnet infrastructure refuses to read any contract when the RPC chain ID differs", async () => {
+  let calls = 0;
+  await assert.rejects(
+    getMainnetInfrastructureReader()(async (_input, init) => {
+      calls += 1;
+      const body = JSON.parse(String(init?.body)) as { id: number };
+      return rpcResponse(body.id, "0xb626");
+    }),
+    (error: unknown) => error instanceof RobinhoodRpcError && error.code === "rpc_chain_id_mismatch" && error.observedChainId === 46_630,
   );
   assert.equal(calls, 1);
 });

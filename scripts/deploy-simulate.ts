@@ -3,6 +3,8 @@ import { pathToFileURL } from "node:url";
 import { keccak256, type Hex } from "viem";
 import { parseVerifiedVeyraManifest, type VeyraDeploymentManifest } from "@/lib/config/veyra-deployment-manifest";
 import { isSwapExecutionInactiveSlot, type VerifiedVeyraDeployment, type VerifiedVeyraStandaloneDeployment } from "@/lib/config/veyra-deployments";
+import { ROBINHOOD_MAINNET_TOKENS, ZEROX_ALLOWANCE_HOLDER, ZEROX_SETTLER_REGISTRY } from "@/lib/config/robinhood-mainnet-contracts";
+import { readRobinhoodMainnetInfrastructure, type RobinhoodMainnetInfrastructureSnapshot } from "@/features/wallet/public-rpc";
 import { resolveRobinhoodNetwork } from "./robinhood";
 import type { NetworkId, NetworkOption } from "@/types/network";
 
@@ -532,6 +534,71 @@ function formatRegistry(
   addBorder();
 }
 
+function infrastructureTone(status: "present" | "absent" | "unavailable" | "not-checked"): "good" | "warn" | "bad" | "muted" {
+  if (status === "present") return "good";
+  if (status === "absent") return "bad";
+  if (status === "not-checked") return "muted";
+  return "warn";
+}
+
+function formatMainnetInfrastructure(
+  frame: ReturnType<typeof createFrame>,
+  sectionNumber: string,
+  snapshot?: RobinhoodMainnetInfrastructureSnapshot,
+): void {
+  const { section, row, note, addBorder } = frame;
+  section(sectionNumber, "EXTERNAL MAINNET INFRASTRUCTURE");
+  if (snapshot) {
+    row("Infrastructure RPC", "AVAILABLE · CHAIN 4663", "good");
+    row("Observed block", snapshot.latestBlock, "muted");
+  } else {
+    row("Infrastructure RPC", "UNAVAILABLE", "warn");
+    note("Bytecode observations could not be verified; unavailable reads are not treated as successful.");
+  }
+
+  const contracts: Array<{ name: string; address: string; status: "present" | "absent" | "unavailable" }> = [
+    {
+      name: "0x AllowanceHolder",
+      address: snapshot?.contracts.allowanceHolder.address ?? ZEROX_ALLOWANCE_HOLDER,
+      status: snapshot?.contracts.allowanceHolder.bytecode ?? "unavailable",
+    },
+    {
+      name: "0x Settler Registry",
+      address: snapshot?.contracts.settlerRegistry.address ?? ZEROX_SETTLER_REGISTRY,
+      status: snapshot?.contracts.settlerRegistry.bytecode ?? "unavailable",
+    },
+    {
+      name: "WETH",
+      address: snapshot?.contracts.weth.address ?? ROBINHOOD_MAINNET_TOKENS.WETH.address,
+      status: snapshot?.contracts.weth.bytecode ?? "unavailable",
+    },
+    {
+      name: "USDG",
+      address: snapshot?.contracts.usdg.address ?? ROBINHOOD_MAINNET_TOKENS.USDG.address,
+      status: snapshot?.contracts.usdg.bytecode ?? "unavailable",
+    },
+  ];
+  for (const contract of contracts) {
+    frame.boxLine(contract.name, "left", "plain");
+    row("Configured address", contract.address, "muted");
+    row("Bytecode status", contract.status.toUpperCase(), infrastructureTone(contract.status));
+  }
+
+  const settler = snapshot?.contracts.currentSettler;
+  frame.boxLine("Current Settler · resolved from the Mainnet registry", "left", "plain");
+  row("Resolution status", settler?.status === "available"
+    ? "AVAILABLE"
+    : settler?.status === "not_assigned" ? "NOT ASSIGNED" : "UNAVAILABLE",
+  settler?.status === "available" ? "good" : "warn");
+  row("Resolved address", settler?.address ?? (settler?.status === "not_assigned" ? "NOT ASSIGNED" : "UNAVAILABLE"), "muted");
+  const settlerBytecode = settler?.status === "not_assigned"
+    ? "not-checked"
+    : settler?.bytecode ?? "unavailable";
+  row("Bytecode status", settlerBytecode.toUpperCase(), infrastructureTone(settlerBytecode));
+  note("These are external public contracts, not VEYRA-owned deployments; bytecode presence is not an audit or route-availability guarantee.");
+  addBorder();
+}
+
 function appendTerminalHeader(
   frame: ReturnType<typeof createFrame>,
   selection: NetworkSelection,
@@ -570,6 +637,7 @@ function formatReadiness(
   selection: NetworkSelection,
   registries: Partial<Record<NetworkId, RegistrySnapshot>>,
   networkResults: Partial<Record<NetworkId, NetworkResult>>,
+  infrastructureResults: Partial<Record<NetworkId, RobinhoodMainnetInfrastructureSnapshot>>,
   projectName: string,
   options: Required<Pick<SimulationOptions, "color" | "colorDepth" | "columns">>,
 ): string {
@@ -600,16 +668,22 @@ function formatReadiness(
     if (result.detail) note(result.detail);
     addBorder();
     formatRegistry(frame, registry, String(sectionNumber + 1).padStart(2, "0"), result);
-    sectionNumber += 4;
+    if (registry.networkId === "mainnet") {
+      formatMainnetInfrastructure(frame, String(sectionNumber + 4).padStart(2, "0"), infrastructureResults.mainnet);
+    }
+    sectionNumber += registry.networkId === "mainnet" ? 5 : 4;
   }
 
   const verifiedMvpByNetwork = new Map(selectedRegistries.map((registry) => [
     registry.networkId,
     registry.verifiedDeployments.filter((record) => record.architectureSlot >= 6 && record.architectureSlot <= 10).length,
   ]));
+  const swapReadiness = selectedRegistries.some((registry) => registry.networkId === "mainnet")
+    ? "PARTIAL — Mainnet firm quotes require live provider and contract validation; this terminal does not request quotes or execute swaps."
+    : "PARTIAL — input validation and intent comparison exist; no verified quote route or execution.";
   section(String(sectionNumber++).padStart(2, "0"), "THREE CORE PRODUCT PILLARS");
   row("A · Post-Quantum Smart Account", "BLOCKED — ML-DSA security remains NO-GO; the EVM wallet remains read-only.", "bad");
-  row("B · Simple Swap + Intent Lock", "PARTIAL — input validation and intent comparison exist; no verified quote route or execution.", "warn");
+  row("B · Simple Swap + Intent Lock", swapReadiness, "warn");
   row("C · Autonomous Security Swarm", "HISTORICAL COMPLETE REPORT — current new-run readiness requires an authenticated capability check.", "warn");
   row("Historical three-agent report", "COMPLETED (historical evidence; not a new run)", "good");
   row("New research runs", "READINESS CHECK REQUIRED", "warn");
@@ -727,7 +801,7 @@ function terminalProgressHandler(speed: number): ProgressHandler {
 
 function revealDelay(line: string): number {
   if (/^[+=-]{20,}$/.test(line.trim())) return 36;
-  if (/\b(?:LIVE NETWORK VALIDATION|ROBINHOOD .* REGISTRY|EVIDENCE ANCHOR|CORE PRODUCT PILLARS|FINAL READINESS SUMMARY)\b/.test(line)) return 145;
+  if (/\b(?:LIVE NETWORK VALIDATION|ROBINHOOD .* REGISTRY|EVIDENCE ANCHOR|EXTERNAL MAINNET INFRASTRUCTURE|CORE PRODUCT PILLARS|FINAL READINESS SUMMARY)\b/.test(line)) return 145;
   if (/SLOT \d+|ADDRESS │|TRANSACTION │|DEPLOYMENT BLOCK │/.test(line)) return 34;
   if (line.includes("#")) return 42;
   return 22;
@@ -771,6 +845,7 @@ export async function simulateDeployment(
   }
   let exitCode = 0;
   const networkResults: Partial<Record<NetworkId, NetworkResult>> = {};
+  const infrastructureResults: Partial<Record<NetworkId, RobinhoodMainnetInfrastructureSnapshot>> = {};
 
   for (const id of selectedIds) {
     const network = resolveRobinhoodNetwork(id);
@@ -815,11 +890,20 @@ export async function simulateDeployment(
       exitCode = 1;
       networkResults[id] = statusForRpcError(error, network, observedChainId);
     }
+
+    if (id === "mainnet" && networkResults.mainnet?.status === "AVAILABLE") {
+      try {
+        infrastructureResults.mainnet = await withProgress("Read configured external infrastructure on Mainnet", options.onProgress, () =>
+          readRobinhoodMainnetInfrastructure(fetchImpl));
+      } catch {
+        // Keep deployment status output available if an optional public contract read fails.
+      }
+    }
   }
 
   return {
     exitCode,
-    output: formatReadiness(networkId, registries, networkResults, projectName, {
+    output: formatReadiness(networkId, registries, networkResults, infrastructureResults, projectName, {
       color,
       colorDepth,
       columns,

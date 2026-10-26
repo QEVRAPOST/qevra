@@ -70,7 +70,7 @@ function renderNetworks(
       networkId: candidate.networkId,
       slot: candidate.architectureSlot,
       solidityName: candidate.name,
-      readiness: "blocked",
+      readiness: candidate.architectureSlot === 10 ? "restricted_testnet" : "blocked",
       reason: typeof candidate.purpose === "string" ? candidate.purpose : "Fixture blocker.",
     }];
   });
@@ -146,6 +146,60 @@ test("network status keeps connected wallet provider, actual chain, and manual m
   assert.match(markup, /VEYRA will not switch it/);
 });
 
+test("Networks shows the authorized wallet address, matching-chain native balance, and its own explorer", () => {
+  const address = "0x0000000000000000000000000000000000000011";
+  const markup = renderNetworks("mainnet", { status: "available", chainId: 4_663, latestBlock: "123" }, undefined, {
+    status: "connected",
+    address,
+    providerName: "MetaMask",
+    chainId: 4_663,
+    networkName: "Robinhood Chain",
+    isQevraTargetNetwork: true,
+    balance: {
+      symbol: "ETH",
+      amount: "1.25",
+      wei: "1250000000000000000",
+      blockNumber: "321",
+      blockHash: `0x${"a".repeat(64)}`,
+      provider: "connected_wallet_rpc",
+      observedAt: "2026-10-21T00:00:00.000Z",
+    },
+  });
+
+  assert.match(markup, new RegExp(`MetaMask[\\s\\S]*${address}`));
+  assert.match(markup, /1\.25 ETH/);
+  assert.match(markup, /Wallet balance source[\s\S]*connected_wallet_rpc/);
+  assert.match(markup, /321/);
+  assert.match(markup, new RegExp(`href="https://robinhoodchain\\.blockscout\\.com/address/${address}"`));
+});
+
+test("Networks retains the connected address but never shows a balance for a mismatched chain", () => {
+  const address = "0x0000000000000000000000000000000000000011";
+  const markup = renderNetworks("testnet", { status: "available", chainId: 46_630, latestBlock: "123" }, undefined, {
+    status: "connected",
+    address,
+    providerName: "MetaMask",
+    chainId: 4_663,
+    networkName: "Robinhood Chain",
+    balance: {
+      symbol: "ETH",
+      amount: "9.75",
+      wei: "9750000000000000000",
+      blockNumber: "321",
+      blockHash: `0x${"a".repeat(64)}`,
+      provider: "connected_wallet_rpc",
+      observedAt: "2026-10-21T00:00:00.000Z",
+    },
+  });
+
+  assert.match(markup, /Connected · network mismatch/);
+  assert.match(markup, /Manually select Robinhood Testnet \(chain ID 46630\)/);
+  assert.match(markup, /No balance is shown/);
+  assert.doesNotMatch(markup, /9\.75 ETH/);
+  assert.match(markup, new RegExp(`href="https://robinhoodchain\\.blockscout\\.com/address/${address}"`));
+  assert.doesNotMatch(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${address}"`));
+});
+
 test("network explorer provides a separate empty watch-only public address inspector", () => {
   const markup = renderNetworks("testnet", { status: "loading" });
 
@@ -186,25 +240,34 @@ test("network explorer renders a controlled verified entry without merging walle
   const markup = renderNetworks("testnet", { status: "loading" }, [deployment]);
 
   assert.match(markup, /<table class="ne-contract-table" aria-label="Testnet MVP architecture deployments">/);
-  for (const column of ["Contract", "Deployment", "Contract Address", "Readiness", "Actions"]) {
+  for (const column of ["Contract", "Deployment", "Contract Address", "Actions"]) {
     assert.match(markup, new RegExp(`<th scope="col">${column}<\\/th>`));
   }
-  for (const omitted of ["Network", "On-chain", "Source Verification", "Operational Readiness"]) {
+  for (const omitted of ["Product Use", "Network", "On-chain", "Source Verification", "Operational Readiness"]) {
     assert.doesNotMatch(markup, new RegExp(`<th scope="col">${omitted}</th>`));
   }
+  const tableStart = markup.indexOf('<table class="ne-contract-table" aria-label="Testnet MVP architecture deployments">');
+  const tableEnd = markup.indexOf("</table>", tableStart);
+  const tableMarkup = markup.slice(tableStart, tableEnd);
+  const rowStart = tableMarkup.indexOf('<tr class="ne-contract">');
+  const rowEnd = tableMarkup.indexOf("</tr>", rowStart);
+  const visibleRow = tableMarkup.slice(rowStart, rowEnd);
+  assert.equal((visibleRow.match(/<(?:th|td)\b/g) ?? []).length, 4, "the Testnet deployment row should have exactly four visible cells");
+  assert.doesNotMatch(tableMarkup, /<td[^>]*data-label="Product Use"/);
+  assert.match(tableMarkup, /<tr class="ne-detail-row" id="[^"]+" hidden=""><td colSpan="4">/);
+  assert.match(tableMarkup, /<dt>Product use<\/dt><dd>RESTRICTED<\/dd>/, "readiness stays available in expanded details");
   assert.match(markup, /PQ Smart Account/);
-  assert.match(markup, /<td class="ne-address-cell" data-label="Contract Address"><a[^>]+><code>0x0000000000000000000000000000000000000009<\/code><\/a><\/td>/);
-  assert.doesNotMatch(markup, /0x0000…0009/);
+  assert.match(markup, /<td class="ne-address-cell" data-label="Contract Address"><a[^>]+><code><span class="ne-address-full">0x0000000000000000000000000000000000000009<\/span><span class="ne-address-compact" aria-hidden="true">0x000000…000009<\/span><\/code><\/a><\/td>/);
   assert.match(markup, /title="0x0000000000000000000000000000000000000009"/);
   assert.match(markup, /<dt>Source verification<\/dt><dd>VERIFIED<\/dd>/);
   assert.match(markup, /aria-label="Copy address"/);
   assert.match(markup, /data-tooltip="Copy address"/);
-  assert.match(markup, /aria-label="View contract"/);
-  assert.match(markup, /data-tooltip="View contract"/);
-  assert.match(markup, /aria-label="View transaction"/);
-  assert.match(markup, /data-tooltip="View transaction"/);
+  assert.match(markup, /aria-label="Open explorer"/);
+  assert.match(markup, /data-tooltip="Open explorer"/);
+  assert.match(markup, /aria-label="View deployment evidence"/);
+  assert.match(markup, /data-tooltip="View deployment evidence"/);
   assert.match(markup, /aria-live="polite"/);
-  for (const label of ["Copy address", "View contract", "View transaction"]) {
+  for (const label of ["Copy address", "Open explorer", "View deployment evidence"]) {
     const action = markup.match(new RegExp(`aria-label="${label}" aria-describedby="([^"]+)" data-tooltip="${label}"`));
     assert.ok(action, `${label} should expose an accessible description`);
     assert.ok(markup.includes(`id="${action[1]}" role="tooltip">${label}</span>`), `${label} tooltip should be linked for keyboard and screen reader users`);
@@ -243,7 +306,7 @@ test("deployed contract rows retain their full evidence and explain unavailable 
   assert.match(markup, /aria-controls="[^\"]+"/);
   assert.match(markup, /class="ne-detail-row" id="[^"]+" hidden=""/);
   for (const value of [address, tx, "0x0000000000000000000000000000000000000001", "12345", hash,
-    "On-chain deployment confirmed", "NOT VERIFIED", "Source verification unavailable", "Registers approved Robinhood tokens for read-only policy checks.", "not enabled for real swaps or asset authorization"]) {
+    "On-chain deployment confirmed", "NOT VERIFIED", "Source verification unavailable", "Registers approved Robinhood tokens for read-only policy checks.", "blocked", "NOT ENABLED"]) {
     assert.ok(markup.includes(value), `${value} should remain available in contract details`);
   }
 });
@@ -277,16 +340,20 @@ test("deployed Testnet fixture records render from their actual count without a 
   });
   const markup = renderNetworks("testnet", { status: "loading" }, records);
   const deploymentCount = records.filter((record) => record.architectureSlot >= 6 && record.architectureSlot <= 10).length;
-  const inactiveCount = records.filter((record) => record.architectureSlot >= 6 && record.architectureSlot <= 9).length;
-  const blockedCount = deploymentCount - inactiveCount;
+  const notEnabledCount = records.filter((record) => record.architectureSlot >= 6 && record.architectureSlot <= 9).length;
+  const restrictedCount = records.filter((record) => record.architectureSlot === 10).length;
 
   assert.match(markup, new RegExp(`<strong>${deploymentCount}\\/5<\\/strong> MVP contracts deployed`));
   assert.doesNotMatch(markup, /<strong>0\/5<\/strong> MVP contracts deployed/);
   assert.doesNotMatch(markup, /id="h-ne-registry-mainnet"/);
+  assert.doesNotMatch(markup, /<th scope="col">Product Use<\/th>/);
+  assert.doesNotMatch(markup, /<th scope="col">Readiness<\/th>/);
   assert.equal((markup.match(/>DEPLOYED<\/span>/g) ?? []).length, deploymentCount);
   assert.equal((markup.match(/<dd>NOT VERIFIED<small/g) ?? []).length, deploymentCount);
-  assert.equal((markup.match(/>INACTIVE<\/span>/g) ?? []).length, inactiveCount);
-  assert.equal((markup.match(/>SECURITY BLOCKED<\/span>/g) ?? []).length, blockedCount);
+  assert.equal((markup.match(/<dt>Product use<\/dt><dd>NOT ENABLED<\/dd>/g) ?? []).length, notEnabledCount);
+  assert.equal((markup.match(/<dt>Product use<\/dt><dd>RESTRICTED<\/dd>/g) ?? []).length, restrictedCount);
+  assert.doesNotMatch(markup, /<td[^>]*data-label="Product Use"/);
+  assert.doesNotMatch(markup, />(?:INACTIVE|DORMANT)<\/span>/);
   assert.equal((markup.match(/<dd>On-chain deployment confirmed<\/dd>/g) ?? []).length, deploymentCount);
   for (const record of records) {
     assert.match(markup, new RegExp(record.name));
@@ -329,23 +396,6 @@ test("Networks shows the five-slot MVP separately from future security research 
   const mainnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "mainnet");
   const testnetSlots = registry.architectureSlots.filter((slot) => slot.networkId === "testnet");
   const mainnetSlots = registry.architectureSlots.filter((slot) => slot.networkId === "mainnet");
-  const readinessCounts = (networkId: "testnet" | "mainnet") => {
-    const slots = registry.architectureSlots.filter((slot) => slot.networkId === networkId);
-    const records = registry.roadmapContracts.filter((record) => record.networkId === networkId);
-    return slots.reduce<Record<string, number>>((counts, slot) => {
-      const deployed = records.some((record) => record.architectureSlot === slot.slot);
-      const readiness = (slot.readiness ?? "").toLowerCase();
-      const status = deployed && slot.slot >= 6 && slot.slot <= 9
-        ? "INACTIVE"
-        : readiness === "active" || readiness === "ready"
-          ? "ACTIVE"
-          : readiness === "blocked" || readiness === "hard_no_go"
-            ? "SECURITY BLOCKED"
-            : "INACTIVE";
-      counts[status] = (counts[status] ?? 0) + 1;
-      return counts;
-    }, {});
-  };
   assert.equal(testnetSlots.length, 10);
   assert.equal(mainnetSlots.length, 10);
   assert.equal(rowCount(testnetTable), testnetRecords.length);
@@ -362,12 +412,12 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.match(testnetMarkup, /<summary[^>]*><span>Future Architecture \/ Security Research<\/span>/);
   assert.match(testnetMarkup, /On-chain deployment confirmed/);
   assert.match(testnetMarkup, /Source verification unavailable/);
-  assert.match(testnetMarkup, /not enabled for real swaps or asset authorization/);
+  assert.match(testnetMarkup, /These contracts are deployed on Robinhood Testnet\. Product integration and security readiness are tracked separately\. Deployment does not imply Mainnet availability or security approval\./);
   assert.match(testnetMarkup, /manifest-verified on-chain records only/i);
   assert.match(mainnetMarkup, /0 deployed · 5 future security-research slots/);
   assert.match(mainnetMarkup, /Mainnet MVP Deployments/);
   assert.match(mainnetMarkup, /No deployed VEYRA MVP contracts on Robinhood Mainnet\./);
-  assert.doesNotMatch(mainnetMarkup, /0x[0-9a-fA-F]{40}/);
+  assert.doesNotMatch(mainnetUndeployedTable, /0x[0-9a-fA-F]{40}/, "external infrastructure addresses must not enter the VEYRA deployment registry");
   assert.doesNotMatch(testnetMarkup, /<strong>Robinhood Mainnet Deployments<\/strong>/);
   assert.doesNotMatch(mainnetMarkup, /<strong>Robinhood Testnet Deployments<\/strong>/);
   assert.doesNotMatch(testnetTable, new RegExp("<th scope=\"col\">Source Verification</th>"));
@@ -376,9 +426,19 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.equal((testnetTable.match(/aria-label="Copy address"/g) ?? []).length, testnetRecords.length);
   assert.equal((gatedTable.match(/>NOT DEPLOYED<\/span>/g) ?? []).length, 5);
   assert.equal((testnetTable.match(/<dd>NOT VERIFIED/g) ?? []).length, testnetRecords.filter((record) => record.sourceVerification === "not_verified").length);
-  assert.equal((testnetTable.match(/>INACTIVE<\/span>/g) ?? []).length, readinessCounts("testnet").INACTIVE ?? 0);
-  assert.equal((gatedTable.match(/>SECURITY BLOCKED<\/span>/g) ?? []).length, 5);
+  const mvpTestnetSlots = testnetSlots.filter((slot) => slot.slot >= 6 && slot.slot <= 10);
+  const deployedMvpSlots = mvpTestnetSlots.filter((slot) => testnetRecords.some((record) => record.architectureSlot === slot.slot));
+  const notEnabledCount = deployedMvpSlots.filter((slot) => !["active", "ready", "restricted_testnet"].includes((slot.readiness ?? "").toLowerCase())).length;
+  const restrictedCount = deployedMvpSlots.filter((slot) => slot.readiness?.toLowerCase() === "restricted_testnet").length;
+  assert.equal((testnetTable.match(/<dt>Product use<\/dt><dd>NOT ENABLED<\/dd>/g) ?? []).length, notEnabledCount);
+  assert.equal((testnetTable.match(/<dt>Product use<\/dt><dd>RESTRICTED<\/dd>/g) ?? []).length, restrictedCount);
+  assert.doesNotMatch(testnetTable, /<td[^>]*data-label="Product Use"/);
+  assert.doesNotMatch(testnetTable, />(?:INACTIVE|DORMANT)<\/span>/);
+  assert.equal((gatedTable.match(/<dt>Product use<\/dt><dd>SECURITY BLOCKED<\/dd>/g) ?? []).length, 5);
   assert.match(mainnetMarkup, /0 of 5 Mainnet MVP contracts deployed/);
+  assert.match(testnetTable, /<dt>Manifest readiness<\/dt><dd><code>hard_no_go<\/code><\/dd>/);
+  assert.match(testnetTable, /<dt>Manifest readiness<\/dt><dd><code>restricted_testnet<\/code><\/dd>/);
+  assert.match(testnetTable, /<dt>Manifest readiness reason<\/dt>/);
 
   for (const slot of registry.architectureSlots.filter((item) => item.networkId === "testnet" && item.slot <= 5)) {
     assert.ok(gatedTable.includes(slot.solidityName));
@@ -386,7 +446,7 @@ test("Networks shows the five-slot MVP separately from future security research 
   }
   assert.doesNotMatch(gatedTable, /0x[0-9a-fA-F]{40}/, "security-gated slots must not imply deployed addresses");
   for (const record of registry.roadmapContracts.filter((item) => item.networkId === "testnet")) {
-    assert.ok(testnetTable.includes(`<code>${record.address}</code>`));
+    assert.ok(testnetTable.includes(`<span class="ne-address-full">${record.address}</span>`));
     assert.match(testnetTable, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${record.address}"`));
     assert.match(testnetTable, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/tx/${record.transactionHash}"`));
   }
@@ -398,7 +458,7 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.match(standaloneTable, /<dd>NOT VERIFIED<small>Source verification unavailable/);
 });
 
-test("all validated Testnet addresses are fully visible in their Contract Address cells", () => {
+test("validated Testnet addresses stay full at roomy widths and compact only at constrained widths", () => {
   const registry = loadVerifiedVeyraDeployments();
   const records = registry.roadmapContracts.filter((record) => record.networkId === "testnet");
   const slotTen = records.find((record) => record.architectureSlot === 10);
@@ -429,9 +489,12 @@ test("all validated Testnet addresses are fully visible in their Contract Addres
     assert.notEqual(cellStart, -1, `${record.name} should have a Contract Address cell`);
     const addressCell = row.slice(cellStart, cellEnd + "</td>".length);
 
-    assert.ok(addressCell.includes(`<code>${record.address}</code>`), `${record.name} should show all 42 address characters in the table cell`);
+    const compactAddress = `${record.address.slice(0, 8)}…${record.address.slice(-6)}`;
+    assert.ok(addressCell.includes(`<span class="ne-address-full">${record.address}</span>`), `${record.name} should keep the full address visible by default`);
+    assert.ok(addressCell.includes(`<span class="ne-address-compact" aria-hidden="true">${compactAddress}</span>`), `${record.name} should provide a compact constrained-width form`);
     assert.match(addressCell, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${record.address}"`));
-    assert.doesNotMatch(addressCell, /…|\.\.\./, `${record.name} must not abbreviate its address`);
+    assert.match(addressCell, new RegExp(`title="${record.address}"`));
+    assert.match(addressCell, new RegExp(`aria-label="View deployed address ${record.address} on Robinhood Testnet"`));
     assert.match(row, /aria-label="Copy address"/);
   }
 });
@@ -510,8 +573,10 @@ test("the checked-in Evidence Anchor remains visible and links to its Testnet ad
   const cellStart = row.indexOf('<td class="ne-address-cell" data-label="Contract Address">');
   const cellEnd = row.indexOf("</td>", cellStart);
   const addressCell = row.slice(cellStart, cellEnd + "</td>".length);
-  assert.ok(addressCell.includes(`<code>${anchor.address}</code>`), "the full Evidence Anchor address should be visible in its address cell");
-  assert.doesNotMatch(addressCell, /…|\.\.\./);
+  assert.ok(addressCell.includes(`<span class="ne-address-full">${anchor.address}</span>`), "the Evidence Anchor should show its full address at roomy widths");
+  assert.ok(addressCell.includes(`<span class="ne-address-compact" aria-hidden="true">${anchor.address.slice(0, 8)}…${anchor.address.slice(-6)}</span>`), "the Evidence Anchor should use the shared compact constrained-width form");
+  assert.match(addressCell, new RegExp(`title="${anchor.address}"`));
+  assert.match(addressCell, new RegExp(`aria-label="View deployed address ${anchor.address} on Robinhood Testnet"`));
   assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/address/${anchor.address}"`));
   assert.match(markup, new RegExp(`href="https://explorer\\.testnet\\.chain\\.robinhood\\.com/tx/${anchor.transactionHash}"`));
   assert.match(markup, new RegExp(`${registry.roadmapContracts.filter((record) => record.networkId === "testnet" && record.architectureSlot >= 6 && record.architectureSlot <= 10).length}/5`));

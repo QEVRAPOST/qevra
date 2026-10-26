@@ -1,5 +1,5 @@
 import { NETWORKS } from "@/lib/config/networks";
-import { readRobinhoodNetwork, readRobinhoodPublicAddress, RobinhoodRpcError } from "@/features/wallet/public-rpc";
+import { readRobinhoodMainnetInfrastructure, readRobinhoodNetwork, readRobinhoodPublicAddress, RobinhoodRpcError } from "@/features/wallet/public-rpc";
 import type { NetworkId } from "@/types/network";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -17,16 +17,27 @@ export async function GET(
     return publicError("network_not_available", "This network is not enabled for public reads.", 404);
   }
 
-  const addresses = new URL(request.url).searchParams.getAll("address");
+  const searchParams = new URL(request.url).searchParams;
+  const addresses = searchParams.getAll("address");
+  const infrastructure = searchParams.getAll("infrastructure");
   if (addresses.length > 1) {
     return publicError("invalid_address", "Provide exactly one EVM address to inspect.", 400);
   }
   const address = addresses[0];
+  if (infrastructure.length > 1
+    || (infrastructure.length > 0 && (infrastructure[0] !== "1" || address !== undefined))) {
+    return publicError("invalid_request", "Provide one supported public network read.", 400);
+  }
+  if (infrastructure.length > 0 && networkId !== "mainnet") {
+    return publicError("network_not_available", "Configured external infrastructure reads are available on Robinhood Mainnet only.", 400);
+  }
 
   try {
-    const snapshot = address === undefined
-      ? await readRobinhoodNetwork(networkId as NetworkId)
-      : await readRobinhoodPublicAddress(networkId as NetworkId, address);
+    const snapshot = infrastructure.length > 0
+      ? await readRobinhoodMainnetInfrastructure()
+      : address === undefined
+        ? await readRobinhoodNetwork(networkId as NetworkId)
+        : await readRobinhoodPublicAddress(networkId as NetworkId, address);
     return Response.json(snapshot, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof RobinhoodRpcError) {
