@@ -389,8 +389,8 @@ test("Networks shows the five-slot MVP separately from future security research 
     return markup.slice(start, end + "</table>".length);
   };
   const testnetTable = tableFor(testnetMarkup, "Testnet MVP architecture deployments");
+  const mainnetTable = tableFor(mainnetMarkup, "Mainnet MVP architecture deployments");
   const gatedTable = tableFor(testnetMarkup, "Future architecture / security research slots on Robinhood Testnet");
-  const mainnetUndeployedTable = tableFor(mainnetMarkup, "MVP architecture slots not deployed on Robinhood Mainnet");
   const rowCount = (table: string) => (table.match(/class="ne-contract"/g) ?? []).length;
   const testnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "testnet");
   const mainnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "mainnet");
@@ -399,8 +399,8 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.equal(testnetSlots.length, 10);
   assert.equal(mainnetSlots.length, 10);
   assert.equal(rowCount(testnetTable), testnetRecords.length);
+  assert.equal(rowCount(mainnetTable), 5, "the Mainnet MVP table should list each of its five manifest slots");
   assert.equal(rowCount(gatedTable), 5);
-  assert.equal(rowCount(mainnetUndeployedTable), 5);
   assert.equal(testnetRecords.length, 5, "the validated Testnet manifest currently contains five architecture deployments");
   assert.equal(mainnetRecords.length, 0, "the validated Mainnet manifest currently contains no architecture deployments");
   assert.match(testnetMarkup, new RegExp(`<strong>${testnetRecords.length}\\/5<\\/strong> MVP contracts deployed`));
@@ -416,8 +416,26 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.match(testnetMarkup, /manifest-verified on-chain records only/i);
   assert.match(mainnetMarkup, /0 deployed · 5 future security-research slots/);
   assert.match(mainnetMarkup, /Mainnet MVP Deployments/);
-  assert.match(mainnetMarkup, /No deployed VEYRA MVP contracts on Robinhood Mainnet\./);
-  assert.doesNotMatch(mainnetUndeployedTable, /0x[0-9a-fA-F]{40}/, "external infrastructure addresses must not enter the VEYRA deployment registry");
+  assert.doesNotMatch(mainnetMarkup, /<summary[^>]*><span>MVP Contracts Not Deployed<\/span>/, "Mainnet MVP slots should be visible without expanding a second table");
+  assert.equal((mainnetTable.match(/>NOT DEPLOYED<\/span>/g) ?? []).length, 5);
+  assert.equal((mainnetTable.match(/aria-label="No verified deployed address"/g) ?? []).length, 5);
+  assert.equal((mainnetTable.match(/aria-label="No deployment actions"/g) ?? []).length, 5);
+  assert.doesNotMatch(mainnetTable, /aria-label="Copy address"|aria-label="Open explorer"|aria-label="View deployment evidence"/);
+  assert.doesNotMatch(mainnetTable, /0x[0-9a-fA-F]{40}/, "Mainnet rows must not reuse Testnet or external infrastructure addresses");
+  const mainnetMvpNames = [
+    "VeyraTokenPolicyRegistry",
+    "VeyraRouterRegistry",
+    "VeyraSwapIntentGuard",
+    "VeyraSwapExecutor",
+    "VeyraResearchAttestationRegistry",
+  ];
+  for (const name of mainnetMvpNames) assert.ok(mainnetTable.includes(name), `${name} should be visible in the Mainnet MVP registry`);
+  for (const slot of mainnetSlots.filter((slot) => slot.slot >= 6 && slot.slot <= 10)) {
+    assert.ok(slot.reason, `${slot.solidityName} should define its Mainnet manifest blocker`);
+    assert.ok(mainnetTable.includes(slot.reason), `${slot.solidityName} should retain its Mainnet manifest blocker`);
+    assert.ok(mainnetTable.includes(`<code>${slot.readiness}</code>`), `${slot.solidityName} should retain its raw Mainnet readiness`);
+  }
+  assert.ok(mainnetMarkup.indexOf('aria-label="Mainnet MVP architecture deployments"') < mainnetMarkup.indexOf('aria-label="External Robinhood Mainnet infrastructure contracts"'), "the VEYRA-owned registry should precede third-party infrastructure");
   assert.doesNotMatch(testnetMarkup, /<strong>Robinhood Mainnet Deployments<\/strong>/);
   assert.doesNotMatch(mainnetMarkup, /<strong>Robinhood Testnet Deployments<\/strong>/);
   assert.doesNotMatch(testnetTable, new RegExp("<th scope=\"col\">Source Verification</th>"));

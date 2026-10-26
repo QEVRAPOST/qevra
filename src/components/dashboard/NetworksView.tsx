@@ -413,7 +413,7 @@ export function NetworksView({
     const mvpSlots = slots.filter(({ slot }) => slot.slot >= MVP_ARCHITECTURE_SLOT_RANGE.first && slot.slot <= MVP_ARCHITECTURE_SLOT_RANGE.last);
     const deployedMvpSlots = mvpSlots.filter(({ deployment }) => Boolean(deployment));
     const undeployedMvpSlots = mvpSlots.filter(({ deployment }) => !deployment);
-    return { network, standalone, futureResearchSlots, deployedMvpSlots, undeployedMvpSlots };
+    return { network, standalone, futureResearchSlots, mvpSlots, deployedMvpSlots, undeployedMvpSlots };
   });
   const hasVerifiedMvpDeployments = deploymentGroups.some((group) => group.deployedMvpSlots.length > 0);
   const hasStandaloneDeployments = deploymentGroups.some((group) => group.standalone.length > 0);
@@ -630,9 +630,10 @@ export function NetworksView({
             </div>
           ) : null}
           <div className="ne-registry-networks">
-            {deploymentGroups.map(({ network, standalone, futureResearchSlots, deployedMvpSlots, undeployedMvpSlots }) => {
+            {deploymentGroups.map(({ network, standalone, futureResearchSlots, mvpSlots, deployedMvpSlots, undeployedMvpSlots }) => {
               const progress = Math.min(deployedMvpSlots.length, MVP_ARCHITECTURE_SLOT_COUNT);
               const networkName = network.id === "testnet" ? "Testnet" : "Mainnet";
+              const primaryMvpSlots = network.id === "mainnet" ? mvpSlots : deployedMvpSlots;
               return (
                 <section className="ne-registry-network" key={network.id} aria-labelledby={`h-ne-registry-${network.id}`}>
                   <header className="ne-registry-network-head">
@@ -646,9 +647,9 @@ export function NetworksView({
                       {undeployedMvpSlots.length > 0 ? ` · ${undeployedMvpSlots.length} MVP slots not deployed` : ""}
                     </p>
                   </header>
-                  {deployedMvpSlots.length > 0 ? (
+                  {primaryMvpSlots.length > 0 ? (
                     <DeploymentTable
-                      rows={deployedMvpSlots.map(({ slot, deployment }) => ({ slot, deployment }))}
+                      rows={primaryMvpSlots.map(({ slot, deployment }) => ({ slot, deployment }))}
                       label={`${networkName} MVP architecture deployments`}
                     />
                   ) : (
@@ -673,7 +674,7 @@ export function NetworksView({
                       />
                     </details>
                   ) : null}
-                  {undeployedMvpSlots.length > 0 ? (
+                  {undeployedMvpSlots.length > 0 && network.id !== "mainnet" ? (
                     <details className="ne-architecture-details">
                       <summary>
                         <span>MVP Contracts Not Deployed</span>
