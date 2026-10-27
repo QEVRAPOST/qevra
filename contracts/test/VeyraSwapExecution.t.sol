@@ -7,9 +7,11 @@ import {VeyraSwapIntentGuard} from "../src/swap/VeyraSwapIntentGuard.sol";
 import {VeyraSwapExecutor} from "../src/swap/VeyraSwapExecutor.sol";
 
 interface VmVeyraSwap {
+    function expectRevert() external;
     function expectRevert(bytes calldata revertData) external;
     function warp(uint256 timestamp) external;
     function roll(uint256 blockNumber) external;
+    function prank(address sender) external;
 }
 
 contract SwapTokenMock {
@@ -133,6 +135,32 @@ contract VeyraSwapExecutionTest {
 
         vm.expectRevert(abi.encodeWithSelector(VeyraSwapIntentGuard.IntentNotLocked.selector, address(this), 0));
         executor.execute(intent);
+    }
+
+    function test_untrustedCallerCannotTriggerAnotherAccountsLockedIntent() public {
+        (
+            VeyraSwapIntentGuard guard,
+            VeyraSwapExecutor executor,
+            SwapTokenMock tokenIn,
+            SwapTokenMock tokenOut,
+            SwapRouterMock router
+        ) = _setup();
+        VeyraSwapIntentGuard.SwapIntent memory intent = _intent(tokenIn, tokenOut, router, 0);
+        tokenIn.mint(address(this), AMOUNT_IN);
+        tokenIn.approve(address(executor), AMOUNT_IN);
+        tokenOut.mint(address(router), 200);
+
+        guard.lockIntent(intent);
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(VeyraSwapExecutor.UnauthorizedExecution.selector, address(0xBEEF)));
+        executor.execute(intent);
+
+        require(guard.isIntentLocked(address(this), 0), "unauthorized caller must not consume the lock");
+        require(tokenIn.balanceOf(address(this)) == AMOUNT_IN, "unauthorized caller must not move input");
+        require(tokenOut.balanceOf(address(this)) == 0, "unauthorized caller must not trigger output");
+
+        executor.execute(intent);
+        require(tokenOut.balanceOf(address(this)) == 200, "the locking account can execute its intent");
     }
 
     function test_lockCannotBeConsumedInALaterBlock() public {

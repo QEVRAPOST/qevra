@@ -354,7 +354,8 @@ export function normalizeZeroXSwapQuote(
   if (!same(quote.sellToken, tokens.sell.address) || !same(quote.buyToken, tokens.buy.address) || quote.sellAmount !== amountIn) {
     return { status: "invalid", reason: "provider_quote_request_mismatch" };
   }
-  if (!contracts.chainIdVerified || !contracts.latestSettler || !contracts.settlerCodePresent) {
+  if (!contracts.chainIdVerified || !contracts.latestSettler
+    || same(contracts.latestSettler, ZEROX_ALLOWANCE_HOLDER) || !contracts.settlerCodePresent) {
     return { status: "unavailable", reason: "0x_execution_contract_not_verified_on_robinhood_mainnet" };
   }
   if (!quote.issues || quote.issues.simulationIncomplete !== false) {
@@ -368,7 +369,7 @@ export function normalizeZeroXSwapQuote(
   if (spender && same(spender, contracts.latestSettler)) {
     return { status: "invalid", reason: "missing_or_forbidden_allowance_spender" };
   }
-  if ((spender && !same(spender, ZEROX_ALLOWANCE_HOLDER)) || !same(quote.transaction.to, ZEROX_ALLOWANCE_HOLDER)) {
+  if (spender && !same(spender, ZEROX_ALLOWANCE_HOLDER)) {
     return { status: "unavailable", reason: "provider_allowance_holder_address_not_verified_for_robinhood_mainnet" };
   }
   if (allowance?.spender && quote.allowanceTarget && !same(allowance.spender, quote.allowanceTarget)) {
@@ -378,17 +379,19 @@ export function normalizeZeroXSwapQuote(
   if (allowanceRequired && !spender) {
     return { status: "invalid", reason: "missing_or_forbidden_allowance_spender" };
   }
-  // Native sell tokens need no ERC-20 approval. If a spender is reported,
-  // still require it to match the route entry point and verified deployment.
-  if (spender && !same(spender, quote.transaction.to)) {
-    return { status: "invalid", reason: "allowance_holder_execution_target_mismatch" };
-  }
   if (spender && (same(spender, contracts.latestSettler)
     || !contracts.allowanceSpender || !same(contracts.allowanceSpender, spender)
     || !contracts.allowanceSpenderCodePresent)) {
     return { status: "unavailable", reason: "provider_allowance_spender_not_verified_on_robinhood_mainnet" };
   }
-  if (!contracts.executionTarget || !same(contracts.executionTarget, quote.transaction.to) || !contracts.executionTargetCodePresent) {
+  // The API's transaction target may be AllowanceHolder or the current
+  // registry Settler. Either must match the reported target and have code.
+  const targetIsVerifiedEntrypoint = same(quote.transaction.to, ZEROX_ALLOWANCE_HOLDER)
+    || same(quote.transaction.to, contracts.latestSettler);
+  if (!contracts.executionTarget
+    || !same(contracts.executionTarget, quote.transaction.to)
+    || !targetIsVerifiedEntrypoint
+    || !contracts.executionTargetCodePresent) {
     return { status: "unavailable", reason: "provider_execution_target_not_verified_on_robinhood_mainnet" };
   }
   const estimatedGas = quote.transaction.gas ?? quote.gas;

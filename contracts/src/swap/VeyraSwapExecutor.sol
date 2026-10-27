@@ -34,6 +34,7 @@ contract VeyraSwapExecutor {
     error OutputBelowMinimum(uint256 minimum, uint256 observed);
     error RouterOutputMismatch(uint256 reported, uint256 observed);
     error InvalidRecipient();
+    error UnauthorizedExecution(address caller);
 
     modifier nonReentrant() {
         if (_executing) revert ReentrantExecution();
@@ -66,6 +67,7 @@ contract VeyraSwapExecutor {
         nonReentrant
         returns (uint256 amountOut)
     {
+        if (msg.sender != intent.account) revert UnauthorizedExecution(msg.sender);
         if (intent.recipient == address(this)) revert InvalidRecipient();
         // The nonReentrant modifier holds the lock before this call and through the entire execution.
         // forge-lint: disable-next-line(reentrancy-no-eth)

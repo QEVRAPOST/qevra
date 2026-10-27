@@ -74,18 +74,39 @@ test("Mainnet swap request admits only Robinhood 4663 and supported real token i
   assert.equal(parseRobinhoodSwapRequest({ ...request, amount: "1e3" }).success, false);
 });
 
-test("firm 0x quote requires the exact official AllowanceHolder and current on-chain Settler", () => {
+test("firm 0x quote validates the official AllowanceHolder and current Settler separately", () => {
   const result = normalizeZeroXSwapQuote(providerQuote(), request, {
     sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
     buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
   }, verification, 1_800_000_000_000);
   assert.equal(result.status, "ready");
   if (result.status !== "ready" || result.mode !== "quote") return;
-  assert.equal(result.execution.to, verification.executionTarget);
+  assert.equal(result.execution.to, verifiedAllowanceTarget);
   assert.equal(result.allowance.spender, "0x0000000000001fF3684f28c67538d4D072C22734");
   assert.equal(result.executionEnabled, true);
   assert.equal(result.minimumReceived, "995000");
   assert.match(result.quoteDigest, /^0x[0-9a-f]{64}$/);
+});
+
+test("firm quote keeps AllowanceHolder approval separate from the current Settler execution target", () => {
+  const currentSettler = verification.latestSettler!;
+  const result = normalizeZeroXSwapQuote(providerQuote({
+    transaction: { ...providerQuote().transaction, to: currentSettler },
+  }), request, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, {
+    ...verification,
+    executionTarget: currentSettler,
+    executionTargetCodePresent: true,
+  }, 1_800_000_000_000);
+
+  assert.equal(result.status, "ready");
+  if (result.status === "ready" && result.mode === "quote") {
+    assert.equal(result.allowance.spender, verifiedAllowanceTarget);
+    assert.equal(result.transaction.to, currentSettler);
+    assert.equal(result.settlerAddress, currentSettler);
+  }
 });
 
 test("firm quote accepts the documented 0x shape with gas only in transaction", () => {
@@ -293,7 +314,7 @@ test("quote validation rejects Settler approvals, stale/unknown execution target
   }, 1_800_000_000_000);
   assert.equal(splitAllowanceAndExecution.status, "unavailable");
   if (splitAllowanceAndExecution.status === "unavailable") {
-    assert.equal(splitAllowanceAndExecution.reason, "provider_allowance_holder_address_not_verified_for_robinhood_mainnet");
+    assert.equal(splitAllowanceAndExecution.reason, "provider_execution_target_not_verified_on_robinhood_mainnet");
   }
 
   const incomplete = normalizeZeroXSwapQuote(providerQuote({ issues: { ...providerQuote().issues, simulationIncomplete: true } }), request,
@@ -675,6 +696,28 @@ test("client rejects a quote response with changed executable calldata digest", 
   }), (error: unknown) => error instanceof MainnetSwapClientError && error.code === "quote_digest_mismatch");
 });
 
+test("client accepts a quote targeting the registry Settler when its AllowanceHolder spender stays separate", async () => {
+  const currentSettler = verification.latestSettler!;
+  const normalized = normalizeZeroXSwapQuote(providerQuote({
+    transaction: { ...providerQuote().transaction, to: currentSettler },
+  }), request, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, { ...verification, executionTarget: currentSettler, executionTargetCodePresent: true }, 1_800_000_000_000);
+  assert.equal(normalized.status, "ready");
+  if (normalized.status !== "ready" || normalized.mode !== "quote") return;
+
+  const result = await requestRobinhoodSwapQuote(request, {
+    now: 1_800_000_000_000,
+    fetch: async () => Response.json(normalized),
+  });
+  assert.equal(result.mode, "quote");
+  if (result.mode === "quote") {
+    assert.equal(result.transaction.to, currentSettler);
+    assert.equal(result.allowance.spender, verifiedAllowanceTarget);
+  }
+});
+
 test("approval transaction is bounded to exact sell amount and verified AllowanceHolder", async () => {
   const normalized = normalizeZeroXSwapQuote(providerQuote(), request, {
     sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
@@ -715,10 +758,13 @@ test("approval transaction is bounded to exact sell amount and verified Allowanc
 });
 
 test("swap preflight rejects a changed pending wallet nonce before execution", async () => {
-  const normalized = normalizeZeroXSwapQuote(providerQuote(), request, {
+  const currentSettler = verification.latestSettler!;
+  const normalized = normalizeZeroXSwapQuote(providerQuote({
+    transaction: { ...providerQuote().transaction, to: currentSettler },
+  }), request, {
     sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
     buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
-  }, verification, 1_800_000_000_000);
+  }, { ...verification, executionTarget: currentSettler, executionTargetCodePresent: true }, 1_800_000_000_000);
   assert.equal(normalized.status, "ready");
   if (normalized.status !== "ready" || normalized.mode !== "quote") return;
   const provider = { request: async ({ method, params }: { method: string; params?: readonly unknown[] }) => {

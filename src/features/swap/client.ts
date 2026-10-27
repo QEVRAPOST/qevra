@@ -119,7 +119,9 @@ function validateFirmQuote(input: unknown, request: RobinhoodSwapRequest, now: n
     || quote.transaction.to.toLowerCase() !== quote.execution.to.toLowerCase()
     || quote.transaction.data.toLowerCase() !== quote.execution.data.toLowerCase()
     || quote.transaction.value !== quote.execution.value || quote.transaction.gas !== quote.execution.gas
-    || quote.transaction.to.toLowerCase() !== ZEROX_ALLOWANCE_HOLDER.toLowerCase()
+    || (quote.transaction.to.toLowerCase() !== quote.settlerAddress.toLowerCase()
+      && quote.transaction.to.toLowerCase() !== ZEROX_ALLOWANCE_HOLDER.toLowerCase())
+    || quote.settlerAddress.toLowerCase() === ZEROX_ALLOWANCE_HOLDER.toLowerCase()
     || (expectedIn.native ? quote.allowance.spender !== null : !quote.allowance.spender || quote.allowance.spender.toLowerCase() !== ZEROX_ALLOWANCE_HOLDER.toLowerCase())
     || (quote.allowance.spender && quote.allowance.spender.toLowerCase() === quote.settlerAddress.toLowerCase())) {
     throw new MainnetSwapClientError(502, "invalid_execution_parameters", "The returned allowance or execution data failed local validation.");

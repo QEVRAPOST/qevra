@@ -53,7 +53,9 @@ function assertQuoteIntegrity(quote: MainnetFirmQuote): void {
     || quote.transaction.data.toLowerCase() !== quote.execution.data.toLowerCase()
     || quote.transaction.value !== quote.execution.value || quote.transaction.gas !== quote.execution.gas
     || expectedDigest.toLowerCase() !== quote.quoteDigest.toLowerCase()
-    || quote.transaction.to.toLowerCase() !== ZEROX_ALLOWANCE_HOLDER.toLowerCase()
+    || (quote.transaction.to.toLowerCase() !== quote.settlerAddress.toLowerCase()
+      && quote.transaction.to.toLowerCase() !== ZEROX_ALLOWANCE_HOLDER.toLowerCase())
+    || quote.settlerAddress.toLowerCase() === ZEROX_ALLOWANCE_HOLDER.toLowerCase()
     || (quote.tokenIn.native ? quote.allowance.spender !== null : !quote.allowance.spender || quote.allowance.spender.toLowerCase() !== ZEROX_ALLOWANCE_HOLDER.toLowerCase())
     || (quote.allowance.spender && quote.allowance.spender.toLowerCase() === quote.settlerAddress.toLowerCase())) {
     throw new SwapExecutionError("quote_integrity_failed", "The quote or executable transaction changed after validation. Request and review a fresh quote.");

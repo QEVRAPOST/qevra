@@ -133,7 +133,7 @@ export async function verifyMainnetZeroXContracts(
     const spender = reportedAllowanceSpender && isAddress(reportedAllowanceSpender) ? getAddress(reportedAllowanceSpender) : null;
     const executionTarget = reportedExecutionTarget && isAddress(reportedExecutionTarget) ? getAddress(reportedExecutionTarget) : null;
     if ((reportedAllowanceSpender && (!spender || spender.toLowerCase() !== ZEROX_ALLOWANCE_HOLDER.toLowerCase()))
-      || !executionTarget || executionTarget.toLowerCase() !== ZEROX_ALLOWANCE_HOLDER.toLowerCase()) return unavailable;
+      || !executionTarget) return unavailable;
     const registry = getAddress(ZEROX_SETTLER_REGISTRY);
     const [chainResult, registryCodeResult] = await Promise.all([
       publicClient.getChainId().then((value) => ({ value })).catch(() => ({ failed: true as const })),
@@ -169,13 +169,19 @@ export async function verifyMainnetZeroXContracts(
       reportRpcFailure?.("rpc_settler_registry_read_failed");
       return unavailable;
     }
+    if (latestSettler.toLowerCase() === ZEROX_ALLOWANCE_HOLDER.toLowerCase()) return unavailable;
     let spenderCode: string | undefined;
     let targetCode: string | undefined;
     let settlerCode: string | undefined;
+    let targetIsVerifiedEntrypoint = false;
     try {
+      // The AllowanceHolder API can return the AllowanceHolder entry point or
+      // its current Settler. Never treat an arbitrary deployed target as valid.
+      targetIsVerifiedEntrypoint = executionTarget.toLowerCase() === ZEROX_ALLOWANCE_HOLDER.toLowerCase()
+        || executionTarget.toLowerCase() === latestSettler.toLowerCase();
       [spenderCode, targetCode, settlerCode] = await Promise.all([
         spender ? publicClient.getCode({ address: spender }) : Promise.resolve("0x" as const),
-        publicClient.getCode({ address: executionTarget }),
+        targetIsVerifiedEntrypoint ? publicClient.getCode({ address: executionTarget }) : Promise.resolve("0x" as const),
         publicClient.getCode({ address: latestSettler }),
       ]);
     } catch {
@@ -183,7 +189,7 @@ export async function verifyMainnetZeroXContracts(
       return unavailable;
     }
     if (spender && (!spenderCode || spenderCode === "0x")) reportRpcFailure?.("rpc_allowance_holder_code_missing");
-    if (!targetCode || targetCode === "0x") reportRpcFailure?.("rpc_execution_target_code_missing");
+    if (targetIsVerifiedEntrypoint && (!targetCode || targetCode === "0x")) reportRpcFailure?.("rpc_execution_target_code_missing");
     if (!settlerCode || settlerCode === "0x") reportRpcFailure?.("rpc_settler_code_missing");
     return {
       chainIdVerified: true,
