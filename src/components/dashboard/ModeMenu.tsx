@@ -151,7 +151,7 @@ export function ModeMenu() {
           <h2>{live ? "Live, read-only" : "About this preview"}</h2>
           <p>
             {live
-              ? "This app reads public chain data. Wallet connection is separate from the Security Swarm research session; saved research requires a session. Swaps are off and nothing is signed."
+              ? "Public reads do not change chain state. Wallet connection is separate from Security Swarm access. Mainnet swaps require a live quote and chain checks; wallet approvals are explicit. The wallet is never switched automatically."
               : "Everything here is simulated, so you can see how the product will work. No wallet is connected, no chain is read and nothing can move funds."}
           </p>
           <ul className="mm-facts" aria-label="What is true today">

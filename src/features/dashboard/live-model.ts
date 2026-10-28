@@ -13,7 +13,7 @@ import type {
   StatusBarItem,
   SwarmRun,
 } from "@/types";
-import { NETWORKS } from "@/lib/config/networks";
+import { DEFAULT_NETWORK_ID, NETWORKS } from "@/lib/config/networks";
 import { COVERAGE_ROWS } from "@/lib/content/status";
 import { brandizeDisplayStrings, brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import { runBadge, STAGE_META, STAGE_ORDER, STATUS_TEXT } from "@/lib/swarm-view";
@@ -393,7 +393,7 @@ export function buildLiveAppModel(input: {
 }): AppModel {
   const { wallet, capabilities, runs } = input;
   const accessState = input.accessState ?? "authenticated";
-  const selectedNetwork = input.selectedNetwork ?? "testnet";
+  const selectedNetwork = input.selectedNetwork ?? DEFAULT_NETWORK_ID;
   const rpc = input.networkRpc ?? { status: "loading" as const };
   const selectedChainId = NETWORKS.find((network) => network.id === selectedNetwork)?.chainId;
   const walletMismatch = wallet.address !== undefined && wallet.chainId !== undefined && wallet.chainId !== selectedChainId;

@@ -731,9 +731,10 @@ test("Analysis and Verification prompts enumerate their strict JSON contracts an
   assert.match(analysis, /1-5 approved source IDs/i);
   assert.match(analysis, /1-5/);
   assert.match(analysis, /extra keys/i);
-  assert.match(analysis, /use \[\] when none/i);
-  assert.match(analysis, /these three arrays contain non-empty strings only, never objects/i);
-  assert.match(analysis, /under 160 characters/i);
+  assert.match(analysis, /every array remains an array/i);
+  assert.match(analysis, /use \[\] if no supported entry/i);
+  assert.match(analysis, /assumptions, unknowns and recommendations are string arrays; risks are objects/i);
+  assert.match(analysis, /under 180 visible tokens/i);
   assert.match(analysis, /800[- ]completion[- ]token/i);
   assert.ok(analysis.length <= 1_100, `Analysis instructions should stay concise (got ${analysis.length} chars)`);
 
@@ -1459,7 +1460,7 @@ test("Groq Analysis rejects an object recommendation at stop and requests the st
   }
   assert.match(schema.properties.recommendations?.description ?? "", /at most 1 item/i);
   assert.match(schema.properties.recommendations?.items?.description ?? "", /at least 1 character/i);
-  assert.match(schema.properties.recommendations?.items?.description ?? "", /at most 160 characters/i);
+  assert.match(schema.properties.recommendations?.items?.description ?? "", /at most 80 characters/i);
   assert.equal(run.status, "failed");
   assert.equal(run.errorCode, "provider_output_invalid");
   const detail = await toResearchRunDetail(run);
@@ -1511,7 +1512,7 @@ test("Analysis rejects recommendations beyond runtime limits even when strict JS
   };
   const recommendationSchema = responseFormat.json_schema.schema.properties.recommendations;
   assert.match(recommendationSchema?.description ?? "", /at most 1 item/i);
-  assert.match(recommendationSchema?.items?.description ?? "", /at most 160 characters/i);
+  assert.match(recommendationSchema?.items?.description ?? "", /at most 80 characters/i);
   assert.deepEqual(stages, ["research", "analysis"]);
   assert.equal(run.status, "failed");
   assert.equal(run.errorCode, "provider_output_invalid");
@@ -1574,12 +1575,17 @@ test("bounded Groq Analysis output completes Research, Analysis, and Verificatio
   assert.equal(responseFormat.type, "json_schema");
   assert.equal(responseFormat.json_schema.strict, true);
   const analysisSchema = responseFormat.json_schema.schema as {
-    properties: Record<string, { type?: string; items?: { type?: string } }>;
+    properties: Record<string, { type?: string; description?: string; items?: { type?: string; description?: string } }>;
   };
   assert.equal(analysisSchema.properties.recommendations?.items?.type, "string");
   const messages = analysisRequestBody?.messages as Array<{ role: string; content: string }>;
-  assert.match(messages[0]!.content, /240 visible JSON tokens/i);
+  assert.match(messages[0]!.content, /every array remains an array/i);
+  assert.match(messages[0]!.content, /use \[\] if no supported entry/i);
+  assert.match(messages[0]!.content, /under 180 visible tokens/i);
   assert.match(messages[0]!.content, /recommendations.{0,40}80 characters/i);
+  assert.match(analysisSchema.properties.recommendations?.items?.description ?? "", /at most 80 characters/i);
+  assert.match(analysisSchema.properties.unknowns?.description ?? "", /at most 1 item/i);
+  assert.match(analysisSchema.properties.summary?.description ?? "", /at most 120 characters/i);
   const analysisPayload = JSON.parse(messages[1]!.content) as { payload: Record<string, unknown> };
   assert.deepEqual(Object.keys(analysisPayload.payload), ["topic", "question", "approvedSources", "researchClaims", "completedArtifacts"]);
   assert.ok(Buffer.byteLength(JSON.stringify(analysisPayload.payload), "utf8") < 3_000);

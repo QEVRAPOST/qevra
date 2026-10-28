@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LandingNav } from "@/components/landing/LandingNav";
 import { OverviewView } from "@/components/dashboard/OverviewView";
 import { ModelContext } from "@/components/dashboard/AppModelContext";
-import { HERO, CURTAIN, HERO_FACTS, HERO_SCENES, STORY_STEPS, SWARM_CAN, STATUS_BAND_INTRO } from "@/lib/content/landing";
+import { HERO, CURTAIN, HERO_FACTS, HERO_PARTS, HERO_SCENES, STORY_STEPS, SWARM_CAN, STATUS_BAND_INTRO } from "@/lib/content/landing";
 import { PILLARS } from "@/lib/content/pillars";
 import { COVERAGE_ROWS } from "@/lib/content/status";
 import { CORE_SENTENCE, FOOTER_PREVIEW, SWARM_PARAGRAPH_A } from "@/lib/content/copy-lock";
@@ -33,6 +34,7 @@ test("landing copy leads with Robinhood Chain and distinguishes configured swaps
     ...SWARM_CAN,
     ...HERO_FACTS.flatMap((fact) => [fact.lead, fact.body]),
     ...HERO_SCENES.flatMap((scene) => [scene.name, scene.lead, scene.text, scene.label]),
+    ...Object.values(HERO_PARTS).flatMap((part) => [part.name, part.text, part.type, ...(part.brief ?? [])]),
     ...STORY_STEPS.flatMap((step) => [step.title, step.body, step.note ?? "", ...(step.path ?? []).flatMap((item) => [item.lead, item.detail])]),
     ...PILLARS.flatMap((pillar) => [pillar.status.label, pillar.body, ...pillar.capabilities.flatMap((capability) => [capability.label, capability.state]), ...pillar.how]),
     ...COVERAGE_ROWS.flatMap((row) => [row.part, row.statusLabel, row.note]),
@@ -53,11 +55,26 @@ test("landing copy leads with Robinhood Chain and distinguishes configured swaps
   assert.doesNotMatch(copy, /wallet and swap are not live yet/i);
   assert.doesNotMatch(copy, /No run has been done|No successful run yet/i);
   assert.doesNotMatch(copy, /Nothing on this page is implemented|sandboxed tests|propose a fix as a patch/i);
+  assert.doesNotMatch(copy, /\bTestnet\b/i, "general landing copy should leave network-specific evidence on the Networks page");
 });
 
-test("landing navigation exposes public Testnet deployment evidence without a wallet", () => {
+test("landing navigation exposes the public contracts registry without making Testnet the product label", () => {
   const markup = renderToStaticMarkup(createElement(LandingNav, { projectName: "VEYRA" }));
-  assert.match(markup, /href="\/app\/networks"[^>]*>Testnet deployments<\/a>/);
+  assert.equal((markup.match(/href="\/app\/networks"/g) ?? []).length, 1);
+  assert.equal((markup.match(/Contracts/g) ?? []).length, 1);
+  const source = readFileSync("src/components/landing/LandingNav.tsx", "utf8");
+  assert.match(source, /<span>Contracts<\/span>/);
+  assert.doesNotMatch(markup, /Testnet deployments/i);
+});
+
+test("the app header has no global network selector and Contracts owns its separate selector", () => {
+  const appShell = readFileSync("src/components/dashboard/AppShell.tsx", "utf8");
+  const networksView = readFileSync("src/components/dashboard/NetworksView.tsx", "utf8");
+
+  assert.doesNotMatch(appShell, /NetworkSelect/);
+  assert.match(networksView, /aria-label="Select public network"/);
+  assert.match(networksView, /setPageNetwork\(network\.id\)/);
+  assert.doesNotMatch(networksView, /actions\.setNetwork\(network\.id\)/);
 });
 
 test("social metadata describes configured Mainnet swaps and experimental custody accurately", () => {
@@ -72,7 +89,7 @@ test("social metadata describes configured Mainnet swaps and experimental custod
   assert.doesNotMatch(description, /design preview/i);
 });
 
-test("live Overview describes external-wallet Mainnet swaps and keeps PQ custody unavailable", () => {
+test("live Overview uses concise product copy while feature pages retain operational disclosures", () => {
   const demo = buildDemoModel({
     stage: 0,
     forced: null,
@@ -90,12 +107,23 @@ test("live Overview describes external-wallet Mainnet swaps and keeps PQ custody
   ));
 
   assert.match(markup, /You approve every transaction/);
-  assert.match(markup, /Robinhood Mainnet swaps use an external wallet/);
-  assert.match(markup, /live quote/);
-  assert.match(markup, /explicit wallet confirmation/);
-  assert.match(markup, /reports are research, not audits/i);
-  assert.match(markup, /PQ smart-account custody is unavailable/);
+  const lede = /<p class="pg-lede">([\s\S]*?)<\/p>/.exec(markup)?.[1] ?? "";
+  assert.match(lede, /Review source-backed research, inspect public wallet data, and prepare Mainnet swaps for explicit approval\./);
+  assert.doesNotMatch(lede, /EVM|chain preflight|PQ smart-account|not audits/i);
+  assert.match(markup, /research output, not an audit/i);
   assert.doesNotMatch(markup, /swap execution are unavailable/i);
+});
+
+test("Mainnet swap and Status copy agree on quote checks and explicit wallet authorization", () => {
+  const modeMenu = readFileSync("src/components/dashboard/ModeMenu.tsx", "utf8");
+  const statusView = readFileSync("src/components/dashboard/StatusView.tsx", "utf8");
+  const readiness = readFileSync("src/lib/app-readiness.ts", "utf8");
+
+  assert.match(modeMenu, /Mainnet swaps require a live quote and chain checks; wallet approvals are explicit/);
+  assert.doesNotMatch(modeMenu, /Swaps are off and nothing is signed/);
+  assert.match(statusView, /Mainnet swaps require a valid quote, chain checks, and explicit wallet confirmation/);
+  assert.doesNotMatch(statusView, /transaction signing, custody, and swap execution are disabled/);
+  assert.match(readiness, /Robinhood Mainnet swaps use an external wallet/);
 });
 
 test("demo account and swap states identify QEVRA smart-account use as an illustration", () => {

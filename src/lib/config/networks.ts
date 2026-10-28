@@ -1,16 +1,7 @@
 import type { NetworkId, NetworkOption } from "@/types";
 
-/** Robinhood application networks offered strictly for public read-only observations. */
+/** Robinhood networks available to public reads; Mainnet is the default product context. */
 export const NETWORKS: readonly NetworkOption[] = [
-  {
-    id: "testnet",
-    label: "Robinhood Testnet",
-    short: "Testnet",
-    chainId: 46_630,
-    rpcUrl: "https://rpc.testnet.chain.robinhood.com",
-    explorerUrl: "https://explorer.testnet.chain.robinhood.com",
-    available: true,
-  },
   {
     id: "mainnet",
     label: "Robinhood Mainnet",
@@ -20,10 +11,19 @@ export const NETWORKS: readonly NetworkOption[] = [
     explorerUrl: "https://robinhoodchain.blockscout.com",
     available: true,
   },
+  {
+    id: "testnet",
+    label: "Robinhood Testnet",
+    short: "Testnet",
+    chainId: 46_630,
+    rpcUrl: "https://rpc.testnet.chain.robinhood.com",
+    explorerUrl: "https://explorer.testnet.chain.robinhood.com",
+    available: true,
+  },
 ];
 
-/** Keep the local preview on Testnet; selecting Mainnet changes only public read requests. */
-export const DEFAULT_NETWORK_ID: NetworkId = "testnet";
+/** Mainnet is the app's default; the Networks page has a separate public-read selector. */
+export const DEFAULT_NETWORK_ID: NetworkId = "mainnet";
 
 export const isNetworkAvailable = (id: NetworkId): boolean => NETWORKS.some((n) => n.id === id && n.available);
 

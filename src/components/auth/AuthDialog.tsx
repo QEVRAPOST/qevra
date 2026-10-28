@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { useOverlay } from "@/lib/use-overlay";
-import { NETWORKS } from "@/lib/config/networks";
+import { DEFAULT_NETWORK_ID, NETWORKS } from "@/lib/config/networks";
 import type { NetworkId, ReadOnlyWalletState } from "@/types";
 import type { WalletAuthChallenge } from "@/features/security/client";
 import type { AuthCapabilities, AuthCurrentSession } from "@/features/auth/contracts";
@@ -220,7 +220,7 @@ export function AuthDialog({ open, onClose, onSetNetwork, access, authCapabiliti
                 <div><dt>Actual wallet network</dt><dd>{wallet?.networkName ?? "Unknown network"} · chain ID {wallet?.chainId ?? "unknown"}</dd></div>
                 <div><dt>Selected VEYRA network</dt><dd>
                   <label className="sr-only" htmlFor="auth-selected-network">Selected VEYRA network</label>
-                  <select id="auth-selected-network" value={access?.selectedNetwork ?? "testnet"} onChange={(event) => onSetNetwork(event.target.value as NetworkId)}>
+                  <select id="auth-selected-network" value={access?.selectedNetwork ?? DEFAULT_NETWORK_ID} onChange={(event) => onSetNetwork(event.target.value as NetworkId)}>
                     {NETWORKS.map((network) => <option key={network.id} value={network.id}>{network.label} · {network.chainId}</option>)}
                   </select>
                 </dd></div>

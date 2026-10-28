@@ -16,7 +16,7 @@ export const HERO = {
 export const CURTAIN = {
   kicker: "Read Robinhood Chain",
   title: "Explore the evidence. Review every intent.",
-  body: "Read public network data, request a configured Mainnet quote, or review Security Swarm reports. Post-quantum wallet authorization remains under research.",
+  body: "Read public network data, explore configured swap routes, and review Security Swarm reports. Post-quantum wallet authorization remains under research.",
 } as const;
 
 /** Frame indexes the nav and the hero button jump to (frame 0 is the story intro, frames 1 to 7 are the steps). */
@@ -117,9 +117,9 @@ export const HERO_PARTS: Readonly<Record<HeroPartId, HeroPart>> = {
   },
   "t-chain": {
     name: "Chain (C)",
-    text: "Which network the swap is for. 46630 is Robinhood Testnet.",
+    text: "The live swap workflow uses Robinhood Mainnet (4663).",
     type: "chainId",
-    brief: ["Which network the swap is for.", "For example 46630: Robinhood Testnet."],
+    brief: ["The live swap workflow uses", "Robinhood Mainnet (4663)."],
   },
   "t-token": {
     name: "Token (T)",
@@ -339,9 +339,9 @@ export const STORY_STEPS: StoryStep[] = [
   {
     id: "start",
     title: "Explore VEYRA on Robinhood Chain",
-    body: "Read public Testnet evidence, connect a wallet for account reads, request a configured Mainnet quote, or review saved Security Swarm reports.",
+    body: "Read public deployment evidence, connect a wallet for account reads, explore configured swap routes, or review saved Security Swarm reports.",
     path: [
-      { material: "outline", lead: "Public Testnet evidence", detail: "Verified deployments are open at /app/networks; no wallet is required." },
+      { material: "outline", lead: "Public deployment evidence", detail: "Verified deployments are open at /app/networks; no wallet is required." },
       { material: "outline", lead: "External wallet", detail: "Read address, actual chain and native balance; approve transactions explicitly." },
       { material: "outline", lead: "VEYRA Research Engine", detail: "Sign in to open saved reports. New runs depend on provider, billing and worker availability." },
     ],

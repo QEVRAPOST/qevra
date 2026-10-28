@@ -34,7 +34,7 @@ function pipelineNode(model: AppModel): ReadinessRow {
 
 /** what it would take for a part that is not available to become available: stated plainly, never as a date */
 const NEEDS: Partial<Record<NodeId, string>> = {
-  swap: "A reviewed swap route and a router that has been independently checked. Neither exists yet, so no quote can be made.",
+  swap: "A live 0x quote, a valid Mainnet chain preflight and sufficient route liquidity. Wallet approval and swap submission require separate explicit confirmations.",
   pq: "Independent review of ML-DSA authorization, and a decision on who controls the account key and how recovery works. Both are still open.",
   audit: "An audit by someone outside the project. None is recorded yet, and research runs are not a substitute for one.",
 };
@@ -128,8 +128,8 @@ export function StatusView() {
         title="Status and limits"
         lede={
           model.mode === "live"
-            ? "Wallet reads and saved research are live. Sign-in uses an explicit EIP-191 login message; transaction signing, custody, and swap execution are disabled."
-            : "A preview with simulated data. This is what each part is meant to become, and what is known about it now."
+            ? "Public wallet reads and saved research are available. Mainnet swaps require a valid quote, chain checks, and explicit wallet confirmation."
+            : "A preview with simulated data. Explore each part’s current availability and limits."
         }
       />
       <p className="st-network-link">

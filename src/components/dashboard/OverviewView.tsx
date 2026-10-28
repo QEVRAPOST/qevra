@@ -55,8 +55,8 @@ export function OverviewView() {
         <p className="pg-lede">
           {brandizeProjectName(
             live
-              ? "VEYRA provides read-only EVM wallet access and wallet-authenticated Security Swarm research. Robinhood Mainnet swaps use an external wallet and require a live quote, chain preflight, and explicit wallet confirmation. Reports are research, not audits. PQ smart-account custody is unavailable; off-chain ML-DSA attestations do not protect EVM execution."
-              : "This demo uses simulated workspace data. Configured live builds support read-only EVM wallet access, wallet-authenticated Security Swarm research, and a quote-gated Robinhood Mainnet swap flow through an external wallet. PQ smart-account custody is unavailable.",
+              ? "Review source-backed research, inspect public wallet data, and prepare Mainnet swaps for explicit approval."
+              : "Preview VEYRA’s research, wallet, and Mainnet swap workflows with simulated workspace data.",
             PROJECT_NAME,
           )}
         </p>

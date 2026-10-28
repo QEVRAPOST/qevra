@@ -8,18 +8,17 @@ import { useMediaQuery } from "@/lib/use-media-query";
 import { CommandNav, TabBar } from "./AppNav";
 import { useAppModel } from "./DemoAppProvider";
 import { ModeMenu } from "./ModeMenu";
-import { NetworkSelect } from "./NetworkSelect";
 import { AuthEntryControl } from "@/components/auth/AuthEntryControl";
 
 /**
- * The frame around every route: one header (brand, route bar, what kind of data this is, network, wallet) and a phone tab bar.
+ * The frame around every route: one header (brand, route bar, account and wallet) and a phone tab bar.
  * There is no sidebar: the work gets the full width, and the route bar keeps the way around one glance wide.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { model, actions } = useAppModel();
   const label = model.wallet.walletButtonLabel;
   const walletPending = model.mode === "live" && model.wallet.connection?.status === "loading";
-  /* on a phone the header keeps the brand, the network and the wallet; what kind of data this is sits in a strip at the top of the page */
+  /* on a phone the header keeps the brand and wallet; what kind of data this is sits in a strip at the top of the page */
   const phone = useMediaQuery("(max-width: 700px)");
   return (
     <>
@@ -35,7 +34,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="apptools">
             <AuthEntryControl />
             {phone ? null : <ModeMenu />}
-            <NetworkSelect />
             <Button variant="ghost" size="small" className="walbtn" onClick={actions.pressWalletButton} disabled={walletPending}>
               <svg className="wl-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
                 <rect x="3" y="6" width="18" height="13" rx="2" />

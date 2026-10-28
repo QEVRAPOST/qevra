@@ -6,7 +6,7 @@ import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
 import { Button, buttonVariants } from "@/components/ui/Button";
 import { getRobinhoodPublicAddress, NetworkStatusClientError } from "@/features/wallet/network-client";
 import type { RobinhoodPublicAddressSnapshot } from "@/features/wallet/public-rpc";
-import { NETWORKS, getExplorerAddressUrl } from "@/lib/config/networks";
+import { DEFAULT_NETWORK_ID, NETWORKS, getExplorerAddressUrl } from "@/lib/config/networks";
 import type { NetworkId } from "@/types/network";
 
 export type PublicAddressInspectionState =
@@ -66,7 +66,7 @@ export function PublicAddressResult({ snapshot }: { snapshot: RobinhoodPublicAdd
 }
 
 export function PublicAddressInspector() {
-  const [networkId, setNetworkId] = useState<NetworkId>("testnet");
+  const [networkId, setNetworkId] = useState<NetworkId>(DEFAULT_NETWORK_ID);
   const [address, setAddress] = useState("");
   const [inspection, setInspection] = useState<PublicAddressInspectionState>({ status: "idle" });
   const requestId = useRef(0);

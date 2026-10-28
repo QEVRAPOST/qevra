@@ -16,7 +16,8 @@ test("public wallet UI renders while protected research UI remains behind the lo
 
   assert.match(markup, /aria-labelledby="h-wallet"/);
   assert.match(markup, /Connect wallet/);
-  assert.match(markup, /46630/);
+  assert.match(markup, /4663/);
+  assert.match(markup, /Robinhood Mainnet/);
   assert.match(markup, /Checking your server-side research session/);
   assert.doesNotMatch(markup, /Protected research content/);
 });

@@ -385,23 +385,25 @@ export function NetworksView({
   standaloneResearchEvidenceAnchors?: readonly VerifiedVeyraStandaloneDeployment[];
   architectureSlots?: readonly NetworkArchitectureSlot[];
 }) {
-  const { model, actions } = useAppModel();
-  const [previewRpc, setPreviewRpc] = useState<{ networkId: NetworkId; attempt: number; state: NetworkRpcState }>({
-    networkId: "testnet",
+  const { model } = useAppModel();
+  const [pageNetwork, setPageNetwork] = useState<NetworkId>(model.network.selected);
+  const [pageRpcResult, setPageRpcResult] = useState<{ networkId: NetworkId; attempt: number; state: NetworkRpcState }>({
+    networkId: model.network.selected,
     attempt: 0,
-    state: { status: "loading" },
+    state: model.network.rpc,
   });
-  const [previewRetry, setPreviewRetry] = useState(0);
+  const [pageRpcRefresh, setPageRpcRefresh] = useState(0);
   const [mainnetInfrastructureResult, setMainnetInfrastructureResult] = useState<{ requestKey: number; state: MainnetInfrastructureResult } | null>(null);
   const [mainnetInfrastructureRetry, setMainnetInfrastructureRetry] = useState(0);
-  const mainnetInfrastructure: MainnetInfrastructureReadState = model.network.selected !== "mainnet"
+  const mainnetInfrastructure: MainnetInfrastructureReadState = pageNetwork !== "mainnet"
     ? { status: "not_requested" }
     : mainnetInfrastructureResult?.requestKey === mainnetInfrastructureRetry
       ? mainnetInfrastructureResult.state
       : { status: "loading" };
-  const selected = model.network.options.find((network) => network.id === model.network.selected);
+  const selected = model.network.options.find((network) => network.id === pageNetwork);
+  const applicationNetwork = model.network.options.find((network) => network.id === model.network.selected);
   const deploymentNetworks = model.network.options.filter((network) => network.available);
-  const deploymentGroups = deploymentNetworks.filter((network) => network.id === model.network.selected).map((network) => {
+  const deploymentGroups = deploymentNetworks.filter((network) => network.id === pageNetwork).map((network) => {
     const verified = getVerifiedVeyraDeployments(network.id, deploymentRecords ?? []);
     const standalone = standaloneResearchEvidenceAnchors.filter((record) => record.networkId === network.id);
     const slots = architectureSlots
@@ -444,13 +446,13 @@ export function NetworksView({
     : undefined;
 
   useEffect(() => {
-    if (model.mode !== "demo") return;
     let active = true;
-    void getRobinhoodNetworkStatus(model.network.selected).then((snapshot) => {
+    const attempt = pageRpcRefresh;
+    void getRobinhoodNetworkStatus(pageNetwork).then((snapshot) => {
       if (!active) return;
-      setPreviewRpc({
-        networkId: model.network.selected,
-        attempt: previewRetry,
+      setPageRpcResult({
+        networkId: pageNetwork,
+        attempt,
         state: {
           status: "available",
           chainId: snapshot.chainId,
@@ -460,9 +462,9 @@ export function NetworksView({
       });
     }).catch((error: unknown) => {
       if (!active) return;
-      setPreviewRpc({
-        networkId: model.network.selected,
-        attempt: previewRetry,
+      setPageRpcResult({
+        networkId: pageNetwork,
+        attempt,
         state: {
           status: "unavailable",
           ...(error instanceof NetworkStatusClientError ? { errorCode: error.code, message: error.message } : {
@@ -473,10 +475,10 @@ export function NetworksView({
       });
     });
     return () => { active = false; };
-  }, [model.mode, model.network.selected, previewRetry]);
+  }, [pageNetwork, pageRpcRefresh]);
 
   useEffect(() => {
-    if (model.network.selected !== "mainnet") return;
+    if (pageNetwork !== "mainnet") return;
     let active = true;
     const requestKey = mainnetInfrastructureRetry;
     void getRobinhoodMainnetInfrastructure().then((snapshot) => {
@@ -492,19 +494,14 @@ export function NetworksView({
       });
     });
     return () => { active = false; };
-  }, [model.network.selected, mainnetInfrastructureRetry]);
+  }, [pageNetwork, mainnetInfrastructureRetry]);
 
-  const rpc = model.mode === "live"
-    ? model.network.rpc
-    : previewRpc.networkId === model.network.selected && previewRpc.attempt === previewRetry
-      ? previewRpc.state
+  const rpc = pageRpcResult.networkId === pageNetwork && pageRpcResult.attempt === pageRpcRefresh
+    ? pageRpcResult.state
       : { status: "loading" as const };
-  const refreshPublicRpc = () => {
-    if (model.mode === "live") actions.refreshNetwork?.();
-    else setPreviewRetry((current) => current + 1);
-  };
+  const refreshPublicRpc = () => setPageRpcRefresh((current) => current + 1);
   const refreshMainnetInfrastructure = () => {
-    if (model.network.selected === "mainnet") setMainnetInfrastructureRetry((current) => current + 1);
+    if (pageNetwork === "mainnet") setMainnetInfrastructureRetry((current) => current + 1);
   };
 
   return (
@@ -529,15 +526,15 @@ export function NetworksView({
               <h2 id="h-ne-network" className="ov-h">Public network status</h2>
             </div>
             <div role="group" aria-label="Select public network" className="ne-picker-actions ne-network-picker">
-              {model.network.options.map((network) => (
+              {deploymentNetworks.map((network) => (
                 <Button
                   key={network.id}
                   type="button"
-                  variant={network.id === model.network.selected ? "primary" : "ghost"}
-                  aria-pressed={network.id === model.network.selected}
+                  variant={network.id === pageNetwork ? "primary" : "ghost"}
+                  aria-pressed={network.id === pageNetwork}
                   disabled={!network.available}
                   onClick={() => {
-                    actions.setNetwork(network.id);
+                    setPageNetwork(network.id);
                     if (network.id === "mainnet") setMainnetInfrastructureRetry((current) => current + 1);
                   }}
                 >
@@ -550,6 +547,7 @@ export function NetworksView({
           <dl className="kv ne-status-facts">
             <div><dt>Selected network</dt><dd>{selected?.label ?? "Unavailable"}</dd></div>
             <div><dt>Expected chain ID</dt><dd>{selected?.chainId ?? "Unavailable"}</dd></div>
+            <div><dt>Application network</dt><dd>{applicationNetwork?.label ?? "Unavailable"} · {applicationNetwork?.chainId ?? "unknown"}</dd></div>
             <div><dt>Observed chain ID</dt><dd>{rpc.chainId ?? (rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable")}</dd></div>
             <div><dt>RPC connectivity</dt><dd>{rpc.status === "available" ? "Available" : rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable"}</dd></div>
             <div><dt>Latest block</dt><dd>{rpc.latestBlock ?? (rpc.status === "loading" || rpc.status === "not_requested" ? "Checking" : "Unavailable")}</dd></div>
@@ -559,7 +557,7 @@ export function NetworksView({
                 <div><dt>Wallet provider</dt><dd>{wallet.providerName ?? "Injected EIP-1193 wallet provider"}</dd></div>
                 <div><dt>Wallet network</dt><dd>{walletNetwork}</dd></div>
                 <div><dt>Wallet chain ID</dt><dd>{wallet.chainId ?? "Unavailable"}</dd></div>
-                <div><dt>Wallet/app network</dt><dd>{model.network.walletMismatch ? "Mismatch" : "Match"}</dd></div>
+                <div><dt>Wallet / application target</dt><dd>{model.network.walletMismatch ? `Mismatch with ${applicationNetwork?.label ?? "application network"}` : `Matches ${applicationNetwork?.label ?? "application network"}`}</dd></div>
                 <div className="ne-wallet-address-fact">
                   <dt>Connected external wallet address</dt>
                   <dd className="ne-wallet-account">
@@ -593,7 +591,7 @@ export function NetworksView({
 
           {wallet?.address && model.network.walletMismatch ? (
             <p className="ne-warning" role="status">
-              {wallet.providerName ?? "Your wallet"} is on {walletNetwork} (chain ID {wallet.chainId ?? "unavailable"}). Manually select {selected?.label ?? "the selected network"} (chain ID {selected?.chainId ?? "unknown"}) in your wallet to match. No balance is shown while this mismatch remains. VEYRA will not switch it.
+              {wallet.providerName ?? "Your wallet"} is on {walletNetwork} (chain ID {wallet.chainId ?? "unavailable"}). The application target is {applicationNetwork?.label ?? "unavailable"} (chain ID {applicationNetwork?.chainId ?? "unknown"}). Manually select {applicationNetwork?.label ?? "the application network"} (chain ID {applicationNetwork?.chainId ?? "unknown"}) in your wallet to use matching-chain wallet features. No balance is shown for the application target while this mismatch remains. VEYRA will not switch it.
             </p>
           ) : null}
           {rpc.message ? <p className="ne-error" role="status">{rpc.message}</p> : null}
@@ -603,7 +601,7 @@ export function NetworksView({
               {rpc.status === "unavailable" ? "Retry public RPC" : rpc.status === "loading" ? "Reading public RPC…" : "Refresh public RPC"}
             </Button>
             {selected ? <a className={buttonVariants({ variant: "ghost", size: "small" })} href={selected.explorerUrl} target="_blank" rel="noopener noreferrer">Open {selected.short} explorer</a> : null}
-            <p className="ne-readonly">Public data only. No wallet permission, signing, or network changes.</p>
+            <p className="ne-readonly">This selector changes only public reads and registry display. It does not change the app target or wallet network.</p>
           </div>
         </section>
 
@@ -708,7 +706,7 @@ export function NetworksView({
         </section>
 
         <MainnetExternalInfrastructurePanel
-          selectedNetwork={model.network.selected}
+          selectedNetwork={pageNetwork}
           state={mainnetInfrastructure}
           onRefresh={refreshMainnetInfrastructure}
         />

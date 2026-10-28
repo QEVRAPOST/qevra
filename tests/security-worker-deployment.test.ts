@@ -16,6 +16,16 @@ test("the Railway worker start command resolves its loader from production depen
   assert.equal(packageJson.devDependencies?.tsx, undefined, "tsx must not be available only in development builds");
 });
 
+test("the local worker command explicitly loads the private phase-2 environment file", () => {
+  assert.equal(packageJson.scripts?.["security:worker:local"], "bun --env-file=.qevra-data/phase2.env run security:worker");
+});
+
+test("the worker queue claims queued or expired running records, never historical failed runs", () => {
+  const storeSource = readFileSync(new URL("../src/features/security/store.ts", import.meta.url), "utf8");
+  assert.match(storeSource, /WHERE status = 'queued' OR \(status = 'running' AND lease_until < now\(\)\)/);
+  assert.doesNotMatch(storeSource, /WHERE status = 'failed'/);
+});
+
 test("a billing-disabled worker heartbeat does not claim queued research runs", async () => {
   const provider = getModelProvider({
     NODE_ENV: "test",

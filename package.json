@@ -15,6 +15,7 @@
     "lint:copy": "node scripts/copy-lint.mjs",
     "test": "node --import ./tests/register-test-hooks.mjs --import tsx --test tests/*.test.ts",
     "security:worker": "node --conditions=react-server --import tsx src/features/security/worker-main.ts",
+    "security:worker:local": "bun --env-file=.qevra-data/phase2.env run security:worker",
     "robinhood:rpc:testnet": "bun scripts/robinhood.ts rpc testnet",
     "robinhood:rpc:mainnet": "bun scripts/robinhood.ts rpc mainnet",
     "robinhood:contracts:build": "bun scripts/robinhood.ts contracts build",

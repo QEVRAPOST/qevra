@@ -47,21 +47,21 @@ export const researchAgentOutputSchema = z
 
 export const analysisAgentOutputSchema = z
   .object({
-    summary: boundedText(180),
-    assumptions: z.array(boundedText(160)).max(1),
+    summary: boundedText(120),
+    assumptions: z.array(boundedText(80)).max(1),
     risks: z
       .array(
         z.object({
           id: idSchema,
-          title: boundedText(100),
+          title: boundedText(60),
           severity: z.enum(["critical", "high", "medium", "low", "unknown"]),
-          analysis: boundedText(220),
+          analysis: boundedText(100),
           sourceIds: z.array(sourceIdSchema).min(1).max(5),
         }).strict(),
       )
       .max(1),
-    unknowns: z.array(boundedText(160)).max(2),
-    recommendations: z.array(boundedText(160)).max(1),
+    unknowns: z.array(boundedText(80)).max(1),
+    recommendations: z.array(boundedText(80)).max(1),
   })
   .strict();
 

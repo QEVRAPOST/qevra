@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -95,11 +96,15 @@ test("network explorer shows separate Testnet and Mainnet reads and the honest e
   assert.match(markup, /No verified VEYRA MVP deployments\./);
 });
 
-test("the registry defaults to Testnet and follows the selected network without showing a second registry", () => {
-  const testnetMarkup = renderNetworks();
+test("the registry defaults to Mainnet and follows its initial network without showing a second registry", () => {
+  const defaultMarkup = renderNetworks();
+  const testnetMarkup = renderNetworks("testnet");
   const mainnetMarkup = renderNetworks("mainnet");
 
-  assert.equal(DEFAULT_NETWORK_ID, "testnet");
+  assert.equal(DEFAULT_NETWORK_ID, "mainnet");
+  assert.match(defaultMarkup, /aria-pressed="true">Robinhood Mainnet · 4663/);
+  assert.match(defaultMarkup, /id="h-ne-registry-mainnet"/);
+  assert.doesNotMatch(defaultMarkup, /id="h-ne-registry-testnet"/);
   assert.match(testnetMarkup, /aria-pressed="true">Robinhood Testnet · 46630/);
   assert.match(testnetMarkup, /<strong>0\/5<\/strong> MVP contracts deployed/);
   assert.match(testnetMarkup, /id="h-ne-registry-testnet"/);
@@ -107,6 +112,16 @@ test("the registry defaults to Testnet and follows the selected network without 
   assert.match(mainnetMarkup, /aria-pressed="true">Robinhood Mainnet · 4663/);
   assert.match(mainnetMarkup, /id="h-ne-registry-mainnet"/);
   assert.doesNotMatch(mainnetMarkup, /id="h-ne-registry-testnet"/);
+});
+
+test("the Contracts network selector changes only page-local public reads and registry state", () => {
+  const source = readFileSync("src/components/dashboard/NetworksView.tsx", "utf8");
+
+  assert.match(source, /setPageNetwork\(network\.id\)/);
+  assert.doesNotMatch(source, /actions\.setNetwork\(network\.id\)/);
+  assert.match(source, /getRobinhoodNetworkStatus\(pageNetwork\)/);
+  assert.match(source, /network\.id === pageNetwork/);
+  assert.match(source, /selectedNetwork=\{pageNetwork\}/);
 });
 
 test("network explorer uses full-width vertical status, address, and registry sections", () => {
@@ -210,6 +225,9 @@ test("network explorer provides a separate empty watch-only public address inspe
   assert.match(markup, /name="public-address"/);
   assert.match(markup, /No wallet connection or account permission is used/);
   assert.match(markup, /inspection network is independent of VEYRA.*selected application network/i);
+  const inspectorPicker = /<div role="group" aria-label="Select inspection network"[\s\S]*?<\/div>/.exec(markup)?.[0] ?? "";
+  assert.match(inspectorPicker, /aria-pressed="true">Mainnet · 4663/);
+  assert.match(inspectorPicker, /aria-pressed="false">Testnet · 46630/);
   assert.doesNotMatch(markup, /0xfA142bF0383782Caa349C5C56A7B7D565eEFA562/);
 });
 
