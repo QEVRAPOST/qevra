@@ -32,7 +32,7 @@ export function TokenAddressControl() {
 
   return (
     <div className="token-address-control">
-      <span className="token-address-label">Configured token address · {token.network.label}</span>
+      <span className="token-address-label">VEYRA token address</span>
       <code title={token.address}>{shorten(token.address)}</code>
       <button
         type="button"

@@ -51,3 +51,20 @@ test("landing token address control stays absent without official address and ne
     else process.env.NEXT_PUBLIC_VEYRA_TOKEN_CHAIN_ID = previousChainId;
   }
 });
+
+test("configured hero token address does not append a network label", () => {
+  const previousAddress = process.env.NEXT_PUBLIC_VEYRA_TOKEN_CA;
+  const previousChainId = process.env.NEXT_PUBLIC_VEYRA_TOKEN_CHAIN_ID;
+  process.env.NEXT_PUBLIC_VEYRA_TOKEN_CA = "0x1111111111111111111111111111111111111111";
+  process.env.NEXT_PUBLIC_VEYRA_TOKEN_CHAIN_ID = "4663";
+  try {
+    const markup = renderToStaticMarkup(createElement(TokenAddressControl));
+    assert.match(markup, /VEYRA token address/);
+    assert.doesNotMatch(markup, /Robinhood Mainnet|Robinhood Testnet/);
+  } finally {
+    if (previousAddress === undefined) delete process.env.NEXT_PUBLIC_VEYRA_TOKEN_CA;
+    else process.env.NEXT_PUBLIC_VEYRA_TOKEN_CA = previousAddress;
+    if (previousChainId === undefined) delete process.env.NEXT_PUBLIC_VEYRA_TOKEN_CHAIN_ID;
+    else process.env.NEXT_PUBLIC_VEYRA_TOKEN_CHAIN_ID = previousChainId;
+  }
+});

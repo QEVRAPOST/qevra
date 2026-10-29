@@ -166,7 +166,7 @@ test("Overview introduces the workspace while feature pages retain operational d
   assert.match(lede, /Review source-backed research, inspect public wallet data, and prepare Mainnet swaps for explicit approval\./);
   assert.doesNotMatch(lede, /EVM|chain preflight|PQ smart-account|not audits/i);
   assert.match(markup, /Your VEYRA Workspace/);
-  assert.match(markup, /Explore AI-assisted research, review supporting evidence, and examine recorded findings\./);
+  assert.match(markup, /Explore AI-assisted research, supporting evidence, and your research history\./);
   assert.doesNotMatch(markup, /swap execution are unavailable/i);
 });
 
