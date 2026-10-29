@@ -226,6 +226,28 @@ contract DeployVeyraMainnetMvp {
         external
         returns (bytes32 batchHash, bytes32 reviewerDigest, bytes32 ownerDigest)
     {
+        MainnetDeploymentApproval.Record memory record;
+        (batchHash, record) = _currentMainnetApprovalRecord();
+        reviewerDigest = MainnetDeploymentApproval.reviewDigest(record);
+        ownerDigest = MainnetDeploymentApproval.ownerDigest(record);
+    }
+
+    /// @notice Returns the raw 32-byte messages for MetaMask `personal_sign`.
+    /// @dev `personal_sign` adds the EIP-191 prefix; signatures still verify against the same digests.
+    function currentMainnetPersonalSignMessages()
+        external
+        returns (bytes32 batchHash, bytes32 reviewerMessage, bytes32 ownerMessage)
+    {
+        MainnetDeploymentApproval.Record memory record;
+        (batchHash, record) = _currentMainnetApprovalRecord();
+        reviewerMessage = MainnetDeploymentApproval.reviewPersonalSignMessage(record);
+        ownerMessage = MainnetDeploymentApproval.ownerPersonalSignMessage(record);
+    }
+
+    function _currentMainnetApprovalRecord()
+        private
+        returns (bytes32 batchHash, MainnetDeploymentApproval.Record memory record)
+    {
         if (block.chainid != ROBINHOOD_MAINNET_CHAIN_ID) revert WrongChain(block.chainid);
         address deployer = vm.envAddress("VEYRA_MAINNET_DEPLOYER");
         address owner = vm.envAddress("VEYRA_MAINNET_OWNER");
@@ -233,7 +255,7 @@ contract DeployVeyraMainnetMvp {
         OwnerProfile ownerProfile = _parseOwnerProfile(vm.envString("VEYRA_MAINNET_OWNER_MODE"));
         uint64 startingDeployerNonce = vm.getNonce(deployer);
         batchHash = _deploymentBatchHash(deployer, owner, attestor, ownerProfile, startingDeployerNonce);
-        MainnetDeploymentApproval.Record memory record = MainnetDeploymentApproval.Record({
+        record = MainnetDeploymentApproval.Record({
             chainId: block.chainid,
             deployer: deployer,
             owner: owner,
@@ -248,8 +270,6 @@ contract DeployVeyraMainnetMvp {
             maxTotalFeeWei: vm.envUint("VEYRA_MAINNET_APPROVED_MAX_TOTAL_FEE_WEI"),
             expiresAt: vm.envUint("VEYRA_MAINNET_APPROVAL_EXPIRES_AT")
         });
-        reviewerDigest = MainnetDeploymentApproval.reviewDigest(record);
-        ownerDigest = MainnetDeploymentApproval.ownerDigest(record);
     }
 
     function _validateDeploymentConfiguration(

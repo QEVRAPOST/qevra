@@ -10,6 +10,14 @@ interface VmMainnetApprovalTest {
 }
 
 contract MainnetDeploymentApprovalHarness {
+    function reviewPersonalSignMessage(MainnetDeploymentApproval.Record memory record) external pure returns (bytes32) {
+        return MainnetDeploymentApproval.reviewPersonalSignMessage(record);
+    }
+
+    function ownerPersonalSignMessage(MainnetDeploymentApproval.Record memory record) external pure returns (bytes32) {
+        return MainnetDeploymentApproval.ownerPersonalSignMessage(record);
+    }
+
     function reviewDigest(MainnetDeploymentApproval.Record memory record) external pure returns (bytes32) {
         return MainnetDeploymentApproval.reviewDigest(record);
     }
@@ -46,6 +54,20 @@ contract MainnetDeploymentApprovalTest {
         (bytes memory reviewSignature, bytes memory ownerSignature) = _sign(harness, record);
 
         harness.verify(record, reviewSignature, ownerSignature, NOW);
+    }
+
+    function test_metaMaskPersonalSignMessagesProduceTheExistingApprovalDigests() public {
+        MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
+        MainnetDeploymentApproval.Record memory record = _record();
+        bytes32 reviewerMessage = harness.reviewPersonalSignMessage(record);
+        bytes32 ownerMessage = harness.ownerPersonalSignMessage(record);
+        bytes32 reviewerDigest = _personalSignDigest(reviewerMessage);
+        bytes32 ownerDigest = _personalSignDigest(ownerMessage);
+
+        require(reviewerDigest == harness.reviewDigest(record), "review personal_sign digest changed");
+        require(ownerDigest == harness.ownerDigest(record), "owner personal_sign digest changed");
+
+        harness.verify(record, _signature(REVIEWER_KEY, reviewerDigest), _signature(OWNER_KEY, ownerDigest), NOW);
     }
 
     function test_rejectsReviewSignatureWhenDeploymentBatchChanges() public {
@@ -158,5 +180,9 @@ contract MainnetDeploymentApprovalTest {
     function _signature(uint256 key, bytes32 digest) private pure returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);
         return abi.encodePacked(r, s, v);
+    }
+
+    function _personalSignDigest(bytes32 message) private pure returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", message));
     }
 }

@@ -238,13 +238,52 @@ forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
 forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
   --profile robinhood_mainnet --rpc-url robinhood_mainnet \
   --sig 'currentMainnetApprovalDigests()'
+
+# For MetaMask, return the raw 32-byte messages to pass to personal_sign.
+forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
+  --profile robinhood_mainnet --rpc-url robinhood_mainnet \
+  --sig 'currentMainnetPersonalSignMessages()'
 ```
 
-Sign the returned `reviewerDigest` and `ownerDigest` as raw 32-byte digests
-using EIP-191 (for example, `cast wallet sign --account <encrypted-alias>
---no-hash <digest>`). The digest already contains the EIP-191 prefix; do not
-hash or prefix it a second time. Never pass a private key or keystore password
-on the command line.
+`currentMainnetApprovalDigests()` returns final digests for offline signers
+such as `cast wallet sign --account <encrypted-alias> --no-hash <digest>`.
+Those final digests already contain the EIP-191 prefix. MetaMask must instead
+use the corresponding raw message from
+`currentMainnetPersonalSignMessages()`:
+
+```js
+const announced = [];
+const onAnnounce = (event) => announced.push(event.detail);
+window.addEventListener("eip6963:announceProvider", onAnnounce);
+window.dispatchEvent(new Event("eip6963:requestProvider"));
+await new Promise((resolve) => setTimeout(resolve, 250));
+window.removeEventListener("eip6963:announceProvider", onAnnounce);
+const metaMask = announced.find(({ info }) => info?.rdns === "io.metamask");
+if (!metaMask?.provider) throw new Error("MetaMask was not discovered through EIP-6963.");
+const provider = metaMask.provider;
+const chainId = await provider.request({ method: "eth_chainId" });
+if (chainId.toLowerCase() !== "0x1237") throw new Error("Select Robinhood Mainnet 4663 manually in MetaMask.");
+const [account] = await provider.request({ method: "eth_accounts" });
+if (!account || account.toLowerCase() !== "<EXPECTED_SIGNER_ADDRESS>".toLowerCase()) {
+  throw new Error("The selected MetaMask account does not match the expected signer.");
+}
+const signature = await provider.request({
+  method: "personal_sign",
+  params: ["0x<RAW_32_BYTE_MESSAGE>", account],
+});
+```
+
+Use the reviewer message for the independent reviewer and the owner message
+for the configured owner. This is a message signature for the exact approval
+record, not a transaction, and it does not change the wallet network. Do not
+call `personal_sign` on `reviewerDigest` or `ownerDigest`; MetaMask would add a
+second prefix. Do not use deprecated `eth_sign`. MetaMask displays this
+32-byte message as hex, so the signer must independently inspect the review
+report, batch hash, roles, nonce, and fee limits before explicitly approving
+the prompt. The script makes no account permission request and does not switch
+chains. Verify the returned signature against the corresponding final digest
+with `cast wallet verify --address <signer> --no-hash <digest> <signature>`.
+Never pass a private key or keystore password on the command line.
 
 Mainnet deployment simulation (never add `--broadcast` before explicit
 approval):

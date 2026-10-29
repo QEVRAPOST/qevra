@@ -7,6 +7,7 @@ export { NATIVE_ETH_ADDRESS, ROBINHOOD_MAINNET_TOKENS, ZEROX_ALLOWANCE_HOLDER, Z
 export const ROBINHOOD_MAINNET_CHAIN_ID = 4_663;
 export const ROBINHOOD_MAINNET_RPC = "https://rpc.mainnet.chain.robinhood.com";
 export type RobinhoodSwapTokenId = keyof typeof ROBINHOOD_MAINNET_TOKENS;
+export const DEFAULT_ROBINHOOD_SWAP_SELL_TOKEN: RobinhoodSwapTokenId = "ETH";
 export type RobinhoodSwapToken = (typeof ROBINHOOD_MAINNET_TOKENS)[RobinhoodSwapTokenId];
 export type RobinhoodSwapTokenMetadata = {
   id: RobinhoodSwapTokenId;

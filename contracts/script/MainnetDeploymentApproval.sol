@@ -38,8 +38,10 @@ library MainnetDeploymentApproval {
     error InvalidSignatureEncoding();
     error BroadcastGasPriceMismatch(uint256 observedGasPrice, uint256 approvedGasPrice);
 
-    function reviewDigest(Record memory record) internal pure returns (bytes32) {
-        bytes32 structHash = keccak256(
+    /// @notice The 32-byte message a wallet can pass to `personal_sign` for reviewer approval.
+    /// @dev The wallet adds the EIP-191 prefix; this value is not itself the final digest.
+    function reviewPersonalSignMessage(Record memory record) internal pure returns (bytes32) {
+        return keccak256(
             abi.encode(
                 REVIEW_TYPEHASH,
                 record.chainId,
@@ -55,10 +57,15 @@ library MainnetDeploymentApproval {
                 APPROVE_INACTIVE_DEPLOYMENT
             )
         );
-        return _toPersonalSignDigest(structHash);
     }
 
-    function ownerDigest(Record memory record) internal pure returns (bytes32) {
+    function reviewDigest(Record memory record) internal pure returns (bytes32) {
+        return _toPersonalSignDigest(reviewPersonalSignMessage(record));
+    }
+
+    /// @notice The 32-byte message a wallet can pass to `personal_sign` for owner approval.
+    /// @dev The wallet adds the EIP-191 prefix; this value is not itself the final digest.
+    function ownerPersonalSignMessage(Record memory record) internal pure returns (bytes32) {
         bytes32 deploymentAndReviewContextHash = keccak256(
             abi.encode(
                 record.chainId,
@@ -75,9 +82,11 @@ library MainnetDeploymentApproval {
             )
         );
         bytes32 feeApprovalHash = keccak256(abi.encode(record.maxFeePerGasWei, record.maxTotalFeeWei, record.expiresAt));
-        bytes32 structHash =
-            keccak256(abi.encode(OWNER_APPROVAL_TYPEHASH, deploymentAndReviewContextHash, feeApprovalHash));
-        return _toPersonalSignDigest(structHash);
+        return keccak256(abi.encode(OWNER_APPROVAL_TYPEHASH, deploymentAndReviewContextHash, feeApprovalHash));
+    }
+
+    function ownerDigest(Record memory record) internal pure returns (bytes32) {
+        return _toPersonalSignDigest(ownerPersonalSignMessage(record));
     }
 
     function verify(Record memory record, bytes memory reviewerSignature, bytes memory ownerSignature, uint256 now_)

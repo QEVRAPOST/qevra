@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LandingNav } from "@/components/landing/LandingNav";
+import { StatusBand } from "@/components/landing/LandingBands";
 import { OverviewView } from "@/components/dashboard/OverviewView";
 import { ModelContext } from "@/components/dashboard/AppModelContext";
 import { HERO, CURTAIN, HERO_FACTS, HERO_PARTS, HERO_SCENES, STORY_STEPS, SWARM_CAN, STATUS_BAND_INTRO } from "@/lib/content/landing";
@@ -65,6 +66,24 @@ test("landing navigation exposes the public contracts registry without making Te
   const source = readFileSync("src/components/landing/LandingNav.tsx", "utf8");
   assert.match(source, /<span>Contracts<\/span>/);
   assert.doesNotMatch(markup, /Testnet deployments/i);
+});
+
+test("public landing explains product journeys and keeps the technical readiness matrix on Status", () => {
+  const markup = renderToStaticMarkup(createElement(StatusBand, { projectName: "VEYRA" }));
+  const statusView = readFileSync("src/components/dashboard/StatusView.tsx", "utf8");
+
+  assert.match(markup, /Wallet access/);
+  assert.match(markup, /VEYRA Account email and password sign-in is separate and does not create a blockchain wallet/i);
+  assert.match(markup, /Experimental ERC-4337 smart-account.*Testnet-only.*Mainnet custody/i);
+  assert.match(markup, /Mainnet swap \+ Intent Lock/i);
+  assert.match(markup, /live 0x quote when service configuration, RPC checks and liquidity allow/i);
+  assert.match(markup, /VEYRA Research Engine/);
+  assert.match(markup, /Research → Analysis → Verification/);
+  assert.match(markup, /model-assisted research, not independent audits/i);
+  assert.match(markup, /ML-DSA.*off-chain: it does not authorize a wallet transaction or enforce post-quantum custody on-chain/i);
+  assert.match(markup, /href="\/app\/protocol"/);
+  assert.doesNotMatch(markup, /Evidence so far|Each part, and how much is known|Evidenced|Not built|9 parts/i);
+  assert.match(statusView, /<CoverageTable rows=\{model\.coverage\} caption="Status of each property"/);
 });
 
 test("the app header has no global network selector and Contracts owns its separate selector", () => {

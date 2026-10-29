@@ -71,8 +71,8 @@ report, not evidence that any deployable contract exceeds EIP-170. The actual
 non-broadcast script simulation below succeeded. Reviewers should preserve
 this distinction and independently confirm their toolchain's script execution.
 
-Latest non-broadcast RPC-backed simulation (2026-10-29, current source
-snapshot):
+Previous non-broadcast RPC-backed simulation (2026-10-29, before the
+MetaMask-compatible approval-message helper):
 
 - RPC chain ID: `4663`.
 - Starting deployer nonce: `0`.
@@ -86,16 +86,26 @@ snapshot):
 - Current nonce-bound deployment batch hash:
   `0x79a2b5882781ffd036697c82945842d9909bf954754f4c50cdd1fe7f1151889d`.
 
-A final repeat from the restricted Codex shell could not reach the RPC because
-DNS resolution for `rpc.mainnet.chain.robinhood.com` failed before the script
-started. The successful simulation above is the last successful RPC-backed
-result; no code changed after it. Repeat the non-broadcast simulation from an
-operator network after review and before signing any fee-bound approval.
+Subsequent read-only RPC probes succeeded. PublicNode at block `101036006` and
+the official Robinhood RPC at block `101036350` both reported chain `4663`,
+deployer nonce `0`, deployer balance `300000000000000 wei` (`0.0003 ETH`), and
+no owner runtime code. The observed gas prices were `20744000 wei` and
+`20776000 wei` respectively. Applying the official RPC gas price to the prior
+`5,022,946` gas limit gives a reference of `104356726096000 wei`
+(`0.000104356726096 ETH`); this is not a fresh simulation or funding target.
+No funds should be sent based on that calculation.
+
+Since the last full simulation, the deployment script and approval library
+gained a read-only helper that emits pre-prefix messages for standard MetaMask
+`personal_sign`; it preserves the existing approval digests and verification
+conditions, and adds no deployment operation. A fresh full simulation remains
+required after independent review and before signing.
 
 The simulated address predictions were not retained in the manifest or this
-package. The exact funding figure is a simulation estimate, not an instruction
-to fund; current deployer balance is zero and a fresh estimate is required
-after independent review. The estimate used Foundry's explicit
+package. The historical simulation's exact funding figure is not an instruction
+to fund; the latest read-only balance observation is time- and provider-bound,
+and a fresh estimate plus owner-approved margin is required after independent
+review. The historical estimate used Foundry's explicit
 `--legacy --with-gas-price 41540001` parameters and RPC gas estimation.
 
 Robinhood's current official developer documentation describes Robinhood
@@ -188,12 +198,15 @@ semantics outside mocks, real 0x execution compatibility, or an invariant/fuzz
 campaign covering arbitrary route configurations. These are reviewer work,
 not assumed passes.
 
-Exact current test evidence: `forge test --root contracts` passed 64 tests
-across 9 suites, with 0 failures and 0 skips. Focused Mainnet deployment and
-approval suites passed 23 tests (15 deployment-script tests and 8 approval
-tests). `bun test tests/robinhood-cli.test.ts` passed 12 tests. TypeScript
-(`bun run typecheck`) and `forge fmt --check` for the changed deployment
-script/library/tests passed. These are local checks, not independent review.
+Exact local check evidence on this prepared source: `forge test --root contracts`
+passed 65 tests across 9 suites, with 0 failures and 0 skips. The focused
+Mainnet deployment and approval suites passed 24 tests (15 deployment-script
+tests and 9 approval tests). `bun test tests/robinhood-cli.test.ts` passed 12
+tests; the full `bun run test` suite passed 409 tests, skipped 5, and failed 0.
+`bun run typecheck`, `bun run lint`, targeted `forge fmt --check`, and
+`forge build --root contracts` passed. The full Foundry build emitted existing
+lint warnings in the Phase 0 harness and timestamp checks; those remain review
+items, not test failures. These are local checks, not independent review.
 
 ## Source and configuration hashes
 
@@ -203,9 +216,9 @@ private environment files are included.
 
 | File | SHA-256 |
 |---|---|
-| `.env.example` | `9faed885fd9d69a49b3684b84fb8a9ead288416a5e2dd0963917f60509045f87` |
+| `.env.example` | `b02647c8da99ae3ce0ab0d4df8bf395eb9c77ca569dd47080a9419388ab8fbd5` |
 | `scripts/robinhood.ts` | `da3693096d98b79412366f31f47ebd82f4e74a725fca3cf557be715c03aee21a` |
-| `contracts/README.md` | `97be7e883ab6317f291c8742587869dc8a40eef523fd04d6b15f8c71800d6d93` |
+| `contracts/README.md` | `6251f49041adbd7070e31251e4eb23e679747a7129ae4b6a9d63a498236d3086` |
 | `contracts/deployments/robinhood-mainnet.json` | `da4ce2385a1565bb2a9b7973d6f207bd8e2e64ee57c988c509112510e9184ccd` |
 | `contracts/src/access/VeyraAccessManaged.sol` | `9cb6d650fc86066bd2e5e0c5cda248179b27a05f9362edb0c62ad27426886576` |
 | `contracts/src/policy/VeyraTokenPolicyRegistry.sol` | `bda87598a092da6d6ad9f7813c2faf81dae1bf987a76c123fae893333419f284` |
@@ -213,11 +226,11 @@ private environment files are included.
 | `contracts/src/swap/VeyraSwapIntentGuard.sol` | `fe4bf09141ee7fd3769fd368142593a2a61e00fe93f5bf217ec28c417694208f` |
 | `contracts/src/swap/VeyraSwapExecutor.sol` | `fb807282315323e6a3837f246c856a2869fb0b0eeb7ac5543d27c932bc925220` |
 | `contracts/src/research/VeyraResearchAttestationRegistry.sol` | `58c8a576d687dcb89f9d881f0cd09968aa8d73e4c1af9485337ce2f739c62507` |
-| `contracts/script/DeployVeyraMainnetMvp.s.sol` | `4d2376b3dc67a06c49763dc1703fb408b68dd5de7b89f65449b5a2f33af7fe12` |
-| `contracts/script/MainnetDeploymentApproval.sol` | `a4dc781ae349b5bd3606b36a04d79224ec16caf710b36e3e4bba251ea78b5fe1` |
+| `contracts/script/DeployVeyraMainnetMvp.s.sol` | `7dc749a76929b1969c965be992ba6ff7edefdfae8925eb1aa66d8506dc51807a` |
+| `contracts/script/MainnetDeploymentApproval.sol` | `8c7cad77bbc0ff5f6a1a044616020545cd529e6336bfefa88aeac5cfec396a2a` |
 | `contracts/foundry.toml` | `2cde2e67bde3308087c03df66779cec4c02cdd7a722d47a41948054d35bedecb` |
 | `contracts/test/DeployVeyraMainnetMvp.t.sol` | `1b6edfd2baf9ef682d1efe731f6afca505a31f4fbbd74265761e2835e297c1e9` |
-| `contracts/test/MainnetDeploymentApproval.t.sol` | `38949d9334151c462d303d61eb9b1381c2ce371287ecb31b7df8ef04510cce5c` |
+| `contracts/test/MainnetDeploymentApproval.t.sol` | `1f4b3ee8b0b6445628a329884df91b8788cdb426f44351b2c9668452440eeb44` |
 | `contracts/test/VeyraArchitectureRegistry.t.sol` | `2ef59175f3d5186a6ebf55cdc3ba3d848cba6de9f7b43e5a85b76b20df0d2933` |
 | `contracts/test/VeyraSwapExecution.t.sol` | `6cf09d01e1a0e4f6db03e3ea354180a23455817673310edcb8161d4cf432c796` |
 
@@ -305,12 +318,16 @@ independent report and fresh simulation match all fields above.
    material.
 3. Freeze the review package, hash it and the completed reviewer report, set
    the reviewer identity and proposed fee fields, then regenerate both digests
-   with `currentMainnetApprovalDigests()` at the same nonce. The reviewer signs
-   `reviewerDigest`; the owner independently reviews the exact batch and fee
-   bounds and signs `ownerDigest` using the owner wallet. Sign only the returned
-   raw 32-byte digest (`cast wallet sign --no-hash`); do not use the deployer
-   account as a substitute owner.
-4. Independently verify the signatures with
+   with `currentMainnetApprovalDigests()` and the raw personal-sign messages
+   with `currentMainnetPersonalSignMessages()` at the same nonce. The reviewer
+   signs the reviewer message first. After reviewing the report and exact fee
+   bounds, the owner signs the owner message with the configured MetaMask
+   account using `personal_sign`. The helper messages are the pre-prefix
+   32-byte values; MetaMask adds the EIP-191 prefix that yields the unchanged
+   final digests. Never personal-sign a final digest or use deprecated
+   `eth_sign`; do not use the deployer account as a substitute owner.
+4. Independently verify each MetaMask signature against its corresponding
+   final value from `currentMainnetApprovalDigests()` using
    `cast wallet verify --address <reviewer> --no-hash <reviewerDigest> <signature>`
    and the corresponding owner command. Confirm recovered addresses and every
    signed field. Check the ten-row total `sum(gasLimit × maxFeePerGasWei)` is
@@ -341,7 +358,7 @@ independent report and fresh simulation match all fields above.
 | R-05 | High | The guard/executor tests cover core lock, replay, caller, output, and residue checks but not malicious token callbacks or a systematic adversarial route matrix. | Add adversarial mocks and fuzz/invariant tests for callbacks/reentrancy, false/no-return/malformed token results, fee-on-transfer/rebase behavior, malicious router output/recipient behavior, nonce/expiry/slippage boundaries; review all results. |
 | R-06 | High for publication | Attestation events and getters expose report, manifest, and run digests and their linkage. Hashes can still be correlated or dictionary-tested; owner can enable publication. | Keep publication disabled. Define which identifiers may be committed, use high-entropy salts where appropriate, document retention/revocation limits, and get privacy approval before enabling. |
 | R-07 | Medium | Official docs state EVM compatibility but do not identify a hardfork. | Keep Cancun target explicit; preserve RPC `eth_estimateGas` evidence for exact creation code and require bytecode/receipt verification after any approved deployment. Resolve the target revision with chain documentation/support if possible. |
-| R-08 | High | No signer alias/key-control proof, current balance/funding proof, or owner signature is included. | Refresh nonce, balance, fee market and account-alias checks after review; fund only the exact approved amount; verify address control without exposing key material. |
+| R-08 | High | No Foundry signer alias/key-control proof, fresh simulation fee cap, owner approval signature, or approved funding decision is included. Read-only RPC observed a 0.0003 ETH deployer balance at blocks 101036006/101036350, but this observation is not funding authorization. | After review, refresh nonce, balance, fee market, simulation, and account-alias checks; obtain explicit owner approval for the exact funding amount; verify address control without exposing key material. |
 
 No source change in this package should clear these findings by assertion. The
 external reviewer owns the independent judgment; the operator owns the final
@@ -357,9 +374,11 @@ single-key transaction decision.
    balance, bytecode sizes, and non-broadcast simulation. The exact batch hash
    includes the starting nonce and compiled creation-code hashes; the package
    SHA-256 independently covers the deployment script source.
-4. Compute and verify both EIP-191 digests using
-   `currentMainnetApprovalDigests()`. The reviewer signs the review digest first. The
-   owner reviews the report and exact fee budget, then signs the owner digest.
+4. Compute both final EIP-191 digests using
+   `currentMainnetApprovalDigests()` and both raw MetaMask messages using
+   `currentMainnetPersonalSignMessages()`. The reviewer signs the reviewer
+   message first. The owner reviews the report and exact fee budget, then
+   explicitly signs the owner message in MetaMask with `personal_sign`.
 5. Verify that all 10 transactions' aggregate gas limit times the exact
    per-gas ceiling fits the signed `maxTotalFeeWei`, and verify deployer
    balance covers that maximum plus an explicitly approved margin.

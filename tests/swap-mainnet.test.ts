@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   ROBINHOOD_MAINNET_TOKENS,
+  DEFAULT_ROBINHOOD_SWAP_SELL_TOKEN,
   NATIVE_ETH_ADDRESS,
   parseRobinhoodSwapRequest,
   normalizeZeroXSwapQuote,
@@ -33,6 +34,11 @@ const verification: ZeroXContractVerification = {
   latestSettler: "0x2222222222222222222222222222222222222222",
   settlerCodePresent: true,
 };
+
+test("Mainnet swap starts with native ETH for the USDG acceptance route", () => {
+  assert.equal(DEFAULT_ROBINHOOD_SWAP_SELL_TOKEN, "ETH");
+  assert.equal(ROBINHOOD_MAINNET_TOKENS[DEFAULT_ROBINHOOD_SWAP_SELL_TOKEN].native, true);
+});
 
 function providerQuote(overrides: Record<string, unknown> = {}) {
   return {
@@ -807,6 +813,80 @@ test("wallet preflight distinguishes empty contract code from malformed RPC data
   } };
   await assert.rejects(preflightRobinhoodSwap(provider, normalized), (error: unknown) =>
     error instanceof Error && "code" in error && (error as { code: string }).code === "execution_target_not_deployed");
+});
+
+test("zero WETH balance blocks before wallet transaction confirmation", async () => {
+  const normalized = normalizeZeroXSwapQuote(providerQuote(), request, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, verification, 1_800_000_000_000);
+  assert.equal(normalized.status, "ready");
+  if (normalized.status !== "ready" || normalized.mode !== "quote") return;
+
+  let sendTransactionCalls = 0;
+  const provider = { request: async ({ method, params }: { method: string; params?: readonly unknown[] }) => {
+    if (method === "eth_accounts") return [request.taker];
+    if (method === "eth_chainId") return "0x1237";
+    if (method === "eth_getTransactionCount") return "0x3";
+    if (method === "eth_getCode") return `0x${"aa".repeat(40)}`;
+    if (method === "eth_call") {
+      const data = (params?.[0] as { data: string }).data;
+      if (data === "0x6352211e" + "0".repeat(63) + "2") return `0x${"0".repeat(24)}${verification.latestSettler!.slice(2).toLowerCase()}`;
+      if (data === "0x313ce567") return `0x${BigInt(18).toString(16).padStart(64, "0")}`;
+      if (data.startsWith("0x70a08231")) return `0x${"0".repeat(64)}`;
+      if (data.startsWith("0xdd62ed3e")) return `0x${"0".repeat(64)}`;
+    }
+    if (method === "eth_sendTransaction") { sendTransactionCalls += 1; return `0x${"99".repeat(32)}`; }
+    throw new Error(`Unexpected RPC method ${method}`);
+  } };
+
+  await assert.rejects(sendReviewedSwap(provider, normalized, "3"), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "insufficient_token_balance");
+  assert.equal(sendTransactionCalls, 0);
+});
+
+test("native ETH preflight is ready without ERC-20 allowance calls or approval requests", async () => {
+  const nativeRequest: RobinhoodSwapRequest = { ...request, tokenIn: "ETH", amount: "0.0001" };
+  const nativeQuote = providerQuote({
+    sellAmount: "100000000000000",
+    sellToken: NATIVE_ETH_ADDRESS,
+    allowanceTarget: null,
+    issues: { ...providerQuote().issues, allowance: null },
+    route: { fills: [{ from: NATIVE_ETH_ADDRESS, to: ROBINHOOD_MAINNET_TOKENS.USDG.address, source: "Uniswap_V3", proportionBps: 10_000 }] },
+    transaction: { ...providerQuote().transaction, value: "100000000000000" },
+  });
+  const normalized = normalizeZeroXSwapQuote(nativeQuote, nativeRequest, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.ETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, { ...verification, allowanceSpender: null, allowanceSpenderCodePresent: false }, 1_800_000_000_000);
+  assert.equal(normalized.status, "ready");
+  if (normalized.status !== "ready" || normalized.mode !== "quote") return;
+
+  const calls: string[] = [];
+  const provider = { request: async ({ method, params }: { method: string; params?: readonly unknown[] }) => {
+    calls.push(method);
+    if (method === "eth_accounts") return [request.taker];
+    if (method === "eth_chainId") return "0x1237";
+    if (method === "eth_getTransactionCount") return "0x7";
+    if (method === "eth_getCode") return `0x${"aa".repeat(40)}`;
+    if (method === "eth_call") {
+      const data = (params?.[0] as { data: string }).data;
+      assert.equal(data, "0x6352211e" + "0".repeat(63) + "2", "native ETH must not trigger ERC-20 metadata, balance, or allowance reads");
+      return `0x${"0".repeat(24)}${verification.latestSettler!.slice(2).toLowerCase()}`;
+    }
+    if (method === "eth_getBalance") return "0x3635c9adc5dea00000";
+    if (method === "eth_gasPrice") return "0x3b9aca00";
+    if (method === "eth_estimateGas") return "0x186a0";
+    throw new Error(`Unexpected RPC method ${method}`);
+  } };
+
+  const preflight = await preflightRobinhoodSwap(provider, normalized);
+  assert.equal(preflight.status, "ready");
+  const callsBeforeApprovalAttempt = calls.length;
+  await assert.rejects(approveExactSwapAmount(provider, normalized), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "approval_target_not_allowed");
+  assert.equal(calls.length, callsBeforeApprovalAttempt);
+  assert.equal(calls.includes("eth_sendTransaction"), false);
 });
 
 test("wallet execution rejects a modified quote before any wallet RPC or write request", async () => {
