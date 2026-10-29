@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Check, ChevronDown, Copy, ExternalLink, FileText } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
 import { Button, buttonVariants } from "@/components/ui/Button";
@@ -21,6 +21,7 @@ import {
 import type { VeyraArchitectureSlotDefinition } from "@/lib/config/veyra-deployment-manifest";
 import { PROJECT_NAME } from "@/lib/project-brand";
 import type { NetworkId, NetworkRpcState } from "@/types/network";
+import { createNetworkSelectionState, networkSelectionReducer } from "@/features/wallet/network-selection";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 
@@ -386,13 +387,12 @@ export function NetworksView({
   architectureSlots?: readonly NetworkArchitectureSlot[];
 }) {
   const { model } = useAppModel();
-  const [pageNetwork, setPageNetwork] = useState<NetworkId>(model.network.selected);
-  const [pageRpcResult, setPageRpcResult] = useState<{ networkId: NetworkId; attempt: number; state: NetworkRpcState }>({
-    networkId: model.network.selected,
-    attempt: 0,
-    state: model.network.rpc,
-  });
-  const [pageRpcRefresh, setPageRpcRefresh] = useState(0);
+  const [pageSelection, dispatchPageSelection] = useReducer(
+    networkSelectionReducer,
+    { networkId: model.network.selected, rpc: model.network.rpc },
+    ({ networkId, rpc }) => createNetworkSelectionState(networkId, rpc),
+  );
+  const { networkId: pageNetwork, requestId: pageRpcRequestId } = pageSelection;
   const [mainnetInfrastructureResult, setMainnetInfrastructureResult] = useState<{ requestKey: number; state: MainnetInfrastructureResult } | null>(null);
   const [mainnetInfrastructureRetry, setMainnetInfrastructureRetry] = useState(0);
   const mainnetInfrastructure: MainnetInfrastructureReadState = pageNetwork !== "mainnet"
@@ -447,13 +447,15 @@ export function NetworksView({
 
   useEffect(() => {
     let active = true;
-    const attempt = pageRpcRefresh;
-    void getRobinhoodNetworkStatus(pageNetwork).then((snapshot) => {
+    const networkId = pageNetwork;
+    const requestId = pageRpcRequestId;
+    void getRobinhoodNetworkStatus(networkId).then((snapshot) => {
       if (!active) return;
-      setPageRpcResult({
-        networkId: pageNetwork,
-        attempt,
-        state: {
+      dispatchPageSelection({
+        type: "resolved",
+        networkId,
+        requestId,
+        rpc: {
           status: "available",
           chainId: snapshot.chainId,
           latestBlock: snapshot.latestBlock,
@@ -462,10 +464,11 @@ export function NetworksView({
       });
     }).catch((error: unknown) => {
       if (!active) return;
-      setPageRpcResult({
-        networkId: pageNetwork,
-        attempt,
-        state: {
+      dispatchPageSelection({
+        type: "resolved",
+        networkId,
+        requestId,
+        rpc: {
           status: "unavailable",
           ...(error instanceof NetworkStatusClientError ? { errorCode: error.code, message: error.message } : {
             errorCode: "rpc_unavailable",
@@ -475,7 +478,7 @@ export function NetworksView({
       });
     });
     return () => { active = false; };
-  }, [pageNetwork, pageRpcRefresh]);
+  }, [pageNetwork, pageRpcRequestId]);
 
   useEffect(() => {
     if (pageNetwork !== "mainnet") return;
@@ -496,10 +499,8 @@ export function NetworksView({
     return () => { active = false; };
   }, [pageNetwork, mainnetInfrastructureRetry]);
 
-  const rpc = pageRpcResult.networkId === pageNetwork && pageRpcResult.attempt === pageRpcRefresh
-    ? pageRpcResult.state
-      : { status: "loading" as const };
-  const refreshPublicRpc = () => setPageRpcRefresh((current) => current + 1);
+  const rpc: NetworkRpcState = pageSelection.rpc;
+  const refreshPublicRpc = () => dispatchPageSelection({ type: "refresh" });
   const refreshMainnetInfrastructure = () => {
     if (pageNetwork === "mainnet") setMainnetInfrastructureRetry((current) => current + 1);
   };
@@ -534,7 +535,7 @@ export function NetworksView({
                   aria-pressed={network.id === pageNetwork}
                   disabled={!network.available}
                   onClick={() => {
-                    setPageNetwork(network.id);
+                    dispatchPageSelection({ type: "select", networkId: network.id });
                     if (network.id === "mainnet") setMainnetInfrastructureRetry((current) => current + 1);
                   }}
                 >
@@ -543,6 +544,12 @@ export function NetworksView({
               ))}
             </div>
           </header>
+
+          {rpc.status === "loading" ? (
+            <p className="ne-network-loading" role="status" aria-live="polite">
+              Loading public {selected?.short ?? "network"} status · chain ID {selected?.chainId ?? "unavailable"}…
+            </p>
+          ) : null}
 
           <dl className="kv ne-status-facts">
             <div><dt>Selected network</dt><dd>{selected?.label ?? "Unavailable"}</dd></div>
@@ -633,7 +640,13 @@ export function NetworksView({
               const networkName = network.id === "testnet" ? "Testnet" : "Mainnet";
               const primaryMvpSlots = network.id === "mainnet" ? mvpSlots : deployedMvpSlots;
               return (
-                <section className="ne-registry-network" key={network.id} aria-labelledby={`h-ne-registry-${network.id}`}>
+                <section
+                  className="ne-registry-network"
+                  key={network.id}
+                  data-network-id={network.id}
+                  data-chain-id={network.chainId}
+                  aria-labelledby={`h-ne-registry-${network.id}`}
+                >
                   <header className="ne-registry-network-head">
                     <h3 id={`h-ne-registry-${network.id}`}>{networkName} MVP Deployments</h3>
                     <span>{network.label} · Chain ID {network.chainId}</span>

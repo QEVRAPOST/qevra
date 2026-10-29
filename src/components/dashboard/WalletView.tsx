@@ -7,7 +7,7 @@ import { brandizeProjectName, PROJECT_NAME } from "@/lib/project-brand";
 import { useAppModel } from "./DemoAppProvider";
 import { PageHead } from "./PageHead";
 import { WalletBand } from "./WalletBand";
-import { BuiltInWalletPanel } from "./BuiltInWalletPanel";
+import { SmartAccountPanel } from "./SmartAccountPanel";
 import { buttonVariants } from "@/components/ui/Button";
 
 /**
@@ -31,7 +31,7 @@ export function WalletView() {
         title="Wallet overview"
         lede={brandizeProjectName("Your VEYRA Account and an external EVM wallet are separate. Account sign-in does not require MetaMask; connecting an external wallet is optional and read-only here.", PROJECT_NAME)}
       />
-      <BuiltInWalletPanel networkId={model.network.selected} enabled={live} />
+      <SmartAccountPanel networkId={model.network.selected} enabled={live} />
 
       <section className="wl-external" aria-labelledby="h-external-wallet">
         <h2 id="h-external-wallet" className="ov-h">External wallet · read-only</h2>

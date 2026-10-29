@@ -28,6 +28,7 @@
     "deploy:show": "bun scripts/deploy-simulate.ts"
   },
   "dependencies": {
+    "@alchemy/smart-accounts": "^5.3.0",
     "@noble/post-quantum": "0.7.1",
     "@radix-ui/react-select": "2.4.1",
     "@radix-ui/react-slot": "1.5.0",

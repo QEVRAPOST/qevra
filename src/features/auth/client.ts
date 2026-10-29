@@ -4,6 +4,7 @@ import type { NetworkId } from "@/types";
 import type { AuthAccountProfile, AuthCapabilities, AuthCurrentSession, AuthContract, BuiltInWalletStatus, WalletLinkChallenge } from "./contracts";
 import { requestWalletAuthChallenge } from "@/features/security/client";
 import type { WalletAuthChallenge } from "@/features/security/client";
+import { isWalletSmartAccountStatusResponse, type WalletSmartAccountStatusResponse } from "@/features/wallet/smart-account-contract";
 
 export class AuthApiError extends Error {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -83,6 +84,16 @@ export function requestWalletLinkChallenge(input: { networkId: NetworkId; addres
 
 export function verifyWalletLink(input: { nonce: string; signature: string }): Promise<{ linked: true; address: `0x${string}`; chainId: number }> {
   return post("/api/auth/wallet/link", input);
+}
+
+export async function getWalletSmartAccountStatus(networkId: NetworkId, ownerAddress?: string): Promise<WalletSmartAccountStatusResponse> {
+  const query = new URLSearchParams({ networkId });
+  if (ownerAddress) query.set("ownerAddress", ownerAddress);
+  const response = await request<unknown>(`/api/auth/wallet/smart-account?${query.toString()}`);
+  if (!isWalletSmartAccountStatusResponse(response)) {
+    throw new AuthApiError(502, "invalid_smart_account_status", "The smart wallet service returned an invalid status response.");
+  }
+  return response;
 }
 
 export const authContract: AuthContract = {

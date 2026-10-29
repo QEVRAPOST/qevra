@@ -73,7 +73,7 @@ test("the app header has no global network selector and Contracts owns its separ
 
   assert.doesNotMatch(appShell, /NetworkSelect/);
   assert.match(networksView, /aria-label="Select public network"/);
-  assert.match(networksView, /setPageNetwork\(network\.id\)/);
+  assert.match(networksView, /dispatchPageSelection\(\{ type: "select", networkId: network\.id \}\)/);
   assert.doesNotMatch(networksView, /actions\.setNetwork\(network\.id\)/);
 });
 

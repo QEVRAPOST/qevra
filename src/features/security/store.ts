@@ -399,6 +399,24 @@ export class PostgresResearchStore {
     } : undefined;
   }
 
+  async getLinkedWalletAddress(userId: string, requestedAddress?: string): Promise<string | undefined> {
+    await this.ensureSchema();
+    const result = requestedAddress
+      ? await this.pool.query<{ provider_subject: string }>(
+        `SELECT provider_subject FROM veyra_auth_identities
+         WHERE provider = 'wallet' AND user_id = $1 AND lower(provider_subject) = lower($2)
+         LIMIT 1`,
+        [userId, requestedAddress],
+      )
+      : await this.pool.query<{ provider_subject: string }>(
+        `SELECT provider_subject FROM veyra_auth_identities
+         WHERE provider = 'wallet' AND user_id = $1
+         ORDER BY created_at ASC LIMIT 1`,
+        [userId],
+      );
+    return result.rows[0]?.provider_subject;
+  }
+
   async createOrGetAuthIdentity(identity: AuthIdentityInput): Promise<AuthIdentityRecord> {
     await this.ensureSchema();
     const client = await this.pool.connect();
