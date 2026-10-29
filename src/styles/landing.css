@@ -837,6 +837,51 @@
 .product-status-link {
   min-height: 40px;
 }
+.landing-capabilities-card {
+  min-width: 0;
+}
+.landing-capabilities-table {
+  table-layout: fixed;
+}
+.landing-capabilities-table th:first-child,
+.landing-capabilities-table td:first-child {
+  width: 27%;
+}
+.landing-capabilities-table th:last-child,
+.landing-capabilities-table td:last-child {
+  width: 18%;
+}
+.landing-capability-feature,
+.landing-capability-experience,
+.landing-capability-action {
+  vertical-align: middle;
+}
+.landing-capability-feature {
+  white-space: normal;
+}
+.landing-capability-experience {
+  line-height: 1.55;
+}
+.landing-capability-action {
+  white-space: nowrap;
+}
+.landing-capability-action .product-journey-link {
+  min-height: 40px;
+}
+.landing-capability-disclosure {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 24px;
+  align-items: center;
+}
+.landing-capability-disclosure p {
+  max-width: 78ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
 @media (max-width: 1024px) {
   .product-journeys {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1759,6 +1804,16 @@ html[data-launching] .stage canvas {
   }
   .product-overview-head {
     margin-bottom: 26px;
+  }
+  .landing-capability-scroll {
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .landing-capabilities-table {
+    min-width: 680px;
+  }
+  .landing-capability-disclosure {
+    align-items: flex-start;
   }
   .product-journeys {
     grid-template-columns: minmax(0, 1fr);

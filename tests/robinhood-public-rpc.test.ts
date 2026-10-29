@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as publicRpc from "@/features/wallet/public-rpc";
-import { readRobinhoodNetwork, RobinhoodRpcError } from "@/features/wallet/public-rpc";
+import { readRobinhoodNetwork, readRobinhoodPendingNonce, RobinhoodRpcError } from "@/features/wallet/public-rpc";
 
 function rpcResponse(id: number, result: string): Response {
   return Response.json({ jsonrpc: "2.0", id, result });
@@ -23,6 +23,51 @@ function getPublicAddressReader(): PublicAddressReader {
   assert.equal(typeof reader, "function", "the Robinhood public RPC adapter should expose watch-only address reads");
   return reader!;
 }
+
+test("Mainnet pending nonce reads verify chain first and use the pending tag", async () => {
+  const calls: Array<{ method: string; params: unknown[] }> = [];
+  const result = await readRobinhoodPendingNonce("0x3cdb91a29b73dab9219d9a287543800b417b6dbb", async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { id: number; method: string; params: unknown[] };
+    calls.push({ method: body.method, params: body.params });
+    return rpcResponse(body.id, body.method === "eth_chainId" ? "0x1237" : "0x9");
+  });
+
+  assert.equal(result.networkId, "mainnet");
+  assert.equal(result.chainId, 4_663);
+  assert.equal(result.address.toLowerCase(), "0x3cdb91a29b73dab9219d9a287543800b417b6dbb");
+  assert.equal(result.pendingNonce, "9");
+  assert.deepEqual(calls, [
+    { method: "eth_chainId", params: [] },
+    { method: "eth_getTransactionCount", params: ["0x3cdb91a29b73daB9219D9A287543800B417b6dbB", "pending"] },
+  ]);
+});
+
+test("Mainnet pending nonce read fails closed on wrong chain and malformed quantities", async () => {
+  await assert.rejects(readRobinhoodPendingNonce("0x3cdb91a29b73dab9219d9a287543800b417b6dbb", async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { id: number };
+    return rpcResponse(body.id, "0x1");
+  }), (error: unknown) => error instanceof RobinhoodRpcError && error.code === "rpc_chain_id_mismatch");
+
+  let countCalls = 0;
+  await assert.rejects(readRobinhoodPendingNonce("0x3cdb91a29b73dab9219d9a287543800b417b6dbb", async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { id: number; method: string };
+    if (body.method === "eth_getTransactionCount") countCalls += 1;
+    return rpcResponse(body.id, body.method === "eth_chainId" ? "0x1237" : "9");
+  }), (error: unknown) => error instanceof RobinhoodRpcError && error.code === "rpc_invalid_nonce");
+  assert.equal(countCalls, 1);
+});
+
+test("Mainnet pending nonce read runs the wallet-context check after chain verification and before nonce lookup", async () => {
+  const steps: string[] = [];
+  const result = await readRobinhoodPendingNonce("0x3cdb91a29b73dab9219d9a287543800b417b6dbb", async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { id: number; method: string };
+    steps.push(body.method);
+    return rpcResponse(body.id, body.method === "eth_chainId" ? "0x1237" : "0x9");
+  }, async () => { steps.push("wallet-account-chain-recheck"); });
+
+  assert.equal(result.pendingNonce, "9");
+  assert.deepEqual(steps, ["eth_chainId", "wallet-account-chain-recheck", "eth_getTransactionCount"]);
+});
 
 type MainnetInfrastructureSnapshot = {
   networkId: "mainnet";

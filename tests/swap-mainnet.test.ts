@@ -7,6 +7,7 @@ import {
   parseRobinhoodSwapRequest,
   normalizeZeroXSwapQuote,
   normalizeZeroXSwapPrice,
+  computeQuoteDigest,
   type RobinhoodSwapRequest,
   type ZeroXContractVerification,
 } from "@/features/swap/mainnet";
@@ -34,6 +35,51 @@ const verification: ZeroXContractVerification = {
   latestSettler: "0x2222222222222222222222222222222222222222",
   settlerCodePresent: true,
 };
+
+function nativeEthQuote() {
+  const nativeRequest: RobinhoodSwapRequest = { ...request, tokenIn: "ETH", amount: "0.0001" };
+  const raw = providerQuote({
+    sellAmount: "100000000000000",
+    sellToken: NATIVE_ETH_ADDRESS,
+    allowanceTarget: null,
+    issues: { ...providerQuote().issues, allowance: null },
+    route: { fills: [{ from: NATIVE_ETH_ADDRESS, to: ROBINHOOD_MAINNET_TOKENS.USDG.address, source: "Uniswap_V3", proportionBps: 10_000 }] },
+    transaction: { ...providerQuote().transaction, value: "100000000000000" },
+  });
+  const quote = normalizeZeroXSwapQuote(raw, nativeRequest, {
+    sell: { ...ROBINHOOD_MAINNET_TOKENS.ETH, decimals: 18 },
+    buy: { ...ROBINHOOD_MAINNET_TOKENS.USDG, decimals: 6 },
+  }, { ...verification, allowanceSpender: null, allowanceSpenderCodePresent: false }, 1_800_000_000_000);
+  assert.equal(quote.status, "ready");
+  if (quote.status !== "ready" || quote.mode !== "quote") throw new Error("expected_ready_native_quote");
+  return quote;
+}
+
+function mainnetNonceRpcFetch(options: { chainId?: string; nonce?: string; status?: number; invalidJson?: boolean; observedAt?: string } = {}): typeof fetch {
+  return async (input) => {
+    if (options.status !== undefined) return new Response("", { status: options.status });
+    if (options.invalidJson) return new Response("not-json", { status: 200 });
+    const chainId = Number.parseInt(options.chainId ?? "0x1237", 16);
+    if (chainId !== 4_663) return Response.json({ error: { code: "rpc_chain_id_mismatch", message: "safe" } }, { status: 502 });
+    const address = new URL(String(input), "http://localhost").searchParams.get("address");
+    return Response.json({ networkId: "mainnet", chainId, address, pendingNonce: BigInt(options.nonce ?? "0x9").toString(), observedAt: options.observedAt ?? new Date().toISOString() });
+  };
+}
+
+function nativePreflightProvider(walletNonce: string | (() => Promise<unknown>), onRequest?: (method: string) => void) {
+  return { request: async ({ method }: { method: string }) => {
+    onRequest?.(method);
+    if (method === "eth_accounts") return [request.taker];
+    if (method === "eth_chainId") return "0x1237";
+    if (method === "eth_getTransactionCount") return typeof walletNonce === "string" ? walletNonce : walletNonce();
+    if (method === "eth_getCode") return `0x${"aa".repeat(40)}`;
+    if (method === "eth_call") return `0x${"0".repeat(24)}${verification.latestSettler!.slice(2).toLowerCase()}`;
+    if (method === "eth_getBalance") return "0x3635c9adc5dea00000";
+    if (method === "eth_gasPrice") return "0x3b9aca00";
+    if (method === "eth_estimateGas") return "0x186a0";
+    throw new Error(`Unexpected RPC method ${method}`);
+  } };
+}
 
 test("Mainnet swap starts with native ETH for the USDG acceptance route", () => {
   assert.equal(DEFAULT_ROBINHOOD_SWAP_SELL_TOKEN, "ETH");
@@ -724,6 +770,125 @@ test("client accepts a quote targeting the registry Settler when its AllowanceHo
   }
 });
 
+test("swap preflight accepts matching wallet and independently verified Mainnet pending nonces", async () => {
+  const quote = nativeEthQuote();
+  const walletCalls: string[] = [];
+  const result = await preflightRobinhoodSwap(nativePreflightProvider("0x9", (method) => walletCalls.push(method)), quote, Date.now(), {
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.transactionNonce, BigInt(9));
+  assert.equal(result.nonceSource, "wallet_and_rpc");
+  assert.ok(walletCalls.indexOf("eth_accounts") < walletCalls.indexOf("eth_getTransactionCount"));
+  assert.ok(walletCalls.lastIndexOf("eth_accounts") > walletCalls.indexOf("eth_getTransactionCount"));
+});
+
+test("swap preflight uses an explicit trusted-RPC fallback when the wallet rejects pending nonce reads", async () => {
+  const quote = nativeEthQuote();
+  const unsupported = Object.assign(new Error("raw provider details must not escape"), { code: -32601 });
+  const result = await preflightRobinhoodSwap(nativePreflightProvider(async () => { throw unsupported; }), quote, Date.now(), {
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.transactionNonce, BigInt(9));
+  assert.equal(result.nonceSource, "trusted_rpc_fallback");
+  assert.equal(result.walletNonceFailureCategory, "method_unsupported");
+});
+
+test("swap preflight does not use nonce fallback after wallet rejection or disconnection", async () => {
+  const quote = nativeEthQuote();
+  let fallbackCalls = 0;
+  const rejectedProvider = nativePreflightProvider(async () => { throw Object.assign(new Error("wallet rejected"), { code: 4001 }); });
+  await assert.rejects(preflightRobinhoodSwap(rejectedProvider, quote, Date.now(), {
+    fetch: async () => { fallbackCalls += 1; return Response.json({}); },
+  }), (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === "wallet_rejected");
+  assert.equal(fallbackCalls, 0);
+
+  const disconnectedProvider = nativePreflightProvider(async () => { throw Object.assign(new Error("wallet disconnected"), { code: 4900 }); });
+  await assert.rejects(preflightRobinhoodSwap(disconnectedProvider, quote, Date.now(), { fetch: mainnetNonceRpcFetch() }), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "wallet_disconnected");
+});
+
+test("swap preflight uses the exact pending tag and records malformed wallet nonce responses safely", async () => {
+  const quote = nativeEthQuote();
+  let requestedParams: readonly unknown[] | undefined;
+  const base = nativePreflightProvider("0x9");
+  const provider = { request: async (args: { method: string; params?: readonly unknown[] }) => {
+    if (args.method === "eth_getTransactionCount") { requestedParams = args.params; return "9"; }
+    return base.request(args);
+  } };
+  const result = await preflightRobinhoodSwap(provider, quote, Date.now(), { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) });
+
+  assert.deepEqual(requestedParams, [request.taker, "pending"]);
+  assert.equal(result.nonceSource, "trusted_rpc_fallback");
+  assert.equal(result.walletNonceFailureCategory, "invalid_response");
+});
+
+test("swap preflight rejects wallet and trusted RPC pending nonce mismatches", async () => {
+  const quote = nativeEthQuote();
+  await assert.rejects(preflightRobinhoodSwap(nativePreflightProvider("0x9"), quote, Date.now(), {
+    fetch: mainnetNonceRpcFetch({ nonce: "0xa" }),
+  }), (error: unknown) => error instanceof Error && "code" in error
+    && (error as { code: string }).code === "pending_nonce_mismatch");
+});
+
+test("swap preflight fails closed with a safe RPC category when nonce fallback cannot verify chain 4663", async () => {
+  const quote = nativeEthQuote();
+  await assert.rejects(preflightRobinhoodSwap(nativePreflightProvider(async () => { throw Object.assign(new Error("hidden"), { code: 4200 }); }), quote, Date.now(), {
+    fetch: mainnetNonceRpcFetch({ chainId: "0x1" }),
+  }), (error: unknown) => error instanceof Error && "code" in error
+    && (error as { code: string }).code === "pending_nonce_verification_failed"
+    && "diagnosticCategory" in error && (error as { diagnosticCategory: string }).diagnosticCategory === "rpc_chain_id_mismatch"
+    && !error.message.includes("hidden"));
+});
+
+test("swap preflight rejects a stale pending nonce API snapshot instead of reusing its value", async () => {
+  const quote = nativeEthQuote();
+  await assert.rejects(preflightRobinhoodSwap(nativePreflightProvider(async () => { throw Object.assign(new Error("unsupported"), { code: 4200 }); }), quote, Date.now(), {
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9", observedAt: new Date(Date.now() - 60_000).toISOString() }),
+  }), (error: unknown) => error instanceof Error && "code" in error
+    && (error as { code: string }).code === "pending_nonce_verification_failed"
+    && "diagnosticCategory" in error && (error as { diagnosticCategory: string }).diagnosticCategory === "rpc_stale_response");
+});
+
+test("swap preflight checks wallet identity before each nonce read and detects context invalidation", async () => {
+  const quote = nativeEthQuote();
+  let countCalls = 0;
+  let accountReads = 0;
+  const wrongAccountProvider = { request: async ({ method }: { method: string }) => {
+    if (method === "eth_accounts") { accountReads += 1; return [accountReads < 3 ? request.taker : "0x2222222222222222222222222222222222222222"]; }
+    if (method === "eth_chainId") return "0x1237";
+    if (method === "eth_getTransactionCount") { countCalls += 1; return "0x9"; }
+    return nativePreflightProvider("0x9").request({ method });
+  } };
+  // A provider that changes account immediately after returning its pending nonce must be rejected.
+  await assert.rejects(preflightRobinhoodSwap(wrongAccountProvider, quote, Date.now(), {
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+  }), (error: unknown) => error instanceof Error && "code" in error
+    && (error as { code: string }).code === "wallet_account_changed");
+  assert.equal(countCalls, 1);
+
+  let earlyNonceCalls = 0;
+  const wrongChainProvider = { request: async ({ method }: { method: string }) => {
+    if (method === "eth_accounts") return [request.taker];
+    if (method === "eth_chainId") return "0x1";
+    if (method === "eth_getTransactionCount") { earlyNonceCalls += 1; return "0x9"; }
+    return nativePreflightProvider("0x9").request({ method });
+  } };
+  await assert.rejects(preflightRobinhoodSwap(wrongChainProvider, quote, Date.now(), { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "wallet_chain_mismatch");
+  assert.equal(earlyNonceCalls, 0);
+
+  let contextChecks = 0;
+  await assert.rejects(preflightRobinhoodSwap(nativePreflightProvider("0x9"), quote, Date.now(), {
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+    isContextCurrent: () => ++contextChecks < 7,
+  }), (error: unknown) => error instanceof Error && "code" in error
+    && (error as { code: string }).code === "swap_context_changed");
+});
+
 test("approval transaction is bounded to exact sell amount and verified AllowanceHolder", async () => {
   const normalized = normalizeZeroXSwapQuote(providerQuote(), request, {
     sell: { ...ROBINHOOD_MAINNET_TOKENS.WETH, decimals: 18 },
@@ -749,7 +914,7 @@ test("approval transaction is bounded to exact sell amount and verified Allowanc
     if (args.method === "eth_sendTransaction") return `0x${"99".repeat(32)}`;
     throw new Error(`Unexpected RPC method ${args.method}`);
   } };
-  const result = await approveExactSwapAmount(provider, normalized);
+  const result = await approveExactSwapAmount(provider, normalized, { fetch: mainnetNonceRpcFetch({ nonce: "0x7" }) });
   assert.equal(result.amount, "10000000000000000");
   assert.equal(result.spender.toLowerCase(), "0x0000000000001ff3684f28c67538d4d072c22734");
   const send = calls.find((call) => call.method === "eth_sendTransaction");
@@ -761,6 +926,12 @@ test("approval transaction is bounded to exact sell amount and verified Allowanc
   assert.equal(tx.data.slice(10, 74).toLowerCase(), normalized.allowance.spender!.slice(2).toLowerCase().padStart(64, "0"));
   assert.equal(BigInt(`0x${tx.data.slice(-64)}`).toString(), result.amount);
   assert.notEqual(tx.data.slice(-64), "f".repeat(64));
+
+  const malformedHashProvider = { request: (args: { method: string; params?: readonly unknown[] }) =>
+    args.method === "eth_sendTransaction" ? Promise.resolve("0x1234") : provider.request(args) };
+  await assert.rejects(approveExactSwapAmount(malformedHashProvider, normalized, { fetch: mainnetNonceRpcFetch({ nonce: "0x7" }) }), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "transaction_submission_unknown"
+      && error.message.includes("Check wallet activity"));
 });
 
 test("swap preflight rejects a changed pending wallet nonce before execution", async () => {
@@ -790,11 +961,148 @@ test("swap preflight rejects a changed pending wallet nonce before execution", a
     if (method === "eth_estimateGas") return "0x186a0";
     throw new Error(`Unexpected RPC method ${method}`);
   } };
-  const result = await preflightRobinhoodSwap(provider, normalized);
+  const result = await preflightRobinhoodSwap(provider, normalized, Date.now(), { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) });
   assert.equal(result.status, "ready");
   assert.equal(result.transactionNonce, BigInt(9));
-  await assert.rejects(sendReviewedSwap(provider, normalized, "7"), (error: unknown) =>
+  await assert.rejects(sendReviewedSwap(provider, normalized, "7", { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
     error instanceof Error && "code" in error && (error as { code: string }).code === "transaction_nonce_changed");
+});
+
+test("swap send emits an awaiting-wallet signal and submits only the exact freshly checked native quote", async () => {
+  const quote = nativeEthQuote();
+  const calls: Array<{ method: string; params?: readonly unknown[] }> = [];
+  const events: string[] = [];
+  const provider = {
+    request: async (args: { method: string; params?: readonly unknown[] }) => {
+      calls.push(args);
+      const base = nativePreflightProvider("0x9");
+      if (args.method === "eth_sendTransaction") { events.push(args.method); return `0x${"ab".repeat(32)}`; }
+      return base.request(args);
+    },
+  };
+  let walletRequestSignal = 0;
+  const hash = await sendReviewedSwap(provider, quote, "9", {
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+    onWalletRequest: () => { walletRequestSignal += 1; events.push("awaiting_wallet"); },
+  });
+
+  assert.equal(hash, `0x${"ab".repeat(32)}`);
+  assert.equal(walletRequestSignal, 1);
+  assert.deepEqual(events, ["awaiting_wallet", "eth_sendTransaction"]);
+  const send = calls.find((call) => call.method === "eth_sendTransaction");
+  assert.ok(send);
+  const tx = send.params?.[0] as { from: string; to: string; data: string; value: string; nonce: string };
+  assert.equal(tx.from.toLowerCase(), quote.taker.toLowerCase());
+  assert.equal(tx.to.toLowerCase(), quote.transaction.to.toLowerCase());
+  assert.equal(tx.data, quote.transaction.data);
+  assert.equal(BigInt(tx.value), BigInt(quote.transaction.value));
+  assert.equal(tx.nonce, "0x9");
+});
+
+test("swap send blocks if the independently verified pending nonce changes during final preflight", async () => {
+  const quote = nativeEthQuote();
+  let walletNonceReads = 0;
+  let trustedNonceReads = 0;
+  let sendCalls = 0;
+  const base = nativePreflightProvider("0x9");
+  const provider = { request: async (args: { method: string; params?: readonly unknown[] }) => {
+    if (args.method === "eth_getTransactionCount") {
+      walletNonceReads += 1;
+      return walletNonceReads < 2 ? "0x9" : "0xa";
+    }
+    if (args.method === "eth_sendTransaction") { sendCalls += 1; return `0x${"ab".repeat(32)}`; }
+    return base.request(args);
+  } };
+  const fetch = async () => {
+    const pendingNonce = trustedNonceReads++ === 0 ? "9" : "10";
+    return Response.json({
+      networkId: "mainnet",
+      chainId: 4_663,
+      address: request.taker,
+      pendingNonce,
+      observedAt: new Date().toISOString(),
+    });
+  };
+
+  await assert.rejects(sendReviewedSwap(provider, quote, "9", { fetch }), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "transaction_nonce_changed");
+  assert.equal(walletNonceReads, 2);
+  assert.equal(trustedNonceReads, 2);
+  assert.equal(sendCalls, 0);
+});
+
+test("wallet request already pending is distinct and does not leak provider details", async () => {
+  const quote = nativeEthQuote();
+  const base = nativePreflightProvider("0x9");
+  const provider = { request: async (args: { method: string; params?: readonly unknown[] }) => {
+    if (args.method === "eth_sendTransaction") throw Object.assign(new Error("private provider diagnostic"), { code: -32002 });
+    return base.request(args);
+  } };
+
+  await assert.rejects(sendReviewedSwap(provider, quote, "9", { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "wallet_request_pending"
+      && error.message.includes("already has a request") && !error.message.includes("private provider diagnostic"));
+});
+
+test("explicit wallet rejection is reported without treating it as a submitted transaction", async () => {
+  const quote = nativeEthQuote();
+  const base = nativePreflightProvider("0x9");
+  const provider = { request: async (args: { method: string; params?: readonly unknown[] }) => {
+    if (args.method === "eth_sendTransaction") throw Object.assign(new Error("wallet rejected"), { code: 4001 });
+    return base.request(args);
+  } };
+  let walletRequestSignal = 0;
+
+  await assert.rejects(sendReviewedSwap(provider, quote, "9", {
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+    onWalletRequest: () => { walletRequestSignal += 1; },
+  }), (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === "wallet_rejected");
+  assert.equal(walletRequestSignal, 1);
+});
+
+test("uncertain provider response after eth_sendTransaction is not reported as a safe rejection", async () => {
+  const quote = nativeEthQuote();
+  const base = nativePreflightProvider("0x9");
+  const provider = { request: async (args: { method: string; params?: readonly unknown[] }) => {
+    if (args.method === "eth_sendTransaction") throw Object.assign(new Error("secret provider detail"), { code: -32603 });
+    return base.request(args);
+  } };
+  await assert.rejects(sendReviewedSwap(provider, quote, "9", { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "transaction_submission_unknown"
+      && error.message.includes("Check wallet activity") && !error.message.includes("secret provider detail"));
+});
+
+test("swap send refuses a quote that expires during its final preflight before opening the wallet", async () => {
+  const original = nativeEthQuote();
+  const nearExpiry = { ...original, quotedAt: new Date(Date.now() - 29_000).toISOString(), expiresAt: new Date(Date.now() + 1_000).toISOString() };
+  nearExpiry.quoteDigest = computeQuoteDigest({
+    chainId: nearExpiry.chainId,
+    taker: nearExpiry.taker,
+    sellToken: nearExpiry.tokenIn.address,
+    buyToken: nearExpiry.tokenOut.address,
+    sellAmount: nearExpiry.amountIn,
+    buyAmount: nearExpiry.amountOut,
+    minimumReceived: nearExpiry.minimumReceived,
+    slippageBps: nearExpiry.slippageBps,
+    recipient: nearExpiry.recipient,
+    allowanceSpender: nearExpiry.allowance.spender,
+    settlerAddress: nearExpiry.settlerAddress,
+    quotedAt: nearExpiry.quotedAt,
+    expiresAt: nearExpiry.expiresAt,
+    estimatedGas: nearExpiry.estimatedGas,
+    gasPrice: nearExpiry.gasPrice,
+    totalNetworkFee: nearExpiry.totalNetworkFee,
+    fees: nearExpiry.fees,
+    route: nearExpiry.route,
+    transaction: nearExpiry.transaction,
+  });
+  let walletRequestSignal = 0;
+
+  await assert.rejects(sendReviewedSwap(nativePreflightProvider("0x9"), nearExpiry, "9", {
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+    onWalletRequest: () => { walletRequestSignal += 1; },
+  }), (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === "quote_expiring");
+  assert.equal(walletRequestSignal, 0);
 });
 
 test("wallet preflight distinguishes empty contract code from malformed RPC data", async () => {
@@ -880,7 +1188,7 @@ test("native ETH preflight is ready without ERC-20 allowance calls or approval r
     throw new Error(`Unexpected RPC method ${method}`);
   } };
 
-  const preflight = await preflightRobinhoodSwap(provider, normalized);
+  const preflight = await preflightRobinhoodSwap(provider, normalized, Date.now(), { fetch: mainnetNonceRpcFetch({ nonce: "0x7" }) });
   assert.equal(preflight.status, "ready");
   const callsBeforeApprovalAttempt = calls.length;
   await assert.rejects(approveExactSwapAmount(provider, normalized), (error: unknown) =>

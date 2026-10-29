@@ -41,6 +41,7 @@ test("Mainnet preflight balances format actual token, ETH, allowance, and fee am
     gasPrice: BigInt("1000000000"),
     feeRequirement: BigInt("180000000000000"),
     transactionNonce: BigInt("7"),
+    nonceSource: "wallet_and_rpc",
   };
 
   assert.deepEqual(formatMainnetPreflightBalances(snapshot, {

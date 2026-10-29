@@ -1,4 +1,9 @@
 export type SwapQuoteBalanceState = "native_preflight_required" | "unknown" | "insufficient" | "sufficient";
+export const MAX_MAINNET_RECEIPT_POLLS = 20;
+
+export function shouldContinueMainnetReceiptPolling(attempts: number): boolean {
+  return Number.isSafeInteger(attempts) && attempts >= 0 && attempts < MAX_MAINNET_RECEIPT_POLLS;
+}
 
 /** A small generation guard prevents delayed quote or price responses from restoring edited intent data. */
 export function createSwapRequestGuard() {

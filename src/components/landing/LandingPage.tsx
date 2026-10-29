@@ -1,7 +1,7 @@
 import { StatusBar } from "@/components/ui/StatusBar";
 import { getProjectName } from "@/lib/project-brand";
 import { STATUS_BAR_ITEMS } from "@/lib/content/status";
-import { StatusBand, SwarmLimitsBand } from "./LandingBands";
+import { CapabilityBand, PostQuantumBand, ProductJourneysBand, SwarmLimitsBand } from "./LandingBands";
 import { Curtain } from "./Curtain";
 import { Splash } from "./Splash";
 import { HeroStage } from "./HeroStage";
@@ -29,7 +29,9 @@ export function LandingPage() {
         <Pillars projectName={projectName} />
         <LandingStory projectName={projectName} />
         <SwarmLimitsBand />
-        <StatusBand projectName={projectName} />
+        <ProductJourneysBand projectName={projectName} />
+        <CapabilityBand projectName={projectName} />
+        <PostQuantumBand projectName={projectName} />
       </main>
       <Curtain projectName={projectName} />
     </div>

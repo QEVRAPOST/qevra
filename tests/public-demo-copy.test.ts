@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LandingNav } from "@/components/landing/LandingNav";
-import { StatusBand } from "@/components/landing/LandingBands";
+import { CapabilityBand, PostQuantumBand, ProductJourneysBand } from "@/components/landing/LandingBands";
 import { OverviewView } from "@/components/dashboard/OverviewView";
 import { ModelContext } from "@/components/dashboard/AppModelContext";
 import { HERO, CURTAIN, HERO_FACTS, HERO_PARTS, HERO_SCENES, STORY_STEPS, SWARM_CAN, STATUS_BAND_INTRO } from "@/lib/content/landing";
@@ -56,7 +56,8 @@ test("landing copy leads with Robinhood Chain and distinguishes configured swaps
   assert.doesNotMatch(copy, /wallet and swap are not live yet/i);
   assert.doesNotMatch(copy, /No run has been done|No successful run yet/i);
   assert.doesNotMatch(copy, /Nothing on this page is implemented|sandboxed tests|propose a fix as a patch/i);
-  assert.doesNotMatch(copy, /\bTestnet\b/i, "general landing copy should leave network-specific evidence on the Networks page");
+  assert.match(copy, /Experimental · Testnet-only/i, "the smart-account implementation is scoped to Testnet");
+  assert.match(copy, /smart-account custody is not deployed for Mainnet/i);
 });
 
 test("landing navigation exposes the public contracts registry without making Testnet the product label", () => {
@@ -68,8 +69,11 @@ test("landing navigation exposes the public contracts registry without making Te
   assert.doesNotMatch(markup, /Testnet deployments/i);
 });
 
-test("public landing explains product journeys and keeps the technical readiness matrix on Status", () => {
-  const markup = renderToStaticMarkup(createElement(StatusBand, { projectName: "VEYRA" }));
+test("public landing presents six real product capabilities while technical status remains on its own page", () => {
+  const markup = renderToStaticMarkup(createElement(ProductJourneysBand, { projectName: "VEYRA" }));
+  const showcase = renderToStaticMarkup(createElement(CapabilityBand, { projectName: "VEYRA" }));
+  const pq = renderToStaticMarkup(createElement(PostQuantumBand, { projectName: "VEYRA" }));
+  const landingPage = readFileSync("src/components/landing/LandingPage.tsx", "utf8");
   const statusView = readFileSync("src/components/dashboard/StatusView.tsx", "utf8");
 
   assert.match(markup, /Wallet access/);
@@ -80,9 +84,41 @@ test("public landing explains product journeys and keeps the technical readiness
   assert.match(markup, /VEYRA Research Engine/);
   assert.match(markup, /Research → Analysis → Verification/);
   assert.match(markup, /model-assisted research, not independent audits/i);
-  assert.match(markup, /ML-DSA.*off-chain: it does not authorize a wallet transaction or enforce post-quantum custody on-chain/i);
-  assert.match(markup, /href="\/app\/protocol"/);
-  assert.doesNotMatch(markup, /Evidence so far|Each part, and how much is known|Evidenced|Not built|9 parts/i);
+  assert.match(showcase, /One workspace for informed decisions/i);
+  assert.match(showcase, />Feature</);
+  assert.match(showcase, />Experience</);
+  assert.match(showcase, />Explore</);
+  assert.equal(COVERAGE_ROWS.length, 9);
+  assert.equal((showcase.match(/<tr\b/g) ?? []).length, 7, "one header row plus six product journeys are shown");
+  for (const feature of [
+    "VEYRA Account and Wallet Access",
+    "Robinhood Mainnet Swap Quotes",
+    "Intent Review",
+    "AI Security Swarm",
+    "Human Review and Research Evidence",
+    "Network and Contract Explorer",
+  ]) {
+    assert.ok(showcase.includes(feature), `the landing table includes ${feature}`);
+  }
+  for (const href of ["/app/wallet", "/app/swap", "/app/security", "/app/networks"]) {
+    assert.ok(showcase.includes(`href=\"${href}\"`), `the landing table links to ${href}`);
+  }
+  assert.doesNotMatch(showcase, /Evidenced \d|Experimental \d|Not built \d|No audit yet|All 9|parts are evidenced/i);
+  assert.doesNotMatch(showcase, /Mainnet smart-account custody is deployed|swap (?:was|is) successful|independently audited/i);
+  assert.match(showcase, /Open technical status/);
+  assert.match(pq, /Post-quantum research/);
+  assert.match(pq, /ML-DSA.*does not authorize a wallet transaction or enforce post-quantum custody on-chain/i);
+  assert.match(pq, /href="\/app\/protocol"/);
+
+  const heroPosition = landingPage.indexOf("<HeroStage");
+  const journeysPosition = landingPage.indexOf("<ProductJourneysBand");
+  const showcasePosition = landingPage.indexOf("<CapabilityBand");
+  const pqPosition = landingPage.indexOf("<PostQuantumBand");
+  const curtainPosition = landingPage.indexOf("<Curtain");
+  assert.ok(heroPosition >= 0 && heroPosition < journeysPosition, "hero remains ahead of product journeys");
+  assert.ok(journeysPosition >= 0 && journeysPosition < showcasePosition, "product journeys appear before the product capabilities table");
+  assert.ok(showcasePosition >= 0 && showcasePosition < pqPosition, "the capabilities table appears before the PQ research section");
+  assert.ok(pqPosition >= 0 && pqPosition < curtainPosition, "the final landing CTA and footer remain after PQ research");
   assert.match(statusView, /<CoverageTable rows=\{model\.coverage\} caption="Status of each property"/);
 });
 

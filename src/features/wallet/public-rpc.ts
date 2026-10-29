@@ -13,6 +13,7 @@ export type RobinhoodRpcErrorCode =
   | "rpc_error"
   | "rpc_invalid_response"
   | "rpc_chain_id_mismatch"
+  | "rpc_invalid_nonce"
   | "invalid_address";
 
 export class RobinhoodRpcError extends Error {
@@ -35,6 +36,14 @@ export interface RobinhoodPublicAddressSnapshot {
   address: string;
   balanceWei: string;
   observedBlock: string;
+  observedAt: string;
+}
+
+export interface RobinhoodPendingNonceSnapshot {
+  networkId: "mainnet";
+  chainId: 4_663;
+  address: string;
+  pendingNonce: string;
   observedAt: string;
 }
 
@@ -88,7 +97,7 @@ function parseQuantity(value: unknown): bigint | undefined {
 async function requestRpcResult(
   rpcUrl: string,
   id: number,
-  method: "eth_chainId" | "eth_blockNumber" | "eth_getBalance" | "eth_getCode" | "eth_call",
+  method: "eth_chainId" | "eth_blockNumber" | "eth_getBalance" | "eth_getTransactionCount" | "eth_getCode" | "eth_call",
   fetchImpl: typeof fetch,
   params: readonly unknown[] = [],
 ): Promise<unknown> {
@@ -118,9 +127,11 @@ async function requestRpcResult(
   if (!payload || typeof payload !== "object") {
     throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC returned an invalid response.");
   }
-  const record = payload as { id?: unknown; result?: unknown; error?: unknown };
+  const record = payload as { jsonrpc?: unknown; id?: unknown; result?: unknown; error?: unknown };
+  if (record.jsonrpc !== "2.0") throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC returned an invalid JSON-RPC version.");
   if (record.id !== id) throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC response ID did not match.");
   if (record.error !== undefined) throw new RobinhoodRpcError("rpc_error", "The public Robinhood RPC rejected a read-only query.");
+  if (!Object.hasOwn(record, "result")) throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC response did not contain a result.");
   return record.result;
 }
 
@@ -283,6 +294,33 @@ export async function readRobinhoodNetwork(
     latestBlock: blockResult.toString(),
     observedAt: new Date().toISOString(),
   };
+}
+
+/** Reads a fresh Mainnet pending nonce from the configured public RPC after verifying chain 4663. */
+export async function readRobinhoodPendingNonce(
+  address: string,
+  fetchImpl: typeof fetch = fetch,
+  beforeNonceRead?: () => Promise<void>,
+): Promise<RobinhoodPendingNonceSnapshot> {
+  if (!isAddress(address)) throw new RobinhoodRpcError("invalid_address", "Enter a valid EVM address to inspect.");
+  const network = NETWORKS.find((candidate) => candidate.id === "mainnet" && candidate.available);
+  if (!network) throw new RobinhoodRpcError("network_not_available", "Robinhood Mainnet is not enabled for public reads.");
+  const normalizedAddress = getAddress(address);
+  const chainIdResult = parseQuantity(await requestRpcResult(network.rpcUrl, 11, "eth_chainId", fetchImpl));
+  if (chainIdResult === undefined || chainIdResult > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new RobinhoodRpcError("rpc_invalid_response", "The Robinhood Mainnet RPC returned an invalid chain ID.");
+  }
+  const chainId = Number(chainIdResult);
+  if (chainId !== 4_663) {
+    throw new RobinhoodRpcError("rpc_chain_id_mismatch", "The Robinhood Mainnet RPC chain ID did not match.", chainId);
+  }
+
+  await beforeNonceRead?.();
+  const pendingNonce = parseQuantity(await requestRpcResult(network.rpcUrl, 12, "eth_getTransactionCount", fetchImpl, [normalizedAddress, "pending"]));
+  if (pendingNonce === undefined) {
+    throw new RobinhoodRpcError("rpc_invalid_nonce", "The Robinhood Mainnet RPC returned an invalid pending nonce.");
+  }
+  return { networkId: "mainnet", chainId, address: normalizedAddress, pendingNonce: pendingNonce.toString(), observedAt: new Date().toISOString() };
 }
 
 /** Reads a public EVM address on a fixed Robinhood RPC allowlist; this never requests wallet access. */

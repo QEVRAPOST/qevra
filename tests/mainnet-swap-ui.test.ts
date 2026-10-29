@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MainnetSwapPanel } from "../src/components/dashboard/MainnetSwapPanel.tsx";
+import { MainnetSwapPanel, swapRequestStateText } from "../src/components/dashboard/MainnetSwapPanel.tsx";
 import { ModelContext } from "../src/components/dashboard/AppModelContext.tsx";
 import { buildLiveAppModel } from "../src/features/dashboard/live-model.ts";
 import type { AppModelValue } from "../src/types/index.ts";
-import { canReviewSwapQuote, createSwapRequestGuard, getSwapQuoteBalanceState, isFirmQuoteExpired } from "../src/features/swap/ui-state.ts";
+import { canReviewSwapQuote, createSwapRequestGuard, getSwapQuoteBalanceState, isFirmQuoteExpired, MAX_MAINNET_RECEIPT_POLLS, shouldContinueMainnetReceiptPolling } from "../src/features/swap/ui-state.ts";
 
 test("Mainnet swap server-rendered entry explains its explicit wallet, quote, review, and receipt steps", () => {
   const model = buildLiveAppModel({ wallet: { status: "connected", address: "0x1111111111111111111111111111111111111111", chainId: 4_663, networkName: "Robinhood Chain", providerName: "MetaMask" }, selectedNetwork: "mainnet", runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false });
@@ -69,6 +69,26 @@ test("firm quote expiration is explicit at and after its deadline", () => {
   assert.equal(isFirmQuoteExpired(expiresAt, Date.parse("2026-10-30T11:59:59.999Z")), false);
   assert.equal(isFirmQuoteExpired(expiresAt, Date.parse(expiresAt)), true);
   assert.equal(isFirmQuoteExpired("invalid", Date.now()), true);
+});
+
+test("Mainnet swap exposes each wallet and receipt transition with actionable status text", () => {
+  assert.equal(swapRequestStateText("awaiting_wallet", false), "Awaiting wallet confirmation");
+  assert.match(swapRequestStateText("awaiting_wallet", true) ?? "", /quote expired.*reject/i);
+  assert.match(swapRequestStateText("wallet_rejected", false) ?? "", /Wallet rejected/);
+  assert.match(swapRequestStateText("wallet_request_pending", false) ?? "", /inspect the wallet popup/);
+  assert.match(swapRequestStateText("quote_expired", false) ?? "", /refresh and review/);
+  assert.match(swapRequestStateText("context_changed", false) ?? "", /Network or account changed/);
+  assert.match(swapRequestStateText("submitted", false) ?? "", /awaiting Mainnet receipt/);
+  assert.match(swapRequestStateText("confirmed", false) ?? "", /confirmed by Mainnet receipt/);
+  assert.match(swapRequestStateText("reverted", false) ?? "", /reverted/);
+  assert.match(swapRequestStateText("receipt_verification_failed", false) ?? "", /Receipt verification failed/);
+});
+
+test("receipt polling has a finite retry limit", () => {
+  assert.equal(shouldContinueMainnetReceiptPolling(0), true);
+  assert.equal(shouldContinueMainnetReceiptPolling(MAX_MAINNET_RECEIPT_POLLS - 1), true);
+  assert.equal(shouldContinueMainnetReceiptPolling(MAX_MAINNET_RECEIPT_POLLS), false);
+  assert.equal(shouldContinueMainnetReceiptPolling(-1), false);
 });
 
 test("zero WETH balance is not actionable while native ETH always waits for wallet preflight", () => {
