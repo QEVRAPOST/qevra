@@ -4,13 +4,14 @@ import { keccak256, type Address } from "viem";
 import {
   ROBINHOOD_MAINNET_SAFE,
   verifyMainnetSafeOwner,
+  verifyMainnetEoaOwner,
   buildDeploymentPreflight,
   deploymentReadiness,
   explorerReadiness,
   resolveRobinhoodNetwork,
   verifyDeploymentEvidence,
 } from "../scripts/robinhood";
-import type { MainnetSafeOwnerReader } from "../scripts/robinhood";
+import type { MainnetEoaOwnerReader, MainnetSafeOwnerReader } from "../scripts/robinhood";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 const SAFE_OWNER = "0x0000000000000000000000000000000000000466" as Address;
@@ -91,11 +92,62 @@ test("Mainnet preflight carries the configured contract owner as a public-only a
   const plan = buildDeploymentPreflight("mainnet", "0x0000000000000000000000000000000000000002", {
     VEYRA_MAINNET_ACCOUNT: "robinhood-mainnet",
     VEYRA_MAINNET_OWNER: owner,
+    VEYRA_MAINNET_OWNER_MODE: "EOA_INACTIVE",
   } as unknown as NodeJS.ProcessEnv);
 
   assert.equal(plan.ownerAddress, owner);
+  assert.equal(plan.ownerMode, "EOA_INACTIVE");
   assert.equal(plan.keyMaterialAccessed, false);
   assert.equal(plan.deploymentReady, false);
+});
+
+function eoaOwnerReader(overrides: Partial<MainnetEoaOwnerReader> = {}): MainnetEoaOwnerReader {
+  return {
+    getChainId: async () => 4_663,
+    hasCode: async () => false,
+    ...overrides,
+  };
+}
+
+test("EOA owner preflight requires Mainnet, no deployed code, and distinct public role addresses", async () => {
+  const valid = await verifyMainnetEoaOwner(SIGNER_1, DEPLOYER, ATTESTOR, eoaOwnerReader());
+  assert.deepEqual(valid, {
+    verified: true,
+    ownerAddress: SIGNER_1,
+    codeAbsent: true,
+    keyControlProven: false,
+  });
+
+  const deployedCode = await verifyMainnetEoaOwner(
+    SIGNER_1,
+    DEPLOYER,
+    ATTESTOR,
+    eoaOwnerReader({ hasCode: async () => true }),
+  );
+  assert.deepEqual(deployedCode, { verified: false, reason: "owner_code_present" });
+
+  const roleOverlap = await verifyMainnetEoaOwner(SIGNER_1, SIGNER_1, ATTESTOR, eoaOwnerReader());
+  assert.deepEqual(roleOverlap, { verified: false, reason: "role_address_overlap" });
+
+  const wrongChain = await verifyMainnetEoaOwner(
+    SIGNER_1,
+    DEPLOYER,
+    ATTESTOR,
+    eoaOwnerReader({ getChainId: async () => 46_630 }),
+  );
+  assert.deepEqual(wrongChain, { verified: false, reason: "chain_id_mismatch" });
+});
+
+test("Mainnet deployment profile fails closed when omitted or invalid", () => {
+  const base = {
+    VEYRA_MAINNET_ACCOUNT: "robinhood-mainnet",
+    VEYRA_MAINNET_OWNER: "0x0000000000000000000000000000000000000466",
+  } as unknown as NodeJS.ProcessEnv;
+  assert.equal(buildDeploymentPreflight("mainnet", DEPLOYER, base).ownerMode, null);
+  assert.equal(buildDeploymentPreflight("mainnet", DEPLOYER, {
+    ...base,
+    VEYRA_MAINNET_OWNER_MODE: "EOA",
+  } as unknown as NodeJS.ProcessEnv).ownerMode, null);
 });
 
 test("Safe owner preflight rejects an otherwise valid Safe when any execution module is enabled", async () => {

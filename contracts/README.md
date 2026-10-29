@@ -36,7 +36,7 @@ recovery, deposits, and withdrawals.
 | 7 | `VeyraRouterRegistry` | Owner-managed allowlist pins exact router runtime code hash; consumed by #8/#9. | Implemented; focused Foundry coverage. | **Dormant only:** no compatible, independently verified Robinhood router established. A code hash alone does not establish safe router behavior. | Deployed dormant / Not deployed |
 | 8 | `VeyraSwapIntentGuard` | Consumes account-originated nonces; checks chain, tokens, router, deadline, quote/minimum output and slippage; locks an exact intent for same-block executor consumption. | Implemented; focused guard/executor integration tests. | **Dormant only:** no verified route or quote source; an account must itself authenticate the lock call. | Deployed dormant / Not deployed |
 | 9 | `VeyraSwapExecutor` | Uses a typed exact-swap interface; input is held only during the atomic call, allowance is reset, output and zero residue are checked. | Implemented; focused tests include replay and caller authorization. | **Not approved for activation:** no verified route or audited Robinhood integration. Test mocks do not establish live-router safety. | Deployed inactive / Not deployed |
-| 10 | `VeyraResearchAttestationRegistry` | Role-gated digest-only run attestations; stores publisher and timestamp, never report text. An attestation records publication, not truth or review. | Implemented; focused Foundry coverage. | **Deployment pending policy approval:** public attestor authority, privacy, and on-chain usefulness need approval; the existing Swarm remains off-chain. | Deployed restricted / Not deployed |
+| 10 | `VeyraResearchAttestationRegistry` | Role-gated digest-only run attestations; stores publisher and timestamp, never report text. An attestation records publication, not truth or review. | Implemented; focused Foundry coverage. | **Mainnet publication disabled by default:** owner approval and a reviewed privacy/attestor policy are required before enabling publication. Existing Testnet deployment is unchanged. | Deployed restricted / Not deployed |
 
 The ten-name target is an architecture boundary, not a requirement to create
 placeholder contracts. The current `QevraAuthorizationHarness` is a separate
@@ -156,34 +156,43 @@ bun scripts/robinhood.ts deploy preflight mainnet <PUBLIC_DEPLOYER_ADDRESS>
 The Mainnet configuration is separate (`chain_id = 4663`, RPC alias
 `robinhood_mainnet`, Mainnet explorer, and `robinhood-mainnet.json`). The
 read-only CLI preflight requires a separate encrypted account alias and rejects
-the Testnet alias. The Mainnet Foundry script additionally requires public
-addresses in `VEYRA_MAINNET_DEPLOYER`, `VEYRA_MAINNET_OWNER`, and
-`VEYRA_MAINNET_ATTESTOR`. The deployer must be separate from the Testnet
-deployer. `VEYRA_MAINNET_OWNER` must be a Safe v1.4.1 L2 proxy using the
-canonical SafeL2 implementation and factory on chain 4663, with exactly three
-distinct owners and a threshold of two. The deployment script rejects enabled
-modules, guards, module guards, a noncanonical fallback handler, and signer
-overlap with the deployer or attestor. The read-only CLI preflight additionally
-checks the current on-chain implementation, component bytecode hashes, owner
-set, threshold, modules, and Safe storage controls. These configured addresses
-are public addresses, not private keys.
+the Testnet alias. The Foundry script requires public deployer, owner, and
+attestor addresses plus `VEYRA_MAINNET_OWNER_MODE`, which must be exactly
+`SAFE_2_OF_3` or `EOA_INACTIVE`. Safe mode retains the SafeL2 v1.4.1 2-of-3
+checks: canonical implementation and factory, three distinct owners, threshold
+two, no modules or guards, canonical fallback handler, and no signer overlap
+with deployer or attestor.
 
-After the Safe is created, export its public address as `VEYRA_MAINNET_OWNER`
-and run `bun scripts/robinhood.ts deploy preflight mainnet
-"$VEYRA_MAINNET_DEPLOYER"`. A passing Safe check does not remove the separate
-independent-review or contract-activation gates. Safe's on-chain deployment on
-4663 is confirmed; Safe Wallet/Transaction Service support for 4663 is not
-confirmed, so verify the official Safe supported-network list before relying
-on its hosted transaction UI.
+`EOA_INACTIVE` accepts only an owner address with no runtime code on Robinhood
+Mainnet and distinct from deployer, attestor, and the Testnet deployer. The
+read-only RPC check cannot prove that anyone controls the corresponding key or
+that the address is not intended for future counterfactual code. EOA ownership
+is a single-key authority model, not equivalent to a Safe. The deployment
+script starts token and router registries empty, wires the guard to its
+executor without adding a route, and starts attestation publication disabled.
+The owner can later configure policies or enable publication; each activation
+remains separately blocked pending review and approval. These configured
+addresses are public addresses, not private keys.
+
+Set the public role addresses and explicit profile in the local environment.
+Keep the encrypted signer only in Foundry's keystore. Run the read-only CLI
+preflight with `bun scripts/robinhood.ts deploy preflight mainnet
+"$VEYRA_MAINNET_DEPLOYER"`. A passing identity/configuration check does not
+remove the independent contract-review or transaction-approval gates.
 
 Mainnet deployment simulation (never add `--broadcast` before explicit
 approval):
 
 ```sh
 forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
-  --profile robinhood_mainnet --rpc-url robinhood_mainnet --chain-id 4663 \
-  --sender "$VEYRA_MAINNET_DEPLOYER" --estimate market --gas-estimate-multiplier 130
+  --profile robinhood_mainnet --rpc-url robinhood_mainnet --sender "$VEYRA_MAINNET_DEPLOYER" \
+  --sig 'run()' --gas-estimate-multiplier 130
 ```
+
+This command requires `VEYRA_MAINNET_OWNER_MODE=EOA_INACTIVE` (or the
+independently verified Safe profile) and intentionally omits `--broadcast` and
+`--account`. The attestation registry's assigned publisher cannot record
+anything until its EOA/Safe owner explicitly enables publication.
 
 After separate explicit transaction approval, use the encrypted Foundry account
 alias with `--account "$VEYRA_MAINNET_ACCOUNT" --broadcast --slow`. Never pass

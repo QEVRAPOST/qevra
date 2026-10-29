@@ -82,6 +82,64 @@ export interface MainnetSafeOwnerReader {
   getStorageAddress(owner: Address, slot: Hex): Promise<Address>;
 }
 
+export interface MainnetEoaOwnerReader {
+  getChainId(): Promise<number>;
+  hasCode(address: Address): Promise<boolean>;
+}
+
+export type MainnetEoaOwnerVerification =
+  | {
+      verified: true;
+      ownerAddress: Address;
+      codeAbsent: true;
+      keyControlProven: false;
+    }
+  | {
+      verified: false;
+      reason:
+        | "invalid_public_role_address"
+        | "role_address_overlap"
+        | "chain_id_mismatch"
+        | "owner_code_present"
+        | "eoa_rpc_read_failed";
+    };
+
+export async function verifyMainnetEoaOwner(
+  ownerInput: string,
+  deployerInput: string,
+  attestorInput: string,
+  reader: MainnetEoaOwnerReader = createMainnetEoaOwnerReader(),
+): Promise<MainnetEoaOwnerVerification> {
+  if (!isAddress(ownerInput) || !isAddress(deployerInput) || !isAddress(attestorInput)) {
+    return { verified: false, reason: "invalid_public_role_address" };
+  }
+  const ownerAddress = getAddress(ownerInput);
+  const deployer = getAddress(deployerInput);
+  const attestor = getAddress(attestorInput);
+  if (ownerAddress === deployer || ownerAddress === attestor || deployer === attestor) {
+    return { verified: false, reason: "role_address_overlap" };
+  }
+
+  try {
+    if (await reader.getChainId() !== 4_663) return { verified: false, reason: "chain_id_mismatch" };
+    if (await reader.hasCode(ownerAddress)) return { verified: false, reason: "owner_code_present" };
+    return { verified: true, ownerAddress, codeAbsent: true, keyControlProven: false };
+  } catch {
+    return { verified: false, reason: "eoa_rpc_read_failed" };
+  }
+}
+
+function createMainnetEoaOwnerReader(): MainnetEoaOwnerReader {
+  const client = createPublicClient({ transport: http(resolveRobinhoodNetwork("mainnet").rpcUrl) });
+  return {
+    getChainId: () => client.getChainId(),
+    hasCode: async (address) => {
+      const code = await client.getCode({ address });
+      return Boolean(code && code !== "0x");
+    },
+  };
+}
+
 export type MainnetSafeOwnerVerification =
   | {
       verified: true;
@@ -279,6 +337,7 @@ export interface DeploymentPreflight {
   accountAlias: string | null;
   publicDeployer: `0x${string}` | null;
   ownerAddress: Address | null;
+  ownerMode: "SAFE_2_OF_3" | "EOA_INACTIVE" | null;
   keyMaterialAccessed: false;
   deploymentReady: false;
   reason: string;
@@ -293,6 +352,10 @@ export function buildDeploymentPreflight(
   const testnetAccount = "veyra-testnet";
   const requestedMainnetAccount = env.VEYRA_MAINNET_ACCOUNT?.trim() || null;
   const requestedOwnerAddress = env.VEYRA_MAINNET_OWNER?.trim() || null;
+  const requestedOwnerMode = env.VEYRA_MAINNET_OWNER_MODE?.trim() || null;
+  const ownerMode = requestedOwnerMode === "SAFE_2_OF_3" || requestedOwnerMode === "EOA_INACTIVE"
+    ? requestedOwnerMode
+    : null;
   const accountAlias = networkId === "testnet" ? testnetAccount : requestedMainnetAccount;
   let reason = deploymentReadiness(networkId).reason;
   const publicDeployer = isAddress(deployerAddress) ? getAddress(deployerAddress) : null;
@@ -303,10 +366,12 @@ export function buildDeploymentPreflight(
     reason = "Mainnet requires a separately created encrypted Foundry keystore alias in VEYRA_MAINNET_ACCOUNT.";
   } else if (networkId === "mainnet" && requestedMainnetAccount === testnetAccount) {
     reason = "Mainnet must not reuse the Testnet veyra-testnet keystore account.";
+  } else if (networkId === "mainnet" && !ownerMode) {
+    reason = "Mainnet requires VEYRA_MAINNET_OWNER_MODE=SAFE_2_OF_3 or EOA_INACTIVE; invalid or missing modes fail closed.";
   } else if (networkId === "mainnet" && !requestedOwnerAddress) {
-    reason = "Mainnet requires VEYRA_MAINNET_OWNER to be a live-verified Safe v1.4.1 2-of-3 contract.";
+    reason = "Mainnet requires VEYRA_MAINNET_OWNER to be a public owner address validated for the selected profile.";
   } else if (networkId === "mainnet" && !ownerAddress) {
-    reason = "VEYRA_MAINNET_OWNER must be a valid public contract address; no key material was read.";
+    reason = "VEYRA_MAINNET_OWNER must be a valid public address; no key material was read.";
   }
 
   return {
@@ -317,6 +382,7 @@ export function buildDeploymentPreflight(
     accountAlias,
     publicDeployer,
     ownerAddress,
+    ownerMode,
     keyMaterialAccessed: false,
     deploymentReady: false,
     reason,
@@ -502,6 +568,7 @@ async function runDeployment(
     process.stdout.write(`${network.label}: expected chain ${plan.chainId} · RPC ${plan.rpcUrl}\n`);
     process.stdout.write(`Encrypted Foundry account alias: ${plan.accountAlias ?? "not configured"} · key material read: no\n`);
     if (network.id === "mainnet") {
+      process.stdout.write(`Owner profile: ${plan.ownerMode ?? "not configured or invalid"}\n`);
       process.stdout.write(`Configured Mainnet owner: ${plan.ownerAddress ?? "not configured or invalid"}\n`);
     }
     try {
@@ -517,26 +584,41 @@ async function runDeployment(
       return 2;
     }
     if (network.id === "mainnet") {
-      if (!plan.ownerAddress || !plan.publicDeployer) {
-        process.stderr.write("SAFE OWNER PREFLIGHT BLOCKED · set VEYRA_MAINNET_OWNER to the public Safe address; no transaction was constructed.\n");
+      if (!plan.ownerAddress || !plan.publicDeployer || !plan.ownerMode) {
+        process.stderr.write("OWNER PREFLIGHT BLOCKED · configure a valid owner address and VEYRA_MAINNET_OWNER_MODE; no transaction was constructed.\n");
         return 2;
       }
-      const ownerCheck = await verifyMainnetSafeOwner(
-        plan.ownerAddress,
-        plan.publicDeployer,
-        process.env.VEYRA_MAINNET_ATTESTOR,
-      );
-      if (!ownerCheck.verified) {
-        process.stderr.write(`SAFE OWNER NOT VERIFIED · ${ownerCheck.reason} · no transaction was constructed.\n`);
-        return 2;
+      if (plan.ownerMode === "EOA_INACTIVE") {
+        const ownerCheck = await verifyMainnetEoaOwner(
+          plan.ownerAddress,
+          plan.publicDeployer,
+          process.env.VEYRA_MAINNET_ATTESTOR ?? "",
+        );
+        if (!ownerCheck.verified) {
+          process.stderr.write(`EOA OWNER NOT VERIFIED · ${ownerCheck.reason} · no transaction was constructed.\n`);
+          return 2;
+        }
+        process.stdout.write(
+          `EOA OWNER ADDRESS VERIFIED · ${ownerCheck.ownerAddress} · no runtime code at current head; key control is not proven by read-only RPC.\n`,
+        );
+      } else {
+        const ownerCheck = await verifyMainnetSafeOwner(
+          plan.ownerAddress,
+          plan.publicDeployer,
+          process.env.VEYRA_MAINNET_ATTESTOR,
+        );
+        if (!ownerCheck.verified) {
+          process.stderr.write(`SAFE OWNER NOT VERIFIED · ${ownerCheck.reason} · no transaction was constructed.\n`);
+          return 2;
+        }
+        process.stdout.write(
+          `SAFE OWNER VERIFIED · ${ownerCheck.ownerAddress} · Safe ${ownerCheck.version} · implementation ${ownerCheck.implementation} · factory ${ownerCheck.factory} · fallback ${ownerCheck.fallbackHandler}\n`,
+        );
+        process.stdout.write(`Signers: ${ownerCheck.signers.join(", ")}\n`);
+        process.stdout.write(
+          `SAFE CONTROL STATE · threshold 2/3 · modules ${ownerCheck.enabledModules.length} · guard ${ownerCheck.guard} · module guard ${ownerCheck.moduleGuard} · owners retain Safe transaction and configuration authority\n`,
+        );
       }
-      process.stdout.write(
-        `SAFE OWNER VERIFIED · ${ownerCheck.ownerAddress} · Safe ${ownerCheck.version} · implementation ${ownerCheck.implementation} · factory ${ownerCheck.factory} · fallback ${ownerCheck.fallbackHandler}\n`,
-      );
-      process.stdout.write(`Signers: ${ownerCheck.signers.join(", ")}\n`);
-      process.stdout.write(
-        `SAFE CONTROL STATE · threshold 2/3 · modules ${ownerCheck.enabledModules.length} · guard ${ownerCheck.guard} · module guard ${ownerCheck.moduleGuard} · owners retain Safe transaction and configuration authority\n`,
-      );
     }
     process.stdout.write(`PREFLIGHT BLOCKED · ${plan.reason}\nNo transaction was constructed or broadcast.\n`);
     return 2;

@@ -9,6 +9,7 @@ import {VeyraResearchAttestationRegistry} from "../src/research/VeyraResearchAtt
 
 interface VmVeyraMainnetDeploy {
     function envAddress(string calldata name) external returns (address);
+    function envString(string calldata name) external returns (string memory);
     function startBroadcast(address signer) external;
     function stopBroadcast() external;
 }
@@ -29,14 +30,18 @@ interface IVeyraSafeOwnerMainnet {
 /// @dev Deploys no account, token policy, or router policy and never enables a swap route.
 ///      Run only as a non-broadcast simulation until the owner approves the exact transaction plan.
 contract DeployVeyraMainnetMvp {
+    enum OwnerProfile {
+        SAFE_2_OF_3,
+        EOA_INACTIVE
+    }
+
     uint256 public constant ROBINHOOD_MAINNET_CHAIN_ID = 4_663;
     address public constant TESTNET_DEPLOYER = 0xfA142bF0383782Caa349C5C56A7B7D565eEFA562;
     address public constant SAFE_L2_SINGLETON = 0x29fcB43b46531BcA003ddC8FCB67FFE91900C762;
     address public constant SAFE_FALLBACK_HANDLER = 0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99;
     bytes32 private constant FALLBACK_HANDLER_STORAGE_SLOT =
         0x6c9a6c4a39284e37ed1cf53d337577d14212a4870fb976a4366c693b939918d5;
-    bytes32 private constant GUARD_STORAGE_SLOT =
-        0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
+    bytes32 private constant GUARD_STORAGE_SLOT = 0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
     bytes32 private constant MODULE_GUARD_STORAGE_SLOT =
         0xb104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947;
     address private constant SAFE_MODULE_SENTINEL = address(1);
@@ -47,6 +52,10 @@ contract DeployVeyraMainnetMvp {
     error TestnetDeployerReuse();
     error InvalidOwner();
     error OwnerMustBeContract(address owner);
+    error OwnerMustBeEoa(address owner);
+    error OwnerRoleOverlap(address owner);
+    error InvalidOwnerProfile();
+    error AttestationPublicationUnexpectedlyEnabled();
     error InvalidAttestor();
     error RegistryOwnerMismatch(address expected, address observed);
     error AttestorNotAuthorized(address attestor);
@@ -78,7 +87,16 @@ contract DeployVeyraMainnetMvp {
     event MainnetMvpExecutorConfigured(address indexed guard, address indexed executor);
 
     function validateDeploymentConfiguration(address deployer, address owner, address attestor) external view {
-        _validateDeploymentConfiguration(deployer, owner, attestor);
+        _validateDeploymentConfiguration(deployer, owner, attestor, OwnerProfile.SAFE_2_OF_3);
+    }
+
+    function validateDeploymentConfiguration(
+        address deployer,
+        address owner,
+        address attestor,
+        OwnerProfile ownerProfile
+    ) external view {
+        _validateDeploymentConfiguration(deployer, owner, attestor, ownerProfile);
     }
 
     function run()
@@ -94,7 +112,8 @@ contract DeployVeyraMainnetMvp {
         address deployer = vm.envAddress("VEYRA_MAINNET_DEPLOYER");
         address owner = vm.envAddress("VEYRA_MAINNET_OWNER");
         address attestor = vm.envAddress("VEYRA_MAINNET_ATTESTOR");
-        _validateDeploymentConfiguration(deployer, owner, attestor);
+        OwnerProfile ownerProfile = _parseOwnerProfile(vm.envString("VEYRA_MAINNET_OWNER_MODE"));
+        _validateDeploymentConfiguration(deployer, owner, attestor, ownerProfile);
 
         vm.startBroadcast(deployer);
         tokenPolicies = new VeyraTokenPolicyRegistry();
@@ -123,6 +142,9 @@ contract DeployVeyraMainnetMvp {
         }
         bytes32 attestorRole = attestationRegistry.ATTESTOR_ROLE();
         if (!attestationRegistry.hasRole(attestorRole, attestor)) revert AttestorNotAuthorized(attestor);
+        if (attestationRegistry.attestationPublishingEnabled()) {
+            revert AttestationPublicationUnexpectedlyEnabled();
+        }
         if (attestationRegistry.hasRole(attestorRole, address(0))) {
             revert UnexpectedAdditionalAttestor(address(0));
         }
@@ -139,15 +161,34 @@ contract DeployVeyraMainnetMvp {
         emit MainnetMvpOwnershipTransferred(10, owner);
     }
 
-    function _validateDeploymentConfiguration(address deployer, address owner, address attestor) private view {
+    function _validateDeploymentConfiguration(
+        address deployer,
+        address owner,
+        address attestor,
+        OwnerProfile ownerProfile
+    ) private view {
         if (block.chainid != ROBINHOOD_MAINNET_CHAIN_ID) revert WrongChain(block.chainid);
         if (deployer == address(0)) revert InvalidDeployer();
         if (tx.origin != deployer) revert UnexpectedDeployer(deployer, tx.origin);
         if (deployer == TESTNET_DEPLOYER) revert TestnetDeployerReuse();
         if (owner == address(0) || owner == deployer) revert InvalidOwner();
-        if (owner.code.length == 0) revert OwnerMustBeContract(owner);
         if (attestor == address(0)) revert InvalidAttestor();
-        _validateSafeOwner(owner, deployer, attestor);
+        if (owner == attestor || owner == TESTNET_DEPLOYER) revert OwnerRoleOverlap(owner);
+
+        if (ownerProfile == OwnerProfile.SAFE_2_OF_3) {
+            if (owner.code.length == 0) revert OwnerMustBeContract(owner);
+            _validateSafeOwner(owner, deployer, attestor);
+        } else if (ownerProfile == OwnerProfile.EOA_INACTIVE) {
+            if (owner.code.length != 0) revert OwnerMustBeEoa(owner);
+        } else {
+            revert InvalidOwnerProfile();
+        }
+    }
+
+    function _parseOwnerProfile(string memory value) private pure returns (OwnerProfile) {
+        if (keccak256(bytes(value)) == keccak256("SAFE_2_OF_3")) return OwnerProfile.SAFE_2_OF_3;
+        if (keccak256(bytes(value)) == keccak256("EOA_INACTIVE")) return OwnerProfile.EOA_INACTIVE;
+        revert InvalidOwnerProfile();
     }
 
     function _validateSafeOwner(address owner, address deployer, address attestor) private view {

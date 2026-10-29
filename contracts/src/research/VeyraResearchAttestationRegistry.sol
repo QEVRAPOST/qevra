@@ -20,7 +20,11 @@ contract VeyraResearchAttestationRegistry is VeyraAccessManaged {
     mapping(bytes32 attestationId => Attestation value) private _attestations;
     mapping(bytes32 runId => bytes32 attestationId) public attestationForRun;
 
+    /// @notice Starts disabled; an owner must approve the publication policy before enabling it.
+    bool public attestationPublishingEnabled;
+
     error UnauthorizedAttestor(address caller);
+    error AttestationsDisabled();
     error ZeroDigest();
     error DuplicateRun(bytes32 runId);
 
@@ -32,14 +36,22 @@ contract VeyraResearchAttestationRegistry is VeyraAccessManaged {
         address attestor,
         uint256 attestedAt
     );
+    event AttestationPublishingEnabledSet(bool enabled, address indexed owner);
 
     constructor(address initialAttestor) {
         if (initialAttestor == address(0)) revert ZeroAddress();
         _grantRole(ATTESTOR_ROLE, initialAttestor);
     }
 
+    /// @notice Enable digest publication only after the owner approves privacy and attestor policies.
+    function setAttestationPublishingEnabled(bool enabled) external onlyOwner {
+        attestationPublishingEnabled = enabled;
+        emit AttestationPublishingEnabledSet(enabled, msg.sender);
+    }
+
     function attest(bytes32 reportDigest, bytes32 manifestDigest, bytes32 runId) external returns (bytes32 id) {
         if (!hasRole(ATTESTOR_ROLE, msg.sender)) revert UnauthorizedAttestor(msg.sender);
+        if (!attestationPublishingEnabled) revert AttestationsDisabled();
         if (reportDigest == bytes32(0) || manifestDigest == bytes32(0) || runId == bytes32(0)) revert ZeroDigest();
         if (attestationForRun[runId] != bytes32(0)) revert DuplicateRun(runId);
 

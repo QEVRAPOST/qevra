@@ -92,6 +92,7 @@ contract VeyraArchitectureRegistryTest {
 
     function test_attestationRegistryRecordsDeduplicatedDigestOnlyAttestations() public {
         VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+        _setAttestationPublishingEnabled(registry, true);
         bytes32 reportDigest = keccak256("report");
         bytes32 manifestDigest = keccak256("manifest");
         bytes32 runId = keccak256("run");
@@ -124,8 +125,39 @@ contract VeyraArchitectureRegistryTest {
         vm.prank(NON_OWNER);
         registry.attest(digest, digest, runId);
 
+        _setAttestationPublishingEnabled(registry, true);
         vm.expectRevert(abi.encodeWithSelector(VeyraResearchAttestationRegistry.ZeroDigest.selector));
         registry.attest(bytes32(0), digest, runId);
+    }
+
+    function test_attestationRegistryStartsDisabledUntilOwnerApprovesPublication() public {
+        VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+        require(!_attestationPublishingEnabled(registry), "publication must start disabled");
+
+        vm.expectRevert(abi.encodeWithSelector(bytes4(keccak256("AttestationsDisabled()"))));
+        vm.prank(ATTESTOR);
+        registry.attest(bytes32(uint256(1)), bytes32(uint256(2)), bytes32(uint256(3)));
+
+        (bool ownerEnabled,) =
+            address(registry).call(abi.encodeWithSignature("setAttestationPublishingEnabled(bool)", true));
+        require(ownerEnabled && _attestationPublishingEnabled(registry), "owner should explicitly enable publication");
+
+        vm.prank(ATTESTOR);
+        registry.attest(bytes32(uint256(1)), bytes32(uint256(2)), bytes32(uint256(3)));
+
+        (bool ownerDisabled,) =
+            address(registry).call(abi.encodeWithSignature("setAttestationPublishingEnabled(bool)", false));
+        require(
+            ownerDisabled && !_attestationPublishingEnabled(registry), "owner should be able to disable publication"
+        );
+    }
+
+    function test_attestationRegistryPublicationSwitchRemainsOwnerControlled() public {
+        VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+
+        vm.prank(NON_OWNER);
+        (bool changed,) = address(registry).call(abi.encodeWithSignature("setAttestationPublishingEnabled(bool)", true));
+        require(!changed && !_attestationPublishingEnabled(registry), "non-owner must not enable publication");
     }
 
     function test_attestationRegistryRejectsZeroInitialAttestor() public {
@@ -170,6 +202,7 @@ contract VeyraArchitectureRegistryTest {
 
     function test_attestationRegistryRejectsZeroManifestAndRunDigests() public {
         VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+        _setAttestationPublishingEnabled(registry, true);
         bytes32 reportDigest = bytes32(uint256(1));
         bytes32 manifestDigest = bytes32(uint256(2));
         bytes32 runId = bytes32(uint256(3));
@@ -185,13 +218,13 @@ contract VeyraArchitectureRegistryTest {
 
     function test_attestationRegistryEmitsExactDigestOnlyEvidence() public {
         VeyraResearchAttestationRegistry registry = new VeyraResearchAttestationRegistry(ATTESTOR);
+        _setAttestationPublishingEnabled(registry, true);
         // Test-only commitments; production publishers need high-entropy secret salts.
         bytes32 reportDigest = keccak256(abi.encode(bytes32(uint256(0x51a7)), "private report"));
         bytes32 manifestDigest = keccak256(abi.encode(bytes32(uint256(0x91c3)), "private manifest"));
         bytes32 runId = keccak256(abi.encode(bytes32(uint256(0x2e11)), "private run"));
-        bytes32 expectedId = keccak256(
-            abi.encode(block.chainid, address(registry), ATTESTOR, reportDigest, manifestDigest, runId)
-        );
+        bytes32 expectedId =
+            keccak256(abi.encode(block.chainid, address(registry), ATTESTOR, reportDigest, manifestDigest, runId));
 
         vm.expectEmit(true, true, true, true, address(registry));
         emit AttestationRecorded(expectedId, reportDigest, runId, manifestDigest, ATTESTOR, block.timestamp);
@@ -215,5 +248,17 @@ contract VeyraArchitectureRegistryTest {
 
         require(!accepted, "registry must not accept Ether");
         require(address(registry).balance == 0, "registry must not custody Ether");
+    }
+
+    function _setAttestationPublishingEnabled(VeyraResearchAttestationRegistry registry, bool enabled) private {
+        (bool success,) =
+            address(registry).call(abi.encodeWithSignature("setAttestationPublishingEnabled(bool)", enabled));
+        require(success, "owner should be able to set publication state");
+    }
+
+    function _attestationPublishingEnabled(VeyraResearchAttestationRegistry registry) private view returns (bool) {
+        (bool success, bytes memory result) =
+            address(registry).staticcall(abi.encodeWithSignature("attestationPublishingEnabled()"));
+        return success && result.length == 32 && abi.decode(result, (bool));
     }
 }

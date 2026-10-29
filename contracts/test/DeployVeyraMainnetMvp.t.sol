@@ -12,12 +12,9 @@ interface VmVeyraMainnetDeployTest {
 }
 
 contract MainnetSafeOwnerFixture {
-    bytes32 private constant FALLBACK_HANDLER_SLOT =
-        0x6c9a6c4a39284e37ed1cf53d337577d14212a4870fb976a4366c693b939918d5;
-    bytes32 private constant GUARD_SLOT =
-        0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
-    bytes32 private constant MODULE_GUARD_SLOT =
-        0xb104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947;
+    bytes32 private constant FALLBACK_HANDLER_SLOT = 0x6c9a6c4a39284e37ed1cf53d337577d14212a4870fb976a4366c693b939918d5;
+    bytes32 private constant GUARD_SLOT = 0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
+    bytes32 private constant MODULE_GUARD_SLOT = 0xb104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947;
 
     address private immutable _singleton;
     uint256 private immutable _threshold;
@@ -45,10 +42,21 @@ contract MainnetSafeOwnerFixture {
         _modules = modules;
     }
 
-    function masterCopy() external view returns (address) { return _singleton; }
-    function VERSION() external pure returns (string memory) { return "1.4.1"; }
-    function getOwners() external view returns (address[] memory) { return _owners; }
-    function getThreshold() external view returns (uint256) { return _threshold; }
+    function masterCopy() external view returns (address) {
+        return _singleton;
+    }
+
+    function VERSION() external pure returns (string memory) {
+        return "1.4.1";
+    }
+
+    function getOwners() external view returns (address[] memory) {
+        return _owners;
+    }
+
+    function getThreshold() external view returns (uint256) {
+        return _threshold;
+    }
 
     function getModulesPaginated(address, uint256) external view returns (address[] memory, address) {
         return (_modules, address(1));
@@ -109,6 +117,92 @@ contract DeployVeyraMainnetMvpTest {
         vm.expectRevert(abi.encodeWithSelector(DeployVeyraMainnetMvp.OwnerMustBeContract.selector, address(0xBEEF)));
         vm.prank(MAINNET_DEPLOYER, MAINNET_DEPLOYER);
         script.validateDeploymentConfiguration(MAINNET_DEPLOYER, address(0xBEEF), ATTESTOR);
+    }
+
+    function test_acceptsNoCodeOwnerOnlyThroughExplicitEoaInactiveProfile() public {
+        vm.chainId(4_663);
+        DeployVeyraMainnetMvp script = new DeployVeyraMainnetMvp();
+
+        vm.prank(MAINNET_DEPLOYER, MAINNET_DEPLOYER);
+        (bool accepted,) = address(script)
+            .call(
+                abi.encodeWithSignature(
+                    "validateDeploymentConfiguration(address,address,address,uint8)",
+                    MAINNET_DEPLOYER,
+                    address(0xE0A),
+                    ATTESTOR,
+                    uint8(1)
+                )
+            );
+        require(accepted, "explicit EOA_INACTIVE profile should accept a distinct no-code owner");
+    }
+
+    function test_safeProfileStillRejectsNoCodeOwner() public {
+        vm.chainId(4_663);
+        DeployVeyraMainnetMvp script = new DeployVeyraMainnetMvp();
+
+        vm.prank(MAINNET_DEPLOYER, MAINNET_DEPLOYER);
+        (bool accepted,) = address(script)
+            .call(
+                abi.encodeWithSignature(
+                    "validateDeploymentConfiguration(address,address,address,uint8)",
+                    MAINNET_DEPLOYER,
+                    address(0xE0A),
+                    ATTESTOR,
+                    uint8(0)
+                )
+            );
+        require(!accepted, "SAFE_2_OF_3 profile must keep Safe validation");
+    }
+
+    function test_eoaInactiveProfileRejectsContractOwnerAndInvalidProfile() public {
+        vm.chainId(4_663);
+        DeployVeyraMainnetMvp script = new DeployVeyraMainnetMvp();
+        address safeOwner = _safeOwner(2, new address[](0), address(0), address(0));
+
+        vm.prank(MAINNET_DEPLOYER, MAINNET_DEPLOYER);
+        (bool acceptedContract,) = address(script)
+            .call(
+                abi.encodeWithSignature(
+                    "validateDeploymentConfiguration(address,address,address,uint8)",
+                    MAINNET_DEPLOYER,
+                    safeOwner,
+                    ATTESTOR,
+                    uint8(1)
+                )
+            );
+        require(!acceptedContract, "EOA_INACTIVE profile must reject contract code");
+
+        vm.prank(MAINNET_DEPLOYER, MAINNET_DEPLOYER);
+        (bool acceptedUnknownProfile,) = address(script)
+            .call(
+                abi.encodeWithSignature(
+                    "validateDeploymentConfiguration(address,address,address,uint8)",
+                    MAINNET_DEPLOYER,
+                    address(0xE0A),
+                    ATTESTOR,
+                    uint8(2)
+                )
+            );
+        require(!acceptedUnknownProfile, "unknown owner profiles must fail closed");
+    }
+
+    function test_eoaInactiveProfileRejectsOwnerRoleOverlap() public {
+        vm.chainId(4_663);
+        DeployVeyraMainnetMvp script = new DeployVeyraMainnetMvp();
+
+        vm.prank(MAINNET_DEPLOYER, MAINNET_DEPLOYER);
+        (bool accepted,) = address(script)
+            .call(
+                abi.encodeWithSignature(
+                    "validateDeploymentConfiguration(address,address,address,uint8)",
+                    MAINNET_DEPLOYER,
+                    ATTESTOR,
+                    ATTESTOR,
+                    uint8(1)
+                )
+            );
+        require(!accepted, "owner and attestor must be independently addressed");
     }
 
     function test_rejectsZeroAttestor() public {
@@ -180,12 +274,10 @@ contract DeployVeyraMainnetMvpTest {
         script.validateDeploymentConfiguration(MAINNET_DEPLOYER, owner, ATTESTOR);
     }
 
-    function _safeOwner(
-        uint256 threshold,
-        address[] memory modules,
-        address guard,
-        address moduleGuard
-    ) private returns (address) {
+    function _safeOwner(uint256 threshold, address[] memory modules, address guard, address moduleGuard)
+        private
+        returns (address)
+    {
         address[] memory signers = new address[](3);
         signers[0] = address(0x1001);
         signers[1] = address(0x1002);
@@ -193,12 +285,10 @@ contract DeployVeyraMainnetMvpTest {
         return _safeOwnerWithConfig(threshold, signers, modules, guard, SAFE_FALLBACK_HANDLER, moduleGuard);
     }
 
-    function _safeOwnerWithFallback(
-        uint256 threshold,
-        address[] memory modules,
-        address guard,
-        address fallbackHandler
-    ) private returns (address) {
+    function _safeOwnerWithFallback(uint256 threshold, address[] memory modules, address guard, address fallbackHandler)
+        private
+        returns (address)
+    {
         address[] memory signers = new address[](3);
         signers[0] = address(0x1001);
         signers[1] = address(0x1002);
@@ -220,8 +310,10 @@ contract DeployVeyraMainnetMvpTest {
     ) private returns (address) {
         vm.etch(SAFE_L2_SINGLETON, hex"60006000");
         vm.etch(SAFE_FALLBACK_HANDLER, hex"60006000");
-        return address(new MainnetSafeOwnerFixture(
-            SAFE_L2_SINGLETON, signers, threshold, modules, guard, fallbackHandler, moduleGuard
-        ));
+        return address(
+            new MainnetSafeOwnerFixture(
+                SAFE_L2_SINGLETON, signers, threshold, modules, guard, fallbackHandler, moduleGuard
+            )
+        );
     }
 }
