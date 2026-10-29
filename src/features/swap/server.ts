@@ -290,7 +290,32 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
   return async function handleSwapQuote(request: Request): Promise<Response> {
     const requestId = requestCorrelationId(request);
     const startedAt = Date.now();
-    const responseHeaders = { "cache-control": "no-store", "x-veyra-request-id": requestId };
+    const timingStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const phaseDurations: Record<string, number> = {};
+    const responseHeaders: Record<string, string> = { "cache-control": "no-store", "x-veyra-request-id": requestId };
+    const timed = async <T>(phase: string, task: () => Promise<T>): Promise<T> => {
+      const phaseStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+      try { return await task(); } finally {
+        const phaseEndedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+        phaseDurations[phase] = Math.max(0, Math.round(phaseEndedAt - phaseStartedAt));
+      }
+    };
+    const timedSync = <T>(phase: string, task: () => T): T => {
+      const phaseStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+      try { return task(); } finally {
+        const phaseEndedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+        phaseDurations[phase] = Math.max(0, Math.round(phaseEndedAt - phaseStartedAt));
+      }
+    };
+    const stampResponseHeaders = () => {
+      const current = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const total = Math.max(0, Math.round(current - timingStartedAt));
+      responseHeaders["x-veyra-server-time"] = new Date(dependencies.now()).toISOString();
+      responseHeaders["server-timing"] = [
+        ...Object.entries(phaseDurations).map(([name, duration]) => `${name};dur=${duration}`),
+        `total;dur=${total}`,
+      ].join(", ");
+    };
     let mode: SwapQuoteFailureDiagnostic["mode"] = "unknown";
     let upstreamHttpStatus: number | null = null;
     let providerErrorClassification: string | null = null;
@@ -300,6 +325,7 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
     const rpcFailureCategories = new Set<SwapRpcFailureCategory>();
     const reportRpcFailure: ReportRpcFailure = (category) => rpcFailureCategories.add(category);
     const fail = (status: number, code: string, message: string) => {
+      stampResponseHeaders();
       if (status >= 500) {
         const diagnostic: SwapQuoteFailureDiagnostic = {
           event: "swap_quote_failure",
@@ -326,6 +352,7 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
       if (!sameOrigin(request)) return fail(403, "origin_not_allowed", "Cross-origin quote requests are not allowed.");
       if (!requireJsonContentType(request)) return fail(415, "json_required", "Send a JSON request body.");
       if (!(dependencies.rateLimit ?? inMemoryQuoteRateLimit)(request)) {
+        stampResponseHeaders();
         return apiError(429, "quote_rate_limited", "Too many quote requests. Wait before requesting another price or quote.", { ...responseHeaders, "retry-after": "60" });
       }
 
@@ -344,15 +371,16 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
         providerErrorClassification = "provider_not_configured_for_live_mode";
         return fail(503, "swap_live_mode_required", "Mainnet quote requests require QEVRA_APP_MODE=live. No quote was requested.");
       }
-      if (!dependencies.apiKey || dependencies.apiKey.trim().length < 16) {
+      const providerApiKey = dependencies.apiKey;
+      if (!providerApiKey || providerApiKey.trim().length < 16) {
         providerErrorClassification = "provider_credential_unavailable";
         return fail(503, "swap_provider_not_configured", "The server has no configured 0x API credential. No quote was requested.");
       }
 
-      const [sellToken, buyToken] = await Promise.all([
+      const [sellToken, buyToken] = await timed("token_metadata", () => Promise.all([
         dependencies.getTokenMetadata(requestData.tokenIn, reportRpcFailure),
         dependencies.getTokenMetadata(requestData.tokenOut, reportRpcFailure),
-      ]);
+      ]));
       if (!sellToken || !buyToken) {
         applicationValidationCategory = "mainnet_token_metadata_unavailable";
         return fail(503, "mainnet_token_metadata_unavailable", "Robinhood Mainnet token bytecode or metadata could not be verified from RPC.");
@@ -374,12 +402,12 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
       const endpoint = `https://api.0x.org/swap/allowance-holder/${mode}?${query.toString()}`;
       let upstream: Response;
       try {
-        upstream = await dependencies.fetch(endpoint, {
+        upstream = await timed("zero_x_request", () => dependencies.fetch(endpoint, {
           method: "GET",
-          headers: { "0x-api-key": dependencies.apiKey, "0x-version": "v2", accept: "application/json" },
+          headers: { "0x-api-key": providerApiKey, "0x-version": "v2", accept: "application/json" },
           cache: "no-store",
           signal: AbortSignal.timeout(12_000),
-        });
+        }));
       } catch (error) {
         providerErrorClassification = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")
           ? "provider_transport_timeout"
@@ -394,7 +422,7 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
       }
       let text: string;
       try {
-        text = await upstream.text();
+        text = await timed("zero_x_response", () => upstream.text());
       } catch {
         providerErrorClassification = "provider_response_read_failure";
         return fail(502, "invalid_quote_provider_response", "The 0x service returned an unreadable response.");
@@ -405,35 +433,37 @@ export function createSwapQuoteHandler(dependencies: QuoteHandlerDependencies) {
       }
       let body: unknown;
       try {
-        body = JSON.parse(text) as unknown;
+        body = timedSync("provider_json", () => JSON.parse(text) as unknown);
       } catch {
         providerErrorClassification = "provider_response_invalid_json";
         return fail(502, "invalid_quote_provider_response", "The 0x service returned an unreadable response.");
       }
 
       if (mode === "price") {
-        const price = normalizeZeroXSwapPrice(body, requestData, { sell: sellToken, buy: buyToken });
+        const price = timedSync("price_validation", () => normalizeZeroXSwapPrice(body, requestData, { sell: sellToken, buy: buyToken }));
         if (price.status !== "ready") {
           applicationValidationCategory = price.reason;
           return fail(price.status === "invalid" ? 502 : 503, price.reason, "No independently validated indicative Mainnet price is available.");
         }
+        stampResponseHeaders();
         return Response.json(price, { headers: responseHeaders });
       }
-      const contracts = await dependencies.verifyContracts(readProviderAllowanceSpender(body), readProviderExecutionTarget(body), reportRpcFailure);
+      const contracts = await timed("contract_checks", () => dependencies.verifyContracts(readProviderAllowanceSpender(body), readProviderExecutionTarget(body), reportRpcFailure));
       let schemaFailure: ZeroXQuoteSchemaFailure | undefined;
-      const quote = normalizeZeroXSwapQuote(
+      const quote = timedSync("quote_validation", () => normalizeZeroXSwapQuote(
         body,
         requestData,
         { sell: sellToken, buy: buyToken },
         contracts,
         dependencies.now(),
         (failure) => { schemaFailure = failure; },
-      );
+      ));
       if (quote.status !== "ready") {
         applicationValidationCategory = schemaFailure?.category ?? classifyQuoteValidation(quote.reason);
         providerSchemaFailures = schemaFailure?.fields ?? [];
         return fail(quote.status === "invalid" ? 502 : 503, quote.reason, "The firm quote failed independent Mainnet route and deployment checks.");
       }
+      stampResponseHeaders();
       return Response.json(quote, { headers: responseHeaders });
     } catch (error) {
       internalExceptionCategory = classifyInternalException(error);

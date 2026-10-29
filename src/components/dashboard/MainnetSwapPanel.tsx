@@ -5,14 +5,14 @@ import { keccak256 } from "viem";
 import { Button } from "@/components/ui/Button";
 import { useAppModel } from "./DemoAppProvider";
 import { useLiveWalletExecutionProvider } from "@/features/dashboard/LiveAppProvider";
-import { requestRobinhoodSwapQuote, MainnetSwapClientError, type MainnetFirmQuote, type MainnetIndicativePrice } from "@/features/swap/client";
+import { requestRobinhoodSwapQuote, MainnetSwapClientError, type MainnetFirmQuote, type MainnetIndicativePrice, type QuoteLifetimeSample } from "@/features/swap/client";
 import { amountToBaseUnits, DEFAULT_ROBINHOOD_SWAP_SELL_TOKEN, ROBINHOOD_MAINNET_TOKENS, type RobinhoodSwapRequest, type RobinhoodSwapTokenId } from "@/features/swap/mainnet";
 import { approveExactSwapAmount, MINIMUM_WALLET_QUOTE_LIFETIME_MS, preflightRobinhoodSwap, sendReviewedSwap, SwapExecutionError, switchWalletToRobinhoodMainnet, type SwapPreflightResult } from "@/features/swap/execution";
 import { createMldsa44IntentAttestation, createPqIntentNonce, verifyMldsa44IntentAttestation, type Mldsa44Implementation, type Mldsa44IntentAttestation } from "@/features/swap/pq-attestation";
 import { saveSwapTransaction } from "@/features/swap/activity";
 import { getExplorerTransactionUrl } from "@/lib/config/networks";
 import { formatMainnetPreflightBalances, formatMainnetTokenAmount, getMainnetSwapNetworkReadiness, getMldsa44PublicKeyFingerprint, hasMainnetSwapContextChanged, isWalletRequestRejection } from "@/features/swap/presentation";
-import { canReviewSwapQuote, createSwapRequestGuard, getSwapQuoteBalanceState, isFirmQuoteExpired, shouldContinueMainnetReceiptPolling } from "@/features/swap/ui-state";
+import { canReviewSwapQuote, createSwapRequestGuard, getQuoteRemainingMs, getSwapQuoteBalanceState, shouldContinueMainnetReceiptPolling } from "@/features/swap/ui-state";
 
 const SWAP_TOKENS: RobinhoodSwapTokenId[] = ["ETH", "WETH", "USDG"];
 const WALLET_REQUEST_LOCK_KEY = "veyra.robinhood.mainnet.wallet-request-pending.v1";
@@ -44,6 +44,10 @@ function updateWalletRequestLock(pending: boolean): void {
 
 function currentEpochMilliseconds(): number {
   return Date.now();
+}
+
+function logSwapTiming(event: object): void {
+  console.info("[VEYRA swap timing]", event);
 }
 
 function displayAmount(value: string, decimals: number): string {
@@ -110,6 +114,7 @@ export function MainnetSwapPanel() {
   const [slippage, setSlippage] = useState("50");
   const [price, setPrice] = useState<MainnetIndicativePrice>();
   const [quote, setQuote] = useState<MainnetFirmQuote>();
+  const [quoteLifetime, setQuoteLifetime] = useState<QuoteLifetimeSample>();
   const [reviewedDigest, setReviewedDigest] = useState<string>();
   const [attestation, setAttestation] = useState<Mldsa44IntentAttestation>();
   const [attestationImplementation, setAttestationImplementation] = useState<Mldsa44Implementation>();
@@ -123,7 +128,7 @@ export function MainnetSwapPanel() {
   const [status, setStatus] = useState<string>();
   const [approvalNeeded, setApprovalNeeded] = useState(false);
   const [preflightReady, setPreflightReady] = useState(false);
-  const [clock, setClock] = useState(() => Date.now());
+  const [clock, setClock] = useState(() => typeof performance !== "undefined" ? performance.now() : Date.now());
   const [receiptState, setReceiptState] = useState<{ state: SwapReceiptState; blockNumber?: string; settlementStatus?: "verified" | "not_verified" | "not_applicable"; receivedAmount?: string }>();
   const [swapRequestState, setSwapRequestState] = useState<SwapRequestState>("idle");
   const walletRequestLockSnapshot = useSyncExternalStore(subscribeWalletRequestLock, readWalletRequestLock, () => null);
@@ -148,6 +153,7 @@ export function MainnetSwapPanel() {
     setBusy(undefined);
     setError(undefined);
     setQuote(undefined);
+    setQuoteLifetime(undefined);
     setPrice(undefined);
     setReviewedDigest(undefined);
     setAttestation(undefined);
@@ -173,8 +179,8 @@ export function MainnetSwapPanel() {
     && quote.slippageBps === currentRequest.slippageBps
     && amountToBaseUnits(currentRequest.amount, quote.tokenIn.decimals) === quote.amountIn);
   const quoteContextMatches = Boolean(quoteInputMatches && taker && quote?.taker.toLowerCase() === taker.toLowerCase() && networkReadiness.ready);
-  const quoteExpired = Boolean(quote && isFirmQuoteExpired(quote.expiresAt, clock));
-  const quoteRemainingMs = quote ? Math.max(0, Date.parse(quote.expiresAt) - clock) : 0;
+  const quoteRemainingMs = quote && quoteLifetime ? getQuoteRemainingMs(quoteLifetime, clock) : 0;
+  const quoteExpired = Boolean(quote && quoteRemainingMs <= 0);
   const quoteNeedsRefresh = Boolean(quote && (quoteExpired || quoteRemainingMs < MINIMUM_WALLET_QUOTE_LIFETIME_MS));
   const quoteBalanceState = quote ? getSwapQuoteBalanceState({
     native: quote.tokenIn.native,
@@ -185,15 +191,17 @@ export function MainnetSwapPanel() {
   const quoteBalanceInsufficient = quoteBalanceState === "insufficient";
   const quoteCanReview = canReviewSwapQuote({
     balanceState: quoteBalanceState ?? "unknown",
-    expired: quoteExpired,
+    expired: quoteExpired || quoteRemainingMs < MINIMUM_WALLET_QUOTE_LIFETIME_MS,
     contextMatches: quoteContextMatches,
   });
   const networkReady = networkReadiness.ready;
   const matchingQuote = quoteCanReview && reviewedDigest === quote?.quoteDigest;
+  const preflightReadyForQuote = Boolean(preflightReady && preflight?.status === "ready" && quote && preflight.quoteDigest.toLowerCase() === quote.quoteDigest.toLowerCase() && !quoteNeedsRefresh);
+  const visibleStatus = quoteNeedsRefresh && status?.startsWith("Mainnet preflight passed:") ? undefined : status;
 
   useEffect(() => {
     if (!quote) return;
-    const tick = () => setClock(Date.now());
+    const tick = () => setClock(typeof performance !== "undefined" ? performance.now() : Date.now());
     tick();
     const interval = window.setInterval(tick, 1_000);
     return () => window.clearInterval(interval);
@@ -274,6 +282,7 @@ export function MainnetSwapPanel() {
     requestGuard.current.invalidate();
     setBusy(undefined);
     setQuote(undefined);
+    setQuoteLifetime(undefined);
     setReviewedDigest(undefined);
     setAttestation(undefined);
     setPublicKeyFingerprint(undefined);
@@ -301,7 +310,7 @@ export function MainnetSwapPanel() {
     const generation = requestGuard.current.begin();
     setBusy("price"); setError(undefined); setStatus(undefined);
     try {
-      const result = await requestRobinhoodSwapQuote({ ...request, mode: "price" });
+      const result = await requestRobinhoodSwapQuote({ ...request, mode: "price" }, { onTiming: logSwapTiming });
       if (!requestGuard.current.isCurrent(generation)) return;
       if (result.mode !== "price") throw new Error("wrong_price_response");
       setPrice(result);
@@ -317,9 +326,12 @@ export function MainnetSwapPanel() {
     const request = currentRequest;
     if (!request || tokenIn === tokenOut) return;
     const generation = requestGuard.current.begin();
-    setBusy("quote"); setError(undefined); setStatus(undefined); setPreflightReady(false); setApprovalNeeded(false); setAttestation(undefined); setAttestationImplementation(undefined); setPublicKeyFingerprint(undefined); setAttestedIntent(undefined); setExecutionNonce(undefined); setPreflight(undefined); setPrice(undefined); setReviewedDigest(undefined); setQuote(undefined);
+    setBusy("quote"); setError(undefined); setStatus(undefined); setPreflightReady(false); setApprovalNeeded(false); setAttestation(undefined); setAttestationImplementation(undefined); setPublicKeyFingerprint(undefined); setAttestedIntent(undefined); setExecutionNonce(undefined); setPreflight(undefined); setQuoteLifetime(undefined); setPrice(undefined); setReviewedDigest(undefined); setQuote(undefined);
     try {
-      const result = await requestRobinhoodSwapQuote({ ...request, mode: "quote" });
+      const result = await requestRobinhoodSwapQuote({ ...request, mode: "quote" }, {
+        onTiming: logSwapTiming,
+        onQuoteLifetime: (sample) => { if (requestGuard.current.isCurrent(generation)) setQuoteLifetime(sample); },
+      });
       if (!requestGuard.current.isCurrent(generation)) return;
       if (result.mode !== "quote") throw new Error("wrong_quote_response");
       setQuote(result);
@@ -328,7 +340,7 @@ export function MainnetSwapPanel() {
         ? `0x reports insufficient ${result.tokenIn.symbol} balance. The quote is informational and cannot advance to review or wallet preflight.`
         : "Firm quote received from 0x and checked against Robinhood Mainnet deployment reads. Review every field before any wallet transaction.");
     } catch (cause) {
-      if (requestGuard.current.isCurrent(generation)) { setQuote(undefined); setError(shortError(cause)); }
+      if (requestGuard.current.isCurrent(generation)) { setQuote(undefined); setQuoteLifetime(undefined); setError(shortError(cause)); }
     } finally {
       if (requestGuard.current.isCurrent(generation)) setBusy(undefined);
     }
@@ -351,10 +363,14 @@ export function MainnetSwapPanel() {
   async function checkSwap() {
     if (!provider || !quote || !matchingQuote) return;
     const generation = requestGuard.current.begin();
-    const executionOptions = { isContextCurrent: () => requestGuard.current.isCurrent(generation) };
+    const executionOptions = {
+      isContextCurrent: () => requestGuard.current.isCurrent(generation),
+      now: () => quoteLifetime ? quoteLifetime.serverNowMs + Math.max(0, performance.now() - quoteLifetime.receivedAtMonotonicMs) : Date.now(),
+      onTiming: logSwapTiming,
+    };
     setBusy("preflight"); setError(undefined); setStatus(undefined); setPreflightReady(false); setApprovalNeeded(false); setPreflight(undefined);
     try {
-      const result = await preflightRobinhoodSwap(provider, quote, Date.now(), executionOptions);
+      const result = await preflightRobinhoodSwap(provider, quote, executionOptions.now(), executionOptions);
       if (!requestGuard.current.isCurrent(generation)) return;
       setPreflight(result);
       if (result.status === "approval_required") {
@@ -381,6 +397,8 @@ export function MainnetSwapPanel() {
     const generation = requestGuard.current.begin();
     const executionOptions = {
       isContextCurrent: () => requestGuard.current.isCurrent(generation),
+      now: () => quoteLifetime ? quoteLifetime.serverNowMs + Math.max(0, performance.now() - quoteLifetime.receivedAtMonotonicMs) : Date.now(),
+      onTiming: logSwapTiming,
       onWalletRequest: () => {
         updateWalletRequestLock(true);
         setSwapRequestState("awaiting_wallet");
@@ -410,7 +428,7 @@ export function MainnetSwapPanel() {
       setSwapRequestState("submitted");
       if (contextCurrent) {
         setStatus(`Wallet returned approval transaction ${result.hash}. ${saved ? "Saved to this browser's Activity." : "Browser storage was unavailable; copy the hash before leaving."} Wait for confirmation, then request a fresh quote.`);
-        setApprovalNeeded(false); setPreflightReady(false); setExecutionNonce(undefined); setPreflight(undefined); setQuote(undefined); setReviewedDigest(undefined); setAttestation(undefined); setAttestationImplementation(undefined); setPublicKeyFingerprint(undefined); setAttestedIntent(undefined);
+        setApprovalNeeded(false); setPreflightReady(false); setExecutionNonce(undefined); setPreflight(undefined); setQuote(undefined); setQuoteLifetime(undefined); setReviewedDigest(undefined); setAttestation(undefined); setAttestationImplementation(undefined); setPublicKeyFingerprint(undefined); setAttestedIntent(undefined);
       }
     } catch (cause) {
       if (requestGuard.current.isCurrent(generation)) {
@@ -426,28 +444,31 @@ export function MainnetSwapPanel() {
   }
 
   async function sendSwap() {
-    if (!provider || !quote || !matchingQuote || !preflightReady || !walletRequestLockChecked || walletReconciliationRequired) return;
+    const reviewedPreflight = preflight;
+    if (!provider || !quote || !matchingQuote || !preflightReadyForQuote || !reviewedPreflight || !walletRequestLockChecked || walletReconciliationRequired) return;
     const generation = requestGuard.current.begin();
     const executionOptions = {
       isContextCurrent: () => requestGuard.current.isCurrent(generation),
+      now: () => quoteLifetime ? quoteLifetime.serverNowMs + Math.max(0, performance.now() - quoteLifetime.receivedAtMonotonicMs) : Date.now(),
+      onTiming: logSwapTiming,
       onWalletRequest: () => {
         updateWalletRequestLock(true);
         setSwapRequestState("awaiting_wallet");
         setStatus(`Awaiting your explicit ${provider.providerName ?? wallet.providerName ?? "wallet"} confirmation. VEYRA has not signed or submitted anything; reject the wallet prompt if the quote expires before you approve.`);
       },
     };
-    setBusy("send"); setError(undefined); setStatus(undefined); setPreflight(undefined);
+    setBusy("send"); setError(undefined); setStatus("Rechecking the reviewed quote, wallet account, network, balance, gas, nonce, and route before opening the wallet.");
     setSwapRequestState("preparing");
     try {
       if (quoteNeedsRefresh) throw new SwapExecutionError(quoteExpired ? "quote_expired" : "quote_expiring", "Too little time remains on this firm quote. Refresh it, review the new terms, and run preflight again.");
-      if (!executionNonce) throw new SwapExecutionError("preflight_missing", "Run wallet preflight again before confirming this swap.");
+      if (!executionNonce || reviewedPreflight.transactionNonce.toString() !== executionNonce) throw new SwapExecutionError("preflight_missing", "Run wallet preflight again for this exact quote and nonce before confirming the swap.");
       if (attestation && (!attestedIntent || attestedIntent.nonce !== executionNonce
         || attestedIntent.quoteDigest !== quote.quoteDigest
         || !await verifyMldsa44IntentAttestation(attestation, attestedIntent))) {
         setAttestation(undefined); setAttestedIntent(undefined);
         throw new SwapExecutionError("pq_attestation_mismatch", "The saved PQ attestation no longer matches this exact Mainnet swap intent.");
       }
-      const hash = await sendReviewedSwap(provider, quote, executionNonce, executionOptions);
+      const hash = await sendReviewedSwap(provider, quote, reviewedPreflight, executionOptions);
       const contextCurrent = requestGuard.current.isCurrent(generation);
       const saved = saveSwapTransaction({
         hash: hash as `0x${string}`,
@@ -479,7 +500,7 @@ export function MainnetSwapPanel() {
       setSwapRequestState("submitted");
       if (contextCurrent) {
         setStatus(`${provider.providerName ?? wallet.providerName ?? "Wallet"} returned transaction ${hash}. ${saved ? "Saved to this browser's Activity." : "Browser storage was unavailable; copy the hash before leaving."} Mainnet receipt and ${quote.tokenOut.symbol} settlement evidence are being checked. This EVM transaction is not post-quantum protected.`);
-        setQuote(undefined); setReviewedDigest(undefined); setAttestation(undefined); setAttestationImplementation(undefined); setPublicKeyFingerprint(undefined); setAttestedIntent(undefined); setExecutionNonce(undefined); setPreflight(undefined); setPreflightReady(false);
+        setQuote(undefined); setQuoteLifetime(undefined); setReviewedDigest(undefined); setAttestation(undefined); setAttestationImplementation(undefined); setPublicKeyFingerprint(undefined); setAttestedIntent(undefined); setExecutionNonce(undefined); setPreflight(undefined); setPreflightReady(false);
       }
     } catch (cause) {
       if (requestGuard.current.isCurrent(generation)) {
@@ -487,6 +508,13 @@ export function MainnetSwapPanel() {
         if (["transaction_nonce_changed", "pending_nonce_mismatch"].includes(code)) {
           setPreflightReady(false);
           setExecutionNonce(undefined);
+          setAttestation(undefined);
+          setAttestedIntent(undefined);
+        }
+        if (["quote_expired", "quote_expiring"].includes(code)) {
+          setPreflightReady(false);
+          setExecutionNonce(undefined);
+          setPreflight(undefined);
           setAttestation(undefined);
           setAttestedIntent(undefined);
         }
@@ -505,7 +533,7 @@ export function MainnetSwapPanel() {
   }
 
   async function createAttestation() {
-    if (!quote || !matchingQuote || !taker || !executionNonce || !preflightReady) return;
+    if (!quote || !matchingQuote || !taker || !executionNonce || !preflightReadyForQuote) return;
     const generation = requestGuard.current.begin();
     setBusy("attest"); setError(undefined); setAttestation(undefined); setAttestationImplementation(undefined);
     try {
@@ -568,7 +596,7 @@ export function MainnetSwapPanel() {
     { title: "Wallet and network", state: !taker ? "Connect a wallet" : !networkReady ? "Select Robinhood Mainnet · 4663" : `${wallet.providerName ?? "External wallet"} connected on 4663` },
     { title: "Live quote", state: busy === "price" ? "Fetching indicative price" : busy === "quote" ? "Requesting firm quote" : quote && !quoteContextMatches ? "Invalidated · request a fresh quote" : quoteExpired ? "Expired · refresh required" : quoteBalanceInsufficient ? "Insufficient sell-token balance" : quoteCanReview ? "Firm quote available" : price ? "Indicative price only" : "Not requested" },
     { title: "Intent review", state: matchingQuote ? "Exact quote reviewed" : quote ? "Review required" : "Waiting for firm quote" },
-    { title: "Wallet preflight", state: preflightReady && matchingQuote ? "Ready for wallet confirmation" : approvalNeeded && !quoteExpired ? "Exact token approval required" : preflight && !quoteExpired ? "Preflight did not pass" : "Not checked" },
+    { title: "Wallet preflight", state: preflightReadyForQuote && matchingQuote ? "Ready for wallet confirmation" : approvalNeeded && !quoteNeedsRefresh ? "Exact token approval required" : preflight && !quoteNeedsRefresh ? "Preflight did not pass" : quoteNeedsRefresh ? "Refresh quote, review, and preflight again" : "Not checked" },
     { title: "Transaction receipt", state: receiptState?.state === "confirmed" ? receiptState.settlementStatus === "verified" ? "Receipt and output transfer verified" : "Receipt confirmed · settlement not verified" : receiptState?.state === "reverted" ? "Reverted on Mainnet" : receiptState?.state === "verification_failed" ? "Identity verification failed" : receiptState?.state === "unavailable" ? "Receipt check unavailable" : lastTransaction ? "Submitted · waiting for receipt" : "Requires explicit wallet approval" },
   ];
 
@@ -637,8 +665,8 @@ export function MainnetSwapPanel() {
           <div><dt>Route</dt><dd>{quoteCanReview && quote ? quote.route.map((fill) => fill.source).join(" → ") : price ? price.route.map((fill) => fill.source).join(" → ") : "Not available"}</dd></div>
         </dl>
         {quoteBalanceInsufficient && quoteContextMatches && !quoteExpired ? <p className="sp-error" role="alert">The 0x quote reports less {quote?.tokenIn.symbol} than this swap requires. This quote cannot be reviewed or submitted. Reduce the sell amount, choose a token with available balance, or reconnect the intended wallet. No wallet transaction has been requested.</p> : null}
-        {quoteExpired && quoteContextMatches ? <p className="sp-error" role="status">This firm quote expired at {quote?.expiresAt}. It cannot be signed or submitted. Refresh it, review the new terms, and run preflight again.</p> : null}
-        {quote && !quoteExpired && quoteRemainingMs < MINIMUM_WALLET_QUOTE_LIFETIME_MS ? <p className="sp-error" role="status">Only {Math.ceil(quoteRemainingMs / 1_000)} seconds remain. There is not enough quote lifetime to safely open the wallet. Refresh, review the new terms, and run preflight again.</p> : null}
+        {quoteExpired && quoteContextMatches ? <p className="sp-error" role="status">VEYRA&apos;s 30-second freshness window ended at {quote?.expiresAt}. This quote cannot be signed or submitted. Refresh it, review the new terms, and run preflight again.</p> : null}
+        {quote && !quoteExpired && quoteRemainingMs < MINIMUM_WALLET_QUOTE_LIFETIME_MS ? <p className="sp-error" role="status">Only {Math.ceil(quoteRemainingMs / 1_000)} seconds remain in VEYRA&apos;s quote freshness window. There is not enough time to safely open the wallet. Refresh, review the new terms, and run preflight again.</p> : null}
         {swapRequestState === "awaiting_wallet" && quoteExpired ? <p className="sp-error" role="alert">The quote expired while the {wallet.providerName ?? "wallet"} prompt is open. Reject the wallet request; do not approve a stale quote.</p> : null}
         {quote && !quoteContextMatches ? <p className="sp-error" role="status">This firm quote no longer matches the current form, connected wallet, or selected Mainnet network. Request a fresh quote before reviewing or continuing.</p> : null}
         {walletReconciliationRequired ? <div className="sp-error" role="alert"><p>A {wallet.providerName ?? "wallet"} transaction request may still be open or may have been submitted without returning a hash. Do not retry. Check the wallet popup and Robinhood Mainnet activity first.</p><Button variant="outline" disabled={busy === "send"} onClick={acknowledgeWalletRequestResolved}>I checked the wallet and resolved the request</Button></div> : null}
@@ -674,7 +702,7 @@ export function MainnetSwapPanel() {
                 <div><dt>Maximum slippage</dt><dd>{(quote.slippageBps / 100).toFixed(2)}%</dd></div>
                 <div><dt>Estimated gas</dt><dd>{quote.estimatedGas} units · {quote.totalNetworkFee ? `${displayAmount(quote.totalNetworkFee, 18)} ETH estimated fee` : "wallet fee estimate required"}</dd></div>
                 <div><dt>Route</dt><dd>{quote.route.map((fill) => fill.source).join(" → ")}</dd></div>
-                <div><dt>Quote expires</dt><dd>{quoteExpired ? `Expired · ${quote.expiresAt}` : `${Math.ceil(quoteRemainingMs / 1_000)}s remaining · ${quote.expiresAt}`}</dd></div>
+                <div><dt>VEYRA freshness cutoff</dt><dd>{quoteExpired ? `Elapsed · ${quote.expiresAt}` : `${Math.ceil(quoteRemainingMs / 1_000)}s remaining · ${quote.expiresAt}`}</dd></div>
               </dl>
               <details className="sp-details">
                 <summary>Transaction details</summary>
@@ -699,7 +727,7 @@ export function MainnetSwapPanel() {
             </section>
             <div className="sp-actions">
               <Button variant="outline" disabled={!quoteCanReview || busy !== undefined || walletExecutionBlocked} onClick={() => { setReviewedDigest(quote.quoteDigest); setPreflightReady(false); setPreflight(undefined); setAttestation(undefined); setPublicKeyFingerprint(undefined); setAttestedIntent(undefined); setExecutionNonce(undefined); setStatus("This exact quote is marked for review. Run wallet preflight before any wallet transaction."); }}>Review exact quote</Button>
-              <Button variant="outline" disabled={!matchingQuote || !preflightReady || !executionNonce || busy !== undefined || walletExecutionBlocked} onClick={() => { void createAttestation(); }}>{busy === "attest" ? "Creating local ML-DSA attestation…" : attestation ? "Create new optional PQ attestation" : "Optional: create ML-DSA attestation"}</Button>
+              <Button variant="outline" disabled={!matchingQuote || !preflightReadyForQuote || !executionNonce || busy !== undefined || walletExecutionBlocked} onClick={() => { void createAttestation(); }}>{busy === "attest" ? "Creating local ML-DSA attestation…" : attestation ? "Create new optional PQ attestation" : "Optional: create ML-DSA attestation"}</Button>
             </div>
             {attestation && !quoteExpired ? (
               <details className="sp-pq-details">
@@ -726,9 +754,9 @@ export function MainnetSwapPanel() {
             <div className="sp-actions">
               <Button variant="outline" disabled={!provider || !matchingQuote || busy !== undefined || walletExecutionBlocked} onClick={() => { void checkSwap(); }}>{busy === "preflight" ? "Checking wallet and contracts…" : "Check wallet preflight"}</Button>
               {approvalNeeded && !quoteNeedsRefresh ? <Button className="swapbtn" disabled={!provider || busy !== undefined || !matchingQuote || walletExecutionBlocked} onClick={() => { void approveAmount(); }}>{busy === "approval" ? "Waiting for wallet approval…" : `Approve exact ${quote.tokenIn.symbol} amount in wallet`}</Button> : null}
-              {preflightReady && !quoteExpired ? <Button className="swapbtn" disabled={!provider || busy !== undefined || !matchingQuote || !networkReady || quoteNeedsRefresh || walletExecutionBlocked} onClick={() => { void sendSwap(); }}>{busy === "send" ? swapRequestState === "awaiting_wallet" ? "Awaiting wallet confirmation…" : "Rechecking before wallet…" : "Confirm swap in wallet"}</Button> : null}
+              {preflightReadyForQuote ? <Button className="swapbtn" disabled={!provider || busy !== undefined || !matchingQuote || !networkReady || quoteNeedsRefresh || walletExecutionBlocked} onClick={() => { void sendSwap(); }}>{busy === "send" ? swapRequestState === "awaiting_wallet" ? "Awaiting wallet confirmation…" : "Rechecking before wallet…" : "Confirm swap in wallet"}</Button> : null}
             </div>
-            {preflight && !quoteExpired ? (() => {
+            {preflight && !quoteNeedsRefresh ? (() => {
               const balances = formatMainnetPreflightBalances(preflight, quote.tokenIn);
               return (
                 <section className="sp-review" aria-label="Wallet balance and execution preflight">
@@ -749,13 +777,13 @@ export function MainnetSwapPanel() {
         ) : null}
         {error ? <p className="sp-error" role="alert">{error}</p> : null}
         {swapRequestStateText(displayedSwapRequestState, quoteExpired) ? <p className="sp-note" role="status">{swapRequestStateText(displayedSwapRequestState, quoteExpired)}</p> : null}
-        {status ? <p className="sp-note" role="status">{status}</p> : null}
+        {visibleStatus ? <p className="sp-note" role="status">{visibleStatus}</p> : null}
       </div>
       <aside className="sp-mainnet-aside" aria-label="Swap progress and execution information">
         <p className="sp-context-label">Robinhood Mainnet · 4663</p>
         <h3>Swap flow</h3>
         <ol className="sp-mainnet-steps">
-          {flowSteps.map((step, index) => <li key={step.title} className={(index === 0 && networkReady) || (index === 1 && quoteCanReview) || (index === 2 && matchingQuote) || (index === 3 && preflightReady && matchingQuote) || (index === 4 && receiptState?.state === "confirmed") ? "done" : ""}>
+          {flowSteps.map((step, index) => <li key={step.title} className={(index === 0 && networkReady) || (index === 1 && quoteCanReview) || (index === 2 && matchingQuote) || (index === 3 && preflightReadyForQuote && matchingQuote) || (index === 4 && receiptState?.state === "confirmed") ? "done" : ""}>
             <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
             <div><strong>{step.title}</strong><small>{step.state}</small></div>
           </li>)}

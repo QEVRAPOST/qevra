@@ -33,6 +33,7 @@ test("Mainnet quote readiness requires both VEYRA and the connected wallet on ch
 test("Mainnet preflight balances format actual token, ETH, allowance, and fee amounts", () => {
   const snapshot: SwapPreflightResult = {
     status: "ready",
+    quoteDigest: "0x" + "11".repeat(32),
     account: "0x1111111111111111111111111111111111111111",
     currentAllowance: BigInt("5000000000000000"),
     tokenBalance: BigInt("15000000000000000"),

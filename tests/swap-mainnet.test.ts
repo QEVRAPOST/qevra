@@ -12,8 +12,9 @@ import {
   type ZeroXContractVerification,
 } from "@/features/swap/mainnet";
 import { createSwapQuoteHandler } from "@/features/swap/server";
-import { requestRobinhoodSwapQuote, MainnetSwapClientError } from "@/features/swap/client";
-import { approveExactSwapAmount, preflightRobinhoodSwap, sendReviewedSwap } from "@/features/swap/execution";
+import { requestRobinhoodSwapQuote, MainnetSwapClientError, type MainnetFirmQuote } from "@/features/swap/client";
+import { approveExactSwapAmount, preflightRobinhoodSwap, sendReviewedSwap, type SwapPreflightResult } from "@/features/swap/execution";
+import { getQuoteRemainingMs } from "@/features/swap/ui-state";
 
 const request: RobinhoodSwapRequest = {
   networkId: "mainnet",
@@ -53,6 +54,50 @@ function nativeEthQuote() {
   assert.equal(quote.status, "ready");
   if (quote.status !== "ready" || quote.mode !== "quote") throw new Error("expected_ready_native_quote");
   return quote;
+}
+
+function readyPreflight(quote: MainnetFirmQuote, nonce = BigInt(9)): SwapPreflightResult {
+  const gasPrice = BigInt(quote.gasPrice ?? "1000000000");
+  const estimatedGas = BigInt(quote.estimatedGas);
+  return {
+    status: "ready",
+    quoteDigest: quote.quoteDigest,
+    account: quote.taker,
+    currentAllowance: BigInt(quote.amountIn),
+    tokenBalance: BigInt(0),
+    nativeBalance: BigInt("100000000000000000000"),
+    estimatedGas,
+    gasPrice,
+    feeRequirement: BigInt(quote.transaction.gas) * gasPrice,
+    transactionNonce: nonce,
+    nonceSource: "trusted_rpc_fallback",
+  };
+}
+
+function quoteWithLifetime(quote: ReturnType<typeof nativeEthQuote>, quotedAtMs: number, expiresAtMs: number) {
+  const updated = { ...quote, quotedAt: new Date(quotedAtMs).toISOString(), expiresAt: new Date(expiresAtMs).toISOString() };
+  updated.quoteDigest = computeQuoteDigest({
+    chainId: updated.chainId,
+    taker: updated.taker,
+    sellToken: updated.tokenIn.address,
+    buyToken: updated.tokenOut.address,
+    sellAmount: updated.amountIn,
+    buyAmount: updated.amountOut,
+    minimumReceived: updated.minimumReceived,
+    slippageBps: updated.slippageBps,
+    recipient: updated.recipient,
+    allowanceSpender: updated.allowance.spender,
+    settlerAddress: updated.settlerAddress,
+    quotedAt: updated.quotedAt,
+    expiresAt: updated.expiresAt,
+    estimatedGas: updated.estimatedGas,
+    gasPrice: updated.gasPrice,
+    totalNetworkFee: updated.totalNetworkFee,
+    fees: updated.fees,
+    route: updated.route,
+    transaction: updated.transaction,
+  });
+  return updated;
 }
 
 function mainnetNonceRpcFetch(options: { chainId?: string; nonce?: string; status?: number; invalidJson?: boolean; observedAt?: string } = {}): typeof fetch {
@@ -448,6 +493,12 @@ test("server quote API requests only the Mainnet 0x v2 quote and returns verifie
     body: JSON.stringify(request),
   }));
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-veyra-server-time"), new Date(1_800_000_000_000).toISOString());
+  assert.match(response.headers.get("server-timing") ?? "", /token_metadata;dur=[0-9]+/);
+  assert.match(response.headers.get("server-timing") ?? "", /zero_x_request;dur=[0-9]+/);
+  assert.match(response.headers.get("server-timing") ?? "", /provider_json;dur=[0-9]+/);
+  assert.match(response.headers.get("server-timing") ?? "", /contract_checks;dur=[0-9]+/);
+  assert.match(response.headers.get("server-timing") ?? "", /quote_validation;dur=[0-9]+/);
   assert.match(seenUrl, /^https:\/\/api\.0x\.org\/swap\/allowance-holder\/quote\?/);
   assert.match(seenUrl, /chainId=4663/);
   assert.equal(new URL(seenUrl).searchParams.get("recipient"), request.taker);
@@ -743,7 +794,7 @@ test("client rejects a quote response with changed executable calldata digest", 
     now: 1_800_000_000_000,
     fetch: async () => {
       const changedData = `0x${"cd".repeat(64)}`;
-      return Response.json({ ...normalized, transaction: { ...normalized.transaction, data: changedData }, execution: { ...normalized.execution, data: changedData } });
+      return Response.json({ ...normalized, transaction: { ...normalized.transaction, data: changedData }, execution: { ...normalized.execution, data: changedData } }, { headers: { "x-veyra-server-time": new Date(1_800_000_000_000).toISOString() } });
     },
   }), (error: unknown) => error instanceof MainnetSwapClientError && error.code === "quote_digest_mismatch");
 });
@@ -761,13 +812,51 @@ test("client accepts a quote targeting the registry Settler when its AllowanceHo
 
   const result = await requestRobinhoodSwapQuote(request, {
     now: 1_800_000_000_000,
-    fetch: async () => Response.json(normalized),
+    fetch: async () => Response.json(normalized, { headers: { "x-veyra-server-time": new Date(1_800_000_000_000).toISOString() } }),
   });
   assert.equal(result.mode, "quote");
   if (result.mode === "quote") {
     assert.equal(result.transaction.to, currentSettler);
     assert.equal(result.allowance.spender, verifiedAllowanceTarget);
   }
+});
+
+test("firm quote lifetime uses the API server clock and returns a conservative monotonic countdown sample", async () => {
+  const serverNow = 1_800_000_000_000;
+  const quote = quoteWithLifetime(nativeEthQuote(), serverNow - 20_000, serverNow + 10_000);
+  let sample: { expiresAtMs: number; serverNowMs: number; receivedAtMonotonicMs: number } | undefined;
+  const quoteTimings: Array<{ phase: string }> = [];
+  const result = await requestRobinhoodSwapQuote({ ...request, tokenIn: "ETH", amount: "0.0001" }, {
+    now: serverNow - 12_000,
+    fetch: async () => new Response(JSON.stringify(quote), { status: 200, headers: { "content-type": "application/json", "x-veyra-server-time": new Date(serverNow).toISOString() } }),
+    onQuoteLifetime: (value: { expiresAtMs: number; serverNowMs: number; receivedAtMonotonicMs: number }) => { sample = value; },
+    onTiming: (event) => quoteTimings.push(event),
+  });
+
+  assert.equal(result.mode, "quote");
+  assert.ok(sample);
+  assert.equal(sample.serverNowMs, serverNow + 1_000);
+  assert.equal(sample.expiresAtMs, serverNow + 10_000);
+  assert.ok(sample.expiresAtMs - sample.serverNowMs <= 9_000);
+  assert.ok(quoteTimings.some((event) => event.phase === "http"));
+  assert.ok(quoteTimings.some((event) => event.phase === "client_validation"));
+});
+
+test("client rejects a quote expired by the API server clock even when the browser clock is behind", async () => {
+  const serverNow = 1_800_000_000_000;
+  const quote = quoteWithLifetime(nativeEthQuote(), serverNow - 20_000, serverNow + 500);
+  await assert.rejects(requestRobinhoodSwapQuote({ ...request, tokenIn: "ETH", amount: "0.0001" }, {
+    now: serverNow - 12_000,
+    fetch: async () => new Response(JSON.stringify(quote), { status: 200, headers: { "content-type": "application/json", "x-veyra-server-time": new Date(serverNow).toISOString() } }),
+  }), (error: unknown) => error instanceof MainnetSwapClientError && error.code === "quote_expired");
+});
+
+test("firm quote countdown advances monotonically without relying on browser wall-clock changes", () => {
+  const sample = { expiresAtMs: 50_000, serverNowMs: 30_000, receivedAtMonotonicMs: 1_000 };
+  assert.equal(getQuoteRemainingMs(sample, 1_000), 20_000);
+  assert.equal(getQuoteRemainingMs(sample, 7_500), 13_500);
+  assert.equal(getQuoteRemainingMs(sample, 22_000), 0);
+  assert.equal(getQuoteRemainingMs({ ...sample, serverNowMs: Number.NaN }, 2_000), 0);
 });
 
 test("swap preflight accepts matching wallet and independently verified Mainnet pending nonces", async () => {
@@ -964,7 +1053,7 @@ test("swap preflight rejects a changed pending wallet nonce before execution", a
   const result = await preflightRobinhoodSwap(provider, normalized, Date.now(), { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) });
   assert.equal(result.status, "ready");
   assert.equal(result.transactionNonce, BigInt(9));
-  await assert.rejects(sendReviewedSwap(provider, normalized, "7", { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
+  await assert.rejects(sendReviewedSwap(provider, normalized, { ...result, transactionNonce: BigInt(7) }, { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
     error instanceof Error && "code" in error && (error as { code: string }).code === "transaction_nonce_changed");
 });
 
@@ -981,7 +1070,7 @@ test("swap send emits an awaiting-wallet signal and submits only the exact fresh
     },
   };
   let walletRequestSignal = 0;
-  const hash = await sendReviewedSwap(provider, quote, "9", {
+  const hash = await sendReviewedSwap(provider, quote, readyPreflight(quote), {
     fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
     onWalletRequest: () => { walletRequestSignal += 1; events.push("awaiting_wallet"); },
   });
@@ -999,6 +1088,66 @@ test("swap send emits an awaiting-wallet signal and submits only the exact fresh
   assert.equal(tx.nonce, "0x9");
 });
 
+test("a 17-second firm quote reaches the wallet after slow checks run in parallel and emit sanitized timings", async () => {
+  const realNow = Date.now();
+  const monotonicStart = performance.now();
+  const quote = quoteWithLifetime(nativeEthQuote(), realNow - 13_000, realNow + 17_000);
+  const calls: string[] = [];
+  const timings: Array<{ phase: string; operation: string; durationMs: number; outcome: string; category?: string }> = [];
+  const base = nativePreflightProvider("0x9");
+  const provider = { request: async (args: { method: string; params?: readonly unknown[] }) => {
+    calls.push(args.method);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    if (args.method === "eth_sendTransaction") return `0x${"ab".repeat(32)}`;
+    return base.request(args);
+  } };
+  const now = () => realNow + (performance.now() - monotonicStart) * 5;
+  const hash = await sendReviewedSwap(provider, quote, readyPreflight(quote), {
+    now,
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+    onTiming: (event: { phase: string; operation: string; durationMs: number; outcome: string; category?: string }) => timings.push(event),
+  });
+
+  assert.equal(hash, `0x${"ab".repeat(32)}`);
+  assert.ok(timings.some((timing) => timing.phase === "wallet_rpc" && timing.operation === "eth_getBalance"));
+  assert.ok(timings.some((timing) => timing.phase === "validation" && timing.operation === "final_preflight"));
+  assert.ok(timings.every((timing) => !("message" in timing) && !("address" in timing) && !("params" in timing)));
+  assert.ok(now() - realNow < 10_000, "final freshness reads should finish before the 10-second handoff margin under this artificial latency");
+  assert.equal(calls.filter((method) => method === "eth_estimateGas").length, 1, "Confirm must not repeat the full preflight gas simulation");
+  assert.equal(calls.filter((method) => method === "eth_getBalance").length, 1);
+  assert.equal(calls.filter((method) => method === "eth_sendTransaction").length, 1);
+});
+
+test("send rejects a preflight snapshot for a different quote before wallet reads", async () => {
+  const quote = nativeEthQuote();
+  let walletReads = 0;
+  const provider = { request: async () => { walletReads += 1; return undefined; } };
+  await assert.rejects(sendReviewedSwap(provider, quote, { ...readyPreflight(quote), quoteDigest: `0x${"00".repeat(32)}` }), (error: unknown) =>
+    error instanceof Error && "code" in error && (error as { code: string }).code === "preflight_missing");
+  assert.equal(walletReads, 0);
+});
+
+test("slow parallel final checks that cross quote expiry fail closed before opening the wallet", async () => {
+  const realNow = Date.now();
+  const monotonicStart = performance.now();
+  const quote = quoteWithLifetime(nativeEthQuote(), realNow - 18_000, realNow + 12_000);
+  let sendTransactionCalls = 0;
+  let walletPromptSignals = 0;
+  const base = nativePreflightProvider("0x9");
+  const provider = { request: async (args: { method: string; params?: readonly unknown[] }) => {
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    if (args.method === "eth_sendTransaction") { sendTransactionCalls += 1; return `0x${"ab".repeat(32)}`; }
+    return base.request(args);
+  } };
+  await assert.rejects(sendReviewedSwap(provider, quote, readyPreflight(quote), {
+    now: () => realNow + (performance.now() - monotonicStart) * 50,
+    fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
+    onWalletRequest: () => { walletPromptSignals += 1; },
+  }), (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === "quote_expired");
+  assert.equal(walletPromptSignals, 0);
+  assert.equal(sendTransactionCalls, 0);
+});
+
 test("swap send blocks if the independently verified pending nonce changes during final preflight", async () => {
   const quote = nativeEthQuote();
   let walletNonceReads = 0;
@@ -1008,26 +1157,26 @@ test("swap send blocks if the independently verified pending nonce changes durin
   const provider = { request: async (args: { method: string; params?: readonly unknown[] }) => {
     if (args.method === "eth_getTransactionCount") {
       walletNonceReads += 1;
-      return walletNonceReads < 2 ? "0x9" : "0xa";
+      return "0xa";
     }
     if (args.method === "eth_sendTransaction") { sendCalls += 1; return `0x${"ab".repeat(32)}`; }
     return base.request(args);
   } };
   const fetch = async () => {
-    const pendingNonce = trustedNonceReads++ === 0 ? "9" : "10";
+    trustedNonceReads += 1;
     return Response.json({
       networkId: "mainnet",
       chainId: 4_663,
       address: request.taker,
-      pendingNonce,
+      pendingNonce: "10",
       observedAt: new Date().toISOString(),
     });
   };
 
-  await assert.rejects(sendReviewedSwap(provider, quote, "9", { fetch }), (error: unknown) =>
+  await assert.rejects(sendReviewedSwap(provider, quote, readyPreflight(quote), { fetch }), (error: unknown) =>
     error instanceof Error && "code" in error && (error as { code: string }).code === "transaction_nonce_changed");
-  assert.equal(walletNonceReads, 2);
-  assert.equal(trustedNonceReads, 2);
+  assert.equal(walletNonceReads, 1);
+  assert.equal(trustedNonceReads, 1);
   assert.equal(sendCalls, 0);
 });
 
@@ -1039,7 +1188,7 @@ test("wallet request already pending is distinct and does not leak provider deta
     return base.request(args);
   } };
 
-  await assert.rejects(sendReviewedSwap(provider, quote, "9", { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
+  await assert.rejects(sendReviewedSwap(provider, quote, readyPreflight(quote), { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
     error instanceof Error && "code" in error && (error as { code: string }).code === "wallet_request_pending"
       && error.message.includes("already has a request") && !error.message.includes("private provider diagnostic"));
 });
@@ -1053,7 +1202,7 @@ test("explicit wallet rejection is reported without treating it as a submitted t
   } };
   let walletRequestSignal = 0;
 
-  await assert.rejects(sendReviewedSwap(provider, quote, "9", {
+  await assert.rejects(sendReviewedSwap(provider, quote, readyPreflight(quote), {
     fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
     onWalletRequest: () => { walletRequestSignal += 1; },
   }), (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === "wallet_rejected");
@@ -1067,7 +1216,7 @@ test("uncertain provider response after eth_sendTransaction is not reported as a
     if (args.method === "eth_sendTransaction") throw Object.assign(new Error("secret provider detail"), { code: -32603 });
     return base.request(args);
   } };
-  await assert.rejects(sendReviewedSwap(provider, quote, "9", { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
+  await assert.rejects(sendReviewedSwap(provider, quote, readyPreflight(quote), { fetch: mainnetNonceRpcFetch({ nonce: "0x9" }) }), (error: unknown) =>
     error instanceof Error && "code" in error && (error as { code: string }).code === "transaction_submission_unknown"
       && error.message.includes("Check wallet activity") && !error.message.includes("secret provider detail"));
 });
@@ -1098,7 +1247,7 @@ test("swap send refuses a quote that expires during its final preflight before o
   });
   let walletRequestSignal = 0;
 
-  await assert.rejects(sendReviewedSwap(nativePreflightProvider("0x9"), nearExpiry, "9", {
+  await assert.rejects(sendReviewedSwap(nativePreflightProvider("0x9"), nearExpiry, readyPreflight(nearExpiry), {
     fetch: mainnetNonceRpcFetch({ nonce: "0x9" }),
     onWalletRequest: () => { walletRequestSignal += 1; },
   }), (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === "quote_expiring");
@@ -1117,6 +1266,8 @@ test("wallet preflight distinguishes empty contract code from malformed RPC data
     if (method === "eth_chainId") return "0x1237";
     if (method === "eth_getTransactionCount") return "0x0";
     if (method === "eth_getCode") return "0x";
+    if (method === "eth_getBalance") return "0x3635c9adc5dea00000";
+    if (method === "eth_gasPrice") return "0x3b9aca00";
     throw new Error(`Unexpected RPC method ${method}`);
   } };
   await assert.rejects(preflightRobinhoodSwap(provider, normalized), (error: unknown) =>
@@ -1144,11 +1295,14 @@ test("zero WETH balance blocks before wallet transaction confirmation", async ()
       if (data.startsWith("0x70a08231")) return `0x${"0".repeat(64)}`;
       if (data.startsWith("0xdd62ed3e")) return `0x${"0".repeat(64)}`;
     }
+    if (method === "eth_getBalance") return "0x3635c9adc5dea00000";
+    if (method === "eth_gasPrice") return "0x3b9aca00";
+    if (method === "eth_estimateGas") return "0x186a0";
     if (method === "eth_sendTransaction") { sendTransactionCalls += 1; return `0x${"99".repeat(32)}`; }
     throw new Error(`Unexpected RPC method ${method}`);
   } };
 
-  await assert.rejects(sendReviewedSwap(provider, normalized, "3"), (error: unknown) =>
+  await assert.rejects(sendReviewedSwap(provider, normalized, readyPreflight(normalized, BigInt(3)), { fetch: mainnetNonceRpcFetch({ nonce: "0x3" }) }), (error: unknown) =>
     error instanceof Error && "code" in error && (error as { code: string }).code === "insufficient_token_balance");
   assert.equal(sendTransactionCalls, 0);
 });

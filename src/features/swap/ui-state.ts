@@ -1,6 +1,18 @@
 export type SwapQuoteBalanceState = "native_preflight_required" | "unknown" | "insufficient" | "sufficient";
 export const MAX_MAINNET_RECEIPT_POLLS = 20;
 
+export interface MonotonicQuoteLifetime {
+  expiresAtMs: number;
+  serverNowMs: number;
+  receivedAtMonotonicMs: number;
+}
+
+/** Quote freshness is measured from the API clock and monotonic elapsed browser time, not wall-clock changes. */
+export function getQuoteRemainingMs(sample: MonotonicQuoteLifetime, monotonicNow = typeof performance !== "undefined" ? performance.now() : Date.now()): number {
+  if (![sample.expiresAtMs, sample.serverNowMs, sample.receivedAtMonotonicMs, monotonicNow].every(Number.isFinite)) return 0;
+  return Math.max(0, sample.expiresAtMs - sample.serverNowMs - Math.max(0, monotonicNow - sample.receivedAtMonotonicMs));
+}
+
 export function shouldContinueMainnetReceiptPolling(attempts: number): boolean {
   return Number.isSafeInteger(attempts) && attempts >= 0 && attempts < MAX_MAINNET_RECEIPT_POLLS;
 }

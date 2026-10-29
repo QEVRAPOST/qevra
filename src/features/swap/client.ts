@@ -84,6 +84,22 @@ export class MainnetSwapClientError extends Error {
   }
 }
 
+export interface QuoteLifetimeSample {
+  expiresAtMs: number;
+  serverNowMs: number;
+  receivedAtMonotonicMs: number;
+}
+
+export interface QuoteTimingEvent {
+  phase: "http" | "client_validation";
+  operation: "price" | "quote";
+  durationMs: number;
+  outcome: "success" | "failure";
+  category?: string;
+  requestId?: string;
+  serverPhases?: Array<{ phase: string; durationMs: number }>;
+}
+
 function readError(body: unknown): { code: string; message: string } {
   if (body && typeof body === "object" && "error" in body) {
     const error = (body as { error?: unknown }).error;
@@ -151,55 +167,99 @@ function validateFirmQuote(input: unknown, request: RobinhoodSwapRequest, now: n
   const quotedAt = Date.parse(quote.quotedAt);
   const expiresAt = Date.parse(quote.expiresAt);
   if (!Number.isFinite(quotedAt) || !Number.isFinite(expiresAt) || quotedAt > now || expiresAt <= now || expiresAt - quotedAt > 30_000) {
-    throw new MainnetSwapClientError(409, "quote_expired", "The firm quote expired. Request a fresh quote before signing.");
+    throw new MainnetSwapClientError(409, "quote_expired", "VEYRA's 30-second quote freshness window elapsed. Request a fresh quote before signing.");
   }
   return quote;
 }
 
 export async function requestRobinhoodSwapQuote(
   request: RobinhoodSwapRequest & { mode?: "price" | "quote" },
-  options: { now?: number; fetch?: typeof fetch } = {},
+  options: {
+    now?: number;
+    fetch?: typeof fetch;
+    onQuoteLifetime?: (sample: QuoteLifetimeSample) => void;
+    onTiming?: (event: QuoteTimingEvent) => void;
+  } = {},
 ): Promise<MainnetFirmQuote | MainnetIndicativePrice> {
   const fetcher = options.fetch ?? globalThis.fetch;
-  const response = await fetcher("/api/swap/quote", {
-    method: "POST",
-    credentials: "same-origin",
-    cache: "no-store",
-    headers: { accept: "application/json", "content-type": "application/json" },
-    body: JSON.stringify({ ...request, mode: request.mode ?? "quote" }),
+  const operation = request.mode ?? "quote";
+  const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : undefined;
+  let response: Response;
+  try {
+    response = await fetcher("/api/swap/quote", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { accept: "application/json", "content-type": "application/json", ...(requestId ? { "x-request-id": requestId } : {}) },
+      body: JSON.stringify({ ...request, mode: operation }),
+    });
+  } catch {
+    const endedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    options.onTiming?.({ phase: "http", operation, durationMs: Math.max(0, Math.round(endedAt - startedAt)), outcome: "failure", category: "network_error", ...(requestId ? { requestId } : {}) });
+    throw new MainnetSwapClientError(503, "swap_request_unavailable", "The Mainnet swap service could not be reached. Try requesting a fresh quote again.");
+  }
+  const receivedAtMonotonicMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const responseRequestId = response.headers.get("x-veyra-request-id");
+  const serverRequestId = responseRequestId && /^[A-Za-z0-9_-]{1,80}$/.test(responseRequestId) ? responseRequestId : requestId;
+  const serverPhases = (response.headers.get("server-timing") ?? "").split(",").flatMap((entry) => {
+    const match = /^(token_metadata|zero_x_request|zero_x_response|provider_json|price_validation|contract_checks|quote_validation|total);dur=([0-9]+)$/.exec(entry.trim());
+    return match ? [{ phase: match[1], durationMs: Number(match[2]) }] : [];
   });
-  let body: unknown;
-  try { body = await response.json() as unknown; } catch {
-    throw new MainnetSwapClientError(502, "invalid_swap_response", "The swap API returned an unreadable response.");
-  }
-  if (!response.ok) {
-    const error = readError(body);
-    throw new MainnetSwapClientError(response.status, error.code, error.message);
-  }
-  if (request.mode === "price") {
-    const parsed = priceResponseSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new MainnetSwapClientError(502, "invalid_price_response", "The price API returned invalid data.");
+  options.onTiming?.({ phase: "http", operation, durationMs: Math.max(0, Math.round(receivedAtMonotonicMs - startedAt)), outcome: response.ok ? "success" : "failure", ...(response.ok ? {} : { category: `http_${response.status}` }), ...(serverRequestId ? { requestId: serverRequestId } : {}), ...(serverPhases.length ? { serverPhases } : {}) });
+  const validationStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+  let validationOutcome: "success" | "failure" = "success";
+  let validationCategory: string | undefined;
+  try {
+    let body: unknown;
+    try { body = await response.json() as unknown; } catch {
+      throw new MainnetSwapClientError(502, "invalid_swap_response", "The swap API returned an unreadable response.");
     }
-    const value: MainnetIndicativePrice = parsed.data;
-    const expectedIn = ROBINHOOD_MAINNET_TOKENS[request.tokenIn];
-    const expectedOut = ROBINHOOD_MAINNET_TOKENS[request.tokenOut];
-    const [whole = "0", fraction = ""] = request.amount.split(".");
-    if (fraction.length > value.tokenIn.decimals) throw new MainnetSwapClientError(502, "invalid_price_response", "The indicative price amount precision does not match the selected token.");
-    const expectedAmount = (BigInt(whole) * BigInt(10) ** BigInt(value.tokenIn.decimals)
-      + BigInt((fraction + "0".repeat(value.tokenIn.decimals)).slice(0, value.tokenIn.decimals) || "0")).toString();
-    if (value.networkId !== "mainnet" || value.chainId !== 4_663 || value.taker.toLowerCase() !== request.taker.toLowerCase()
-      || value.tokenIn.id !== request.tokenIn || value.tokenOut.id !== request.tokenOut
-      || value.tokenIn.address.toLowerCase() !== expectedIn.address.toLowerCase()
-      || value.tokenOut.address.toLowerCase() !== expectedOut.address.toLowerCase()
-      || value.tokenIn.symbol !== expectedIn.symbol || value.tokenOut.symbol !== expectedOut.symbol
-      || value.tokenIn.native !== expectedIn.native || value.tokenOut.native !== expectedOut.native
-      || value.amountIn !== expectedAmount || value.slippageBps !== request.slippageBps
-      || !/^(0|[1-9][0-9]*)$/.test(value.amountOut) || BigInt(value.amountOut) <= BigInt(0)
-      || value.signingEnabled !== false || value.executionEnabled !== false || value.route.length === 0) {
-      throw new MainnetSwapClientError(502, "invalid_price_response", "The indicative price is inconsistent with the selected Mainnet request.");
+    if (!response.ok) {
+      const error = readError(body);
+      throw new MainnetSwapClientError(response.status, error.code, error.message);
     }
-    return value;
+    if (request.mode === "price") {
+      const parsed = priceResponseSchema.safeParse(body);
+      if (!parsed.success) throw new MainnetSwapClientError(502, "invalid_price_response", "The price API returned invalid data.");
+      const value: MainnetIndicativePrice = parsed.data;
+      const expectedIn = ROBINHOOD_MAINNET_TOKENS[request.tokenIn];
+      const expectedOut = ROBINHOOD_MAINNET_TOKENS[request.tokenOut];
+      const [whole = "0", fraction = ""] = request.amount.split(".");
+      if (fraction.length > value.tokenIn.decimals) throw new MainnetSwapClientError(502, "invalid_price_response", "The indicative price amount precision does not match the selected token.");
+      const expectedAmount = (BigInt(whole) * BigInt(10) ** BigInt(value.tokenIn.decimals)
+        + BigInt((fraction + "0".repeat(value.tokenIn.decimals)).slice(0, value.tokenIn.decimals) || "0")).toString();
+      if (value.networkId !== "mainnet" || value.chainId !== 4_663 || value.taker.toLowerCase() !== request.taker.toLowerCase()
+        || value.tokenIn.id !== request.tokenIn || value.tokenOut.id !== request.tokenOut
+        || value.tokenIn.address.toLowerCase() !== expectedIn.address.toLowerCase()
+        || value.tokenOut.address.toLowerCase() !== expectedOut.address.toLowerCase()
+        || value.tokenIn.symbol !== expectedIn.symbol || value.tokenOut.symbol !== expectedOut.symbol
+        || value.tokenIn.native !== expectedIn.native || value.tokenOut.native !== expectedOut.native
+        || value.amountIn !== expectedAmount || value.slippageBps !== request.slippageBps
+        || !/^(0|[1-9][0-9]*)$/.test(value.amountOut) || BigInt(value.amountOut) <= BigInt(0)
+        || value.signingEnabled !== false || value.executionEnabled !== false || value.route.length === 0) {
+        throw new MainnetSwapClientError(502, "invalid_price_response", "The indicative price is inconsistent with the selected Mainnet request.");
+      }
+      return value;
+    }
+    const serverTimeText = response.headers.get("x-veyra-server-time");
+    const serverTime = typeof serverTimeText === "string" ? Date.parse(serverTimeText) : Number.NaN;
+    if (!Number.isFinite(serverTime)) {
+      throw new MainnetSwapClientError(503, "quote_server_time_unavailable", "The quote server time could not be checked safely. Request a fresh quote again.");
+    }
+    const localNow = options.now ?? Date.now();
+    // The one-second margin is conservative; elapsed response parsing is added before expiry validation.
+    const serverNowMs = Math.max(localNow, serverTime + 1_000);
+    const parseElapsedMs = typeof performance !== "undefined" ? performance.now() - receivedAtMonotonicMs : 0;
+    const quote = validateFirmQuote(body, request, serverNowMs + parseElapsedMs);
+    options.onQuoteLifetime?.({ expiresAtMs: Date.parse(quote.expiresAt), serverNowMs, receivedAtMonotonicMs });
+    return quote;
+  } catch (error) {
+    validationOutcome = "failure";
+    validationCategory = error instanceof MainnetSwapClientError ? error.code : "client_validation_failed";
+    throw error;
+  } finally {
+    const endedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    options.onTiming?.({ phase: "client_validation", operation, durationMs: Math.max(0, Math.round(endedAt - validationStartedAt)), outcome: validationOutcome, ...(validationCategory ? { category: validationCategory } : {}), ...(serverRequestId ? { requestId: serverRequestId } : {}) });
   }
-  return validateFirmQuote(body, request, options.now ?? Date.now());
 }
