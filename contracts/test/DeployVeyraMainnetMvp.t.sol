@@ -81,6 +81,21 @@ contract DeployVeyraMainnetMvpTest {
     address private constant SAFE_L2_SINGLETON = 0x29fcB43b46531BcA003ddC8FCB67FFE91900C762;
     address private constant SAFE_FALLBACK_HANDLER = 0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99;
 
+    function test_deploymentBatchHashBindsRuntimeRolesAndStartingNonce() public {
+        DeployVeyraMainnetMvp script = new DeployVeyraMainnetMvp();
+        DeployVeyraMainnetMvp.OwnerProfile profile = DeployVeyraMainnetMvp.OwnerProfile.EOA_INACTIVE;
+        address owner = address(0xE0A);
+        bytes32 original = script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, 17);
+        bytes32 same = script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, 17);
+        bytes32 changedNonce = script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, 18);
+        bytes32 changedOwner =
+            script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, address(0xE0B), ATTESTOR, profile, 17);
+
+        require(original == same, "batch hash should be stable for the same script and plan");
+        require(original != changedNonce, "batch hash must bind the deployer nonce");
+        require(original != changedOwner, "batch hash must bind the owner");
+    }
+
     function test_refusesEveryChainOtherThanRobinhoodMainnetBeforeBroadcast() public {
         vm.chainId(46_630);
         DeployVeyraMainnetMvp script = new DeployVeyraMainnetMvp();
