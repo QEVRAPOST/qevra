@@ -79,7 +79,7 @@ export function OverviewView() {
         <div className="ov-workspace-grid">
           <article className="ov-workspace-item">
             <h3>Your wallet, your control.</h3>
-            <p>Connect your wallet, inspect on-chain balances, and manage your VEYRA account experience.</p>
+            <p>Connect your wallet, explore balances, and access your VEYRA account.</p>
             <Link className="ov-workspace-action" href="/app/wallet">
               Open Wallet
               <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M5 15 15 5M6 5h9v9" /></svg>
@@ -87,7 +87,7 @@ export function OverviewView() {
           </article>
           <article className="ov-workspace-item">
             <h3>Review before you execute.</h3>
-            <p>Explore live Robinhood Mainnet quotes, compare transaction details, and approve swaps directly in your wallet.</p>
+            <p>Explore Robinhood Mainnet swaps with live quotes, transaction review, and wallet-controlled execution.</p>
             <Link className="ov-workspace-action" href="/app/swap">
               Explore Swap
               <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M5 15 15 5M6 5h9v9" /></svg>
@@ -95,7 +95,7 @@ export function OverviewView() {
           </article>
           <article className="ov-workspace-item">
             <h3>Research beyond the surface.</h3>
-            <p>Explore AI-assisted research, review supporting evidence, and examine recorded findings.</p>
+            <p>Explore AI-assisted research, supporting evidence, and your research history.</p>
             <Link className="ov-workspace-action" href="/app/security">
               Explore Security Swarm
               <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M5 15 15 5M6 5h9v9" /></svg>

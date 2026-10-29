@@ -11,6 +11,13 @@ function renderOverview(wallet: Record<string, unknown>): string {
   ], { cwd: process.cwd(), encoding: "utf8" });
 }
 
+function renderAppRoute(wallet: Record<string, unknown>): string {
+  return execFileSync(process.execPath, [
+    "--import", "tsx", "--input-type=module", "--eval",
+    `import { createElement } from "react"; import { renderToStaticMarkup } from "react-dom/server"; import AppIndex from "./src/app/app/page.tsx"; import { ModelContext } from "./src/components/dashboard/AppModelContext.tsx"; import { buildLiveAppModel } from "./src/features/dashboard/live-model.ts"; const model = buildLiveAppModel({ wallet: ${JSON.stringify(wallet)}, selectedNetwork: "testnet", runs: null, accessState: "unauthenticated", isRefreshing: false, isCreating: false }); const value = { model, actions: { setNetwork() {}, setAmount() {}, pressSwapButton() {}, pressWalletButton() {}, pressLedgerAction() {}, refreshWallet() {}, createSecurityRun() {}, logout() {} } }; process.stdout.write(renderToStaticMarkup(createElement(ModelContext.Provider, { value }, createElement(AppIndex))))`,
+  ], { cwd: process.cwd(), encoding: "utf8" });
+}
+
 function renderWalletBand(wallet: Record<string, unknown>): string {
   return execFileSync(process.execPath, [
     "--import", "tsx", "--input-type=module", "--eval",
@@ -43,15 +50,38 @@ test("Overview presents the three real workspace journeys instead of readiness d
 
   assert.match(markup, /Your VEYRA Workspace/);
   assert.match(markup, /Your wallet, your control\./);
-  assert.match(markup, /Connect your wallet, inspect on-chain balances, and manage your VEYRA account experience\./);
+  assert.match(markup, /Connect your wallet, explore balances, and access your VEYRA account\./);
   assert.match(markup, /href="\/app\/wallet"[^>]*>Open Wallet/);
   assert.match(markup, /Review before you execute\./);
-  assert.match(markup, /Explore live Robinhood Mainnet quotes, compare transaction details, and approve swaps directly in your wallet\./);
+  assert.match(markup, /Explore Robinhood Mainnet swaps with live quotes, transaction review, and wallet-controlled execution\./);
   assert.match(markup, /href="\/app\/swap"[^>]*>Explore Swap/);
   assert.match(markup, /Research beyond the surface\./);
-  assert.match(markup, /Explore AI-assisted research, review supporting evidence, and examine recorded findings\./);
+  assert.match(markup, /Explore AI-assisted research, supporting evidence, and your research history\./);
   assert.match(markup, /href="\/app\/security"[^>]*>Explore Security Swarm/);
-  assert.doesNotMatch(markup, /Available now|Not available|Latest research/);
+  assert.doesNotMatch(markup, /AVAILABLE NOW|NOT AVAILABLE|LATEST RESEARCH|Experimental|Provider unavailable|Route check required|None yet|Research failed/i);
+});
+
+test("the real /app route renders the updated workspace panels without legacy diagnostic copy", () => {
+  const markup = renderAppRoute({ status: "disconnected" });
+
+  for (const text of [
+    "Your wallet, your control.",
+    "Connect your wallet, explore balances, and access your VEYRA account.",
+    "Open Wallet",
+    "Review before you execute.",
+    "Explore Robinhood Mainnet swaps with live quotes, transaction review, and wallet-controlled execution.",
+    "Explore Swap",
+    "Research beyond the surface.",
+    "Explore AI-assisted research, supporting evidence, and your research history.",
+    "Explore Security Swarm",
+  ]) {
+    assert.ok(markup.includes(text), `the /app route should include ${text}`);
+  }
+
+  assert.match(markup, /href="\/app\/wallet"/);
+  assert.match(markup, /href="\/app\/swap"/);
+  assert.match(markup, /href="\/app\/security"/);
+  assert.doesNotMatch(markup, /AVAILABLE NOW|NOT AVAILABLE|LATEST RESEARCH|Experimental|Provider unavailable|Route check required|None yet|Research failed/i);
 });
 
 test("Overview workspace links do not depend on wallet connection state", () => {
