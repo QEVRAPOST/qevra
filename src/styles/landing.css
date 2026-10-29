@@ -285,6 +285,51 @@
   gap: 12px;
   align-items: center;
 }
+.token-address-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 14px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  color: var(--fg-2);
+  font-size: 12px;
+}
+.token-address-label {
+  color: var(--muted);
+}
+.token-address-control code {
+  color: var(--fg);
+  font: 500 12px/1.4 var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+.token-address-control button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: color var(--t), border-color var(--t), background-color var(--t);
+}
+.token-address-control button:hover,
+.token-address-control button:focus-visible {
+  color: var(--fg);
+  border-color: var(--exp);
+  background: color-mix(in srgb, var(--exp) 7%, transparent);
+}
+.token-address-feedback {
+  min-width: 8ch;
+  color: var(--exp);
+  font-size: 11px;
+}
 .ctas-note {
   margin-top: -10px;
   font: 400 12.5px/1.45 var(--f-mono);

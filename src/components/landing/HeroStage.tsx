@@ -36,6 +36,7 @@ import {
 } from "@/lib/content/landing";
 import type { HeroPartId } from "@/types";
 import { LaunchLink } from "./LaunchLink";
+import { TokenAddressControl } from "./TokenAddressControl";
 
 const N = HERO_SCENES.length;
 /** Scroll progress where one object hands over to the next, with a little hysteresis so a boundary does not flicker. */
@@ -68,6 +69,7 @@ function HeroText({ activeFact, projectName }: { activeFact: number; projectName
           Explore Security
         </a>
       </div>
+      <TokenAddressControl />
       <p className="ctas-note">{HERO.note}</p>
         <ul className="facts" aria-label={`What ${projectName} is`}>
           {facts.map((f, i) => (

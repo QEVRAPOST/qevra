@@ -9,6 +9,7 @@ import { CommandNav, TabBar } from "./AppNav";
 import { useAppModel } from "./DemoAppProvider";
 import { ModeMenu } from "./ModeMenu";
 import { AuthEntryControl } from "@/components/auth/AuthEntryControl";
+import { SocialXLink } from "@/components/ui/SocialXLink";
 
 /**
  * The frame around every route: one header (brand, route bar, account and wallet) and a phone tab bar.
@@ -32,6 +33,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <CommandNav />
           <div className="apptools">
+            <SocialXLink />
             <AuthEntryControl />
             {phone ? null : <ModeMenu />}
             <Button variant="ghost" size="small" className="walbtn" onClick={actions.pressWalletButton} disabled={walletPending}>

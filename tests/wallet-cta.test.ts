@@ -26,7 +26,7 @@ function overviewHeroActions(markup: string): string {
   return markup.slice(start, end);
 }
 
-test("Overview routes connected wallet status to the Wallet page", () => {
+test("Overview workspace always provides a consistent Wallet route", () => {
   const markup = renderOverview({
     status: "connected",
     address: "0x0000000000000000000000000000000000000001",
@@ -34,13 +34,29 @@ test("Overview routes connected wallet status to the Wallet page", () => {
     networkName: "Robinhood Chain Testnet",
   });
 
-  assert.match(markup, /href="\/app\/wallet"[^>]*>Open wallet/);
+  assert.match(markup, /href="\/app\/wallet"[^>]*>Open Wallet/);
   assert.doesNotMatch(markup, /Connect wallet/);
 });
 
-test("Overview keeps wallet navigation in the readiness row instead of duplicating the global wallet action", () => {
+test("Overview presents the three real workspace journeys instead of readiness diagnostics", () => {
+  const markup = renderOverview({ status: "disconnected" });
+
+  assert.match(markup, /Your VEYRA Workspace/);
+  assert.match(markup, /Your wallet, your control\./);
+  assert.match(markup, /Connect your wallet, inspect on-chain balances, and manage your VEYRA account experience\./);
+  assert.match(markup, /href="\/app\/wallet"[^>]*>Open Wallet/);
+  assert.match(markup, /Review before you execute\./);
+  assert.match(markup, /Explore live Robinhood Mainnet quotes, compare transaction details, and approve swaps directly in your wallet\./);
+  assert.match(markup, /href="\/app\/swap"[^>]*>Explore Swap/);
+  assert.match(markup, /Research beyond the surface\./);
+  assert.match(markup, /Explore AI-assisted research, review supporting evidence, and examine recorded findings\./);
+  assert.match(markup, /href="\/app\/security"[^>]*>Explore Security Swarm/);
+  assert.doesNotMatch(markup, /Available now|Not available|Latest research/);
+});
+
+test("Overview workspace links do not depend on wallet connection state", () => {
   const disconnected = renderOverview({ status: "disconnected" });
-  assert.match(disconnected, /href="\/app\/wallet"[^>]*>Connect read-only/);
+  assert.match(disconnected, /href="\/app\/wallet"[^>]*>Open Wallet/);
   assert.doesNotMatch(overviewHeroActions(disconnected), /wallet|connect/i);
 
   const connected = renderOverview({
@@ -49,7 +65,7 @@ test("Overview keeps wallet navigation in the readiness row instead of duplicati
     chainId: 46_630,
     networkName: "Robinhood Chain Testnet",
   });
-  assert.match(connected, /href="\/app\/wallet"[^>]*>Open wallet/);
+  assert.match(connected, /href="\/app\/wallet"[^>]*>Open Wallet/);
   assert.doesNotMatch(overviewHeroActions(connected), /wallet|connect/i);
 });
 
@@ -64,25 +80,36 @@ test("global wallet action and Overview wallet navigation reflect the same walle
   const connectedModel = buildLiveAppModel({ ...common, wallet: connectedWallet });
   const connectedOverview = renderOverview(connectedWallet);
   assert.equal(connectedModel.wallet.walletButtonLabel, "Disconnect wallet");
-  assert.match(connectedOverview, /href="\/app\/wallet"[^>]*>Open wallet/);
+  assert.match(connectedOverview, /href="\/app\/wallet"[^>]*>Open Wallet/);
   assert.doesNotMatch(connectedOverview, />Connect wallet</);
 
   const disconnectedWallet = { status: "disconnected" as const };
   const disconnectedModel = buildLiveAppModel({ ...common, wallet: disconnectedWallet });
   const disconnectedOverview = renderOverview(disconnectedWallet);
   assert.equal(disconnectedModel.wallet.walletButtonLabel, "Connect wallet");
-  assert.match(disconnectedOverview, /href="\/app\/wallet"[^>]*>Connect read-only/);
+  assert.match(disconnectedOverview, /href="\/app\/wallet"[^>]*>Open Wallet/);
   assert.doesNotMatch(overviewHeroActions(disconnectedOverview), /wallet|connect/i);
 });
 
-test("Overview leaves pending wallet feedback in the global action and avoids a second connect CTA", () => {
-  const markup = renderOverview({ status: "loading", message: "Waiting for your wallet's account-access decision." });
+test("pending wallet feedback stays in the global wallet action, not the Overview workspace", () => {
+  const wallet = { status: "loading" as const, message: "Waiting for your wallet's account-access decision." };
+  const model = buildLiveAppModel({
+    wallet,
+    selectedNetwork: "testnet",
+    runs: null,
+    accessState: "unauthenticated",
+    isRefreshing: false,
+    isCreating: false,
+  });
+  const markup = renderOverview(wallet);
 
-  assert.match(markup, /Connecting/);
+  assert.equal(model.wallet.walletButtonLabel, "Connecting…");
+  assert.doesNotMatch(markup, /Connecting/);
+  assert.match(markup, /href="\/app\/wallet"[^>]*>Open Wallet/);
   assert.doesNotMatch(overviewHeroActions(markup), /wallet|connect/i);
 });
 
-test("Overview readiness uses the wallet's connecting and read-error states", () => {
+test("Status readiness still uses the wallet's connecting and read-error states", () => {
   const common = { selectedNetwork: "testnet" as const, runs: null, accessState: "unauthenticated" as const, isRefreshing: false, isCreating: false };
   const pending = buildLiveAppModel({ ...common, wallet: { status: "loading", message: "Waiting for your wallet's account-access decision." } });
   const failedRead = buildLiveAppModel({ ...common, wallet: {

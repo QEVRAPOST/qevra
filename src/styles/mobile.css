@@ -206,6 +206,16 @@ html.overlay-open {
     display: none;
   }
 }
+@media (pointer: coarse) {
+  .social-x-link {
+    width: 44px;
+    height: 44px;
+  }
+  .token-address-control button {
+    width: 44px;
+    height: 44px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .lmenu-scrim,
   .lmenu-sheet,

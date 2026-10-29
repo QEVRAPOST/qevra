@@ -84,6 +84,29 @@ body::before {
   outline-offset: 3px;
 }
 
+.social-x-link {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  color: var(--fg-2);
+  text-decoration: none;
+  transition: color var(--t), border-color var(--t), background-color var(--t);
+}
+.social-x-link svg {
+  width: 15px;
+  height: 15px;
+}
+.social-x-link:hover,
+.social-x-link:focus-visible {
+  color: var(--fg);
+  border-color: var(--exp);
+  background: color-mix(in srgb, var(--exp) 7%, transparent);
+}
+
 [hidden] {
   display: none !important;
 }

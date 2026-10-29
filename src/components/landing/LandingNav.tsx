@@ -8,6 +8,7 @@ import { scrollBehavior, scrollToFrame, scrollToId } from "@/lib/aperture/scroll
 import { FRAME_HOW_IT_WORKS, FRAME_SWARM } from "@/lib/content/landing";
 import { useOverlay } from "@/lib/use-overlay";
 import { WordmarkMark } from "@/components/ui/Wordmark";
+import { SocialXLink } from "@/components/ui/SocialXLink";
 import { logoutFromSecurityService } from "@/features/security/client";
 import { getCurrentAuthSession, logoutAuthSession } from "@/features/auth/client";
 import { LaunchLink } from "./LaunchLink";
@@ -194,6 +195,7 @@ export function LandingNav({ projectName }: { projectName: string }) {
         </div>
         <div className="lnav-tools">
           <LandingAuthAction session={session} onSignOut={signOut} />
+          <SocialXLink />
           <LaunchLink>Launch App</LaunchLink>
           <button
             ref={toggle}
@@ -253,6 +255,7 @@ export function LandingNav({ projectName }: { projectName: string }) {
                 </ul>
                 <div className="lmenu-cta" style={{ ["--i" as string]: SECTIONS.length + 1 }}>
                   <LandingAuthAction session={session} onSignOut={signOut} onMenuClose={closeMenu} />
+                  <SocialXLink onClick={closeMenu} />
                   <LaunchLink className="lmenu-launch" onLaunch={closeMenu}>
                     Launch App
                   </LaunchLink>

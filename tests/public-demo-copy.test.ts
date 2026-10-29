@@ -144,7 +144,7 @@ test("social metadata describes configured Mainnet swaps and experimental custod
   assert.doesNotMatch(description, /design preview/i);
 });
 
-test("live Overview uses concise product copy while feature pages retain operational disclosures", () => {
+test("Overview introduces the workspace while feature pages retain operational disclosures", () => {
   const demo = buildDemoModel({
     stage: 0,
     forced: null,
@@ -165,7 +165,8 @@ test("live Overview uses concise product copy while feature pages retain operati
   const lede = /<p class="pg-lede">([\s\S]*?)<\/p>/.exec(markup)?.[1] ?? "";
   assert.match(lede, /Review source-backed research, inspect public wallet data, and prepare Mainnet swaps for explicit approval\./);
   assert.doesNotMatch(lede, /EVM|chain preflight|PQ smart-account|not audits/i);
-  assert.match(markup, /research output, not an audit/i);
+  assert.match(markup, /Your VEYRA Workspace/);
+  assert.match(markup, /Explore AI-assisted research, review supporting evidence, and examine recorded findings\./);
   assert.doesNotMatch(markup, /swap execution are unavailable/i);
 });
 
