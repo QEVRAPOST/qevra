@@ -4097,6 +4097,14 @@
 .ne-network-picker {
   justify-content: flex-end;
 }
+.ne-network-loading {
+  width: fit-content;
+  max-width: 100%;
+  border-left: 2px solid var(--exp);
+  padding: 2px 0 2px 10px;
+  color: var(--fg-2);
+  font: 400 11px/1.45 var(--f-mono);
+}
 .ne-status-facts {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }

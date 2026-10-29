@@ -222,17 +222,20 @@ test("landing exposes sign-in and ambitious but accurate product copy", () => {
   assert.doesNotMatch(`${HERO.eyebrow} ${HERO.headline} ${HERO.lede}`, /first post-quantum/i);
 });
 
-test("wallet overview separates built-in wallet availability from external read-only wallet", () => {
+test("wallet overview separates the Phantom EVM owner from a chain-verified VEYRA smart account", () => {
   const view = readFileSync("src/components/dashboard/WalletView.tsx", "utf8");
-  const source = readFileSync("src/components/dashboard/BuiltInWalletPanel.tsx", "utf8");
-  assert.match(view, /<BuiltInWalletPanel/);
+  const source = readFileSync("src/components/dashboard/SmartAccountPanel.tsx", "utf8");
+  const signing = readFileSync("src/features/wallet/owner-link.ts", "utf8");
+  assert.match(view, /<SmartAccountPanel/);
   assert.match(view, /External wallet · read-only/);
-  assert.match(source, /Built-in VEYRA Wallet/);
-  assert.match(source, /getBuiltInWalletStatus/);
-  assert.match(source, /provisionBuiltInWallet\(true\)/);
-  assert.match(source, /I explicitly consent/);
-  assert.match(source, /Security and recovery/);
-  assert.match(source, /Not returned by the wallet status API/);
+  assert.match(source, /VEYRA Smart Wallet/);
+  assert.match(source, /linkEip1193OwnerWallet/);
+  assert.match(signing, /personal_sign/);
+  assert.match(source, /Alchemy Light Account v2.0.0/);
+  assert.match(source, /Review zero-value Testnet operation/);
+  assert.match(source, /Smart Account UserOperation and 0x swap execution are not enabled on Robinhood Mainnet/);
+  assert.match(source, /will not fall back to an EOA transaction/);
+  assert.match(source, /not post-quantum protected/);
 });
 
 test("security workspace retains operator access and does not make account login a wallet bypass", () => {

@@ -8,6 +8,10 @@ import { CopyAddressButton } from "@/components/dashboard/CopyAddressButton";
 import { DEFAULT_NETWORK_ID, getExplorerAddressUrl, getExplorerTransactionUrl } from "@/lib/config/networks";
 import { loadVerifiedVeyraDeployments } from "@/lib/config/load-veyra-deployments";
 import { getVerifiedVeyraDeployments } from "@/lib/config/veyra-deployments";
+import {
+  createNetworkSelectionState,
+  networkSelectionReducer,
+} from "@/features/wallet/network-selection";
 
 test("network explorer address links are derived from the selected wallet chain configuration", () => {
   assert.equal(
@@ -117,11 +121,88 @@ test("the registry defaults to Mainnet and follows its initial network without s
 test("the Contracts network selector changes only page-local public reads and registry state", () => {
   const source = readFileSync("src/components/dashboard/NetworksView.tsx", "utf8");
 
-  assert.match(source, /setPageNetwork\(network\.id\)/);
+  assert.match(source, /dispatchPageSelection\(\{ type: "select", networkId: network\.id \}\)/);
   assert.doesNotMatch(source, /actions\.setNetwork\(network\.id\)/);
-  assert.match(source, /getRobinhoodNetworkStatus\(pageNetwork\)/);
+  assert.match(source, /getRobinhoodNetworkStatus\(networkId\)/);
   assert.match(source, /network\.id === pageNetwork/);
   assert.match(source, /selectedNetwork=\{pageNetwork\}/);
+});
+
+test("rapid Mainnet → Testnet → Mainnet selection stays loading until the latest RPC result", () => {
+  const registry = loadVerifiedVeyraDeployments();
+  const testnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "testnet");
+  const state0 = createNetworkSelectionState("mainnet");
+  const state1 = networkSelectionReducer(state0, { type: "select", networkId: "testnet" });
+  const state2 = networkSelectionReducer(state1, { type: "select", networkId: "mainnet" });
+
+  assert.deepEqual(
+    [state0.networkId, state1.networkId, state2.networkId],
+    ["mainnet", "testnet", "mainnet"],
+  );
+  assert.deepEqual([state0.rpc.status, state1.rpc.status, state2.rpc.status], ["loading", "loading", "loading"]);
+  assert.equal(getVerifiedVeyraDeployments(state1.networkId, registry.roadmapContracts).length, 5);
+  assert.equal(getVerifiedVeyraDeployments(state2.networkId, registry.roadmapContracts).length, 0);
+  assert.equal(testnetRecords.length, 5);
+
+  const testnetMarkup = renderNetworks(
+    "testnet",
+    { status: "loading" },
+    registry.roadmapContracts,
+    { status: "disconnected" },
+    registry.standaloneResearchEvidenceAnchors,
+    registry.architectureSlots,
+  );
+  const mainnetMarkup = renderNetworks(
+    "mainnet",
+    { status: "loading" },
+    registry.roadmapContracts,
+    { status: "disconnected" },
+    registry.standaloneResearchEvidenceAnchors,
+    registry.architectureSlots,
+  );
+  const testnetTable = /<table class="ne-contract-table" aria-label="Testnet MVP architecture deployments">([\s\S]*?)<\/table>/.exec(testnetMarkup)?.[1] ?? "";
+  const mainnetTable = /<table class="ne-contract-table" aria-label="Mainnet MVP architecture deployments">([\s\S]*?)<\/table>/.exec(mainnetMarkup)?.[1] ?? "";
+
+  assert.match(testnetMarkup, /id="h-ne-registry-testnet"/);
+  assert.match(testnetMarkup, /data-network-id="testnet" data-chain-id="46630"/);
+  assert.match(testnetMarkup, /<strong>5\/5<\/strong> MVP contracts deployed/);
+  assert.match(testnetMarkup, /Loading public Testnet status · chain ID 46630/);
+  assert.match(mainnetMarkup, /id="h-ne-registry-mainnet"/);
+  assert.match(mainnetMarkup, /data-network-id="mainnet" data-chain-id="4663"/);
+  assert.match(mainnetMarkup, /<strong>0\/5<\/strong> MVP contracts deployed/);
+  assert.match(mainnetMarkup, /Loading public Mainnet status · chain ID 4663/);
+  assert.doesNotMatch(mainnetMarkup, /id="h-ne-registry-testnet"/);
+  assert.doesNotMatch(mainnetTable, /0x[0-9a-fA-F]{40}/);
+  for (const record of testnetRecords) assert.ok(testnetTable.includes(record.address));
+
+  const staleTestnetResponse = networkSelectionReducer(state2, {
+    type: "resolved",
+    networkId: "testnet",
+    requestId: state1.requestId,
+    rpc: { status: "available", chainId: 46_630, latestBlock: "123" },
+  });
+  const staleFirstMainnetResponse = networkSelectionReducer(staleTestnetResponse, {
+    type: "resolved",
+    networkId: "mainnet",
+    requestId: state0.requestId,
+    rpc: { status: "available", chainId: 4_663, latestBlock: "456" },
+  });
+
+  assert.strictEqual(staleTestnetResponse, state2, "a stale Testnet response cannot replace the latest Mainnet selection");
+  assert.strictEqual(staleFirstMainnetResponse, state2, "an earlier Mainnet response cannot replace the latest Mainnet request");
+
+  const latestMainnetResponse = networkSelectionReducer(state2, {
+    type: "resolved",
+    networkId: "mainnet",
+    requestId: state2.requestId,
+    rpc: { status: "available", chainId: 4_663, latestBlock: "789" },
+  });
+  assert.equal(latestMainnetResponse.networkId, "mainnet");
+  assert.equal(latestMainnetResponse.rpc.status, "available");
+  if (latestMainnetResponse.rpc.status === "available") {
+    assert.equal(latestMainnetResponse.rpc.chainId, 4_663);
+    assert.equal(latestMainnetResponse.rpc.latestBlock, "789");
+  }
 });
 
 test("network explorer uses full-width vertical status, address, and registry sections", () => {

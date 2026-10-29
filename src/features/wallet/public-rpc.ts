@@ -1,6 +1,8 @@
 import { NETWORKS } from "@/lib/config/networks";
-import { encodeFunctionData, getAddress, isAddress } from "viem";
+import { decodeFunctionResult, encodeFunctionData, getAddress, isAddress } from "viem";
+import type { Hex } from "viem";
 import type { NetworkId } from "@/types/network";
+import { VEYRA_LIGHT_ACCOUNT } from "@/features/wallet/smart-account";
 import { ROBINHOOD_MAINNET_TOKENS, ZEROX_ALLOWANCE_HOLDER, ZEROX_SETTLER_REGISTRY } from "@/lib/config/robinhood-mainnet-contracts";
 
 export type RobinhoodRpcErrorCode =
@@ -52,6 +54,28 @@ export interface RobinhoodMainnetInfrastructureSnapshot {
   };
 }
 
+export type RobinhoodSmartAccountCodeStatus = "present" | "absent" | "unavailable";
+
+export interface RobinhoodSmartAccountInfrastructureSnapshot {
+  networkId: NetworkId;
+  chainId: number;
+  latestBlock: string;
+  observedAt: string;
+  ready: boolean;
+  factory: { address: string; bytecode: RobinhoodSmartAccountCodeStatus };
+  implementation: { address: string; bytecode: RobinhoodSmartAccountCodeStatus };
+  entryPoint: { address: string; bytecode: RobinhoodSmartAccountCodeStatus };
+}
+
+export interface RobinhoodSmartAccountTokenBalance {
+  address: string;
+  symbol: string;
+  decimals: number;
+  status: "available" | "token_contract_missing" | "metadata_mismatch" | "unavailable";
+  balanceRaw: string | null;
+  observedBlock: string;
+}
+
 function parseQuantity(value: unknown): bigint | undefined {
   if (typeof value !== "string" || !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(value)) return undefined;
   try {
@@ -98,6 +122,137 @@ async function requestRpcResult(
   if (record.id !== id) throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC response ID did not match.");
   if (record.error !== undefined) throw new RobinhoodRpcError("rpc_error", "The public Robinhood RPC rejected a read-only query.");
   return record.result;
+}
+
+/** Reads the exact Alchemy Light Account v2.0.0 factory, implementation, and EntryPoint on a fixed Robinhood RPC. */
+export async function readRobinhoodSmartAccountInfrastructure(
+  networkId: NetworkId,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RobinhoodSmartAccountInfrastructureSnapshot> {
+  const network = NETWORKS.find((candidate) => candidate.id === networkId && candidate.available);
+  if (!network) throw new RobinhoodRpcError("network_not_available", "This Robinhood network is not enabled for public reads.");
+
+  const base = await readRobinhoodNetwork(networkId, fetchImpl);
+  const [factoryCode, implementationCode, entryPointCode] = await Promise.all([
+    requestRpcResult(network.rpcUrl, 3, "eth_getCode", fetchImpl, [VEYRA_LIGHT_ACCOUNT.factoryAddress, "latest"]),
+    requestRpcResult(network.rpcUrl, 4, "eth_getCode", fetchImpl, [VEYRA_LIGHT_ACCOUNT.accountImplementation, "latest"]),
+    requestRpcResult(network.rpcUrl, 5, "eth_getCode", fetchImpl, [VEYRA_LIGHT_ACCOUNT.entryPoint.address, "latest"]),
+  ]);
+  const codeStatus = (value: unknown): RobinhoodSmartAccountCodeStatus => {
+    if (typeof value !== "string" || !/^0x(?:[0-9a-f]{2})*$/i.test(value)) {
+      throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC returned invalid contract bytecode.");
+    }
+    return value.length > 2 ? "present" : "absent";
+  };
+  const factory = { address: VEYRA_LIGHT_ACCOUNT.factoryAddress, bytecode: codeStatus(factoryCode) };
+  const implementation = { address: VEYRA_LIGHT_ACCOUNT.accountImplementation, bytecode: codeStatus(implementationCode) };
+  const entryPoint = { address: VEYRA_LIGHT_ACCOUNT.entryPoint.address, bytecode: codeStatus(entryPointCode) };
+
+  return {
+    networkId,
+    chainId: base.chainId,
+    latestBlock: base.latestBlock,
+    observedAt: base.observedAt,
+    ready: factory.bytecode === "present" && implementation.bytecode === "present" && entryPoint.bytecode === "present",
+    factory,
+    implementation,
+    entryPoint,
+  };
+}
+
+export async function readRobinhoodContractCode(
+  networkId: NetworkId,
+  address: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RobinhoodSmartAccountCodeStatus> {
+  if (!isAddress(address)) throw new RobinhoodRpcError("invalid_address", "Enter a valid EVM address to inspect.");
+  const network = NETWORKS.find((candidate) => candidate.id === networkId && candidate.available);
+  if (!network) throw new RobinhoodRpcError("network_not_available", "This Robinhood network is not enabled for public reads.");
+  const value = await requestRpcResult(network.rpcUrl, 6, "eth_getCode", fetchImpl, [getAddress(address), "latest"]);
+  if (typeof value !== "string" || !/^0x(?:[0-9a-f]{2})*$/i.test(value)) {
+    throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC returned invalid contract bytecode.");
+  }
+  return value.length > 2 ? "present" : "absent";
+}
+
+export async function readRobinhoodContractOwner(
+  networkId: NetworkId,
+  address: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  if (!isAddress(address)) throw new RobinhoodRpcError("invalid_address", "Enter a valid EVM address to inspect.");
+  const network = NETWORKS.find((candidate) => candidate.id === networkId && candidate.available);
+  if (!network) throw new RobinhoodRpcError("network_not_available", "This Robinhood network is not enabled for public reads.");
+  const value = await requestRpcResult(network.rpcUrl, 7, "eth_call", fetchImpl, [
+    { to: getAddress(address), data: "0x8da5cb5b" },
+    "latest",
+  ]);
+  if (typeof value !== "string" || !/^0x[0-9a-f]{64}$/i.test(value)) {
+    throw new RobinhoodRpcError("rpc_invalid_response", "The public Robinhood RPC returned an invalid account owner.");
+  }
+  return getAddress(`0x${value.slice(-40)}`);
+}
+
+/** Reads only configured Mainnet WETH/USDG balances; no token list is assumed for Testnet. */
+export async function readRobinhoodSmartAccountTokenBalances(
+  networkId: NetworkId,
+  holderAddress: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RobinhoodSmartAccountTokenBalance[]> {
+  if (!isAddress(holderAddress)) throw new RobinhoodRpcError("invalid_address", "Enter a valid EVM address to inspect.");
+  if (networkId !== "mainnet") return [];
+  const network = NETWORKS.find((candidate) => candidate.id === "mainnet" && candidate.available);
+  if (!network) throw new RobinhoodRpcError("network_not_available", "Robinhood Mainnet is not enabled for public reads.");
+  const base = await readRobinhoodNetwork("mainnet", fetchImpl);
+  const blockTag = `0x${BigInt(base.latestBlock).toString(16)}`;
+  const balanceOfAbi = [{
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "balance", type: "uint256" }],
+  }] as const;
+  const decimalsAbi = [{
+    type: "function",
+    name: "decimals",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "decimals", type: "uint8" }],
+  }] as const;
+  const configuredTokens = Object.values(ROBINHOOD_MAINNET_TOKENS).filter((token) => !token.native);
+  return Promise.all(configuredTokens.map(async (token) => {
+    const address = getAddress(token.address);
+    try {
+      const code = await requestRpcResult(network.rpcUrl, 8, "eth_getCode", fetchImpl, [address, blockTag]);
+      if (typeof code !== "string" || !/^0x(?:[0-9a-f]{2})*$/i.test(code)) {
+        return { address, symbol: token.symbol, decimals: token.decimals, status: "unavailable" as const, balanceRaw: null, observedBlock: base.latestBlock };
+      }
+      if (code.length <= 2) {
+        return { address, symbol: token.symbol, decimals: token.decimals, status: "token_contract_missing" as const, balanceRaw: null, observedBlock: base.latestBlock };
+      }
+      const decimalsData = encodeFunctionData({ abi: decimalsAbi, functionName: "decimals" });
+      const decimalsResult = await requestRpcResult(network.rpcUrl, 9, "eth_call", fetchImpl, [{ to: address, data: decimalsData }, blockTag]);
+      if (typeof decimalsResult !== "string" || !/^0x[0-9a-f]{64}$/i.test(decimalsResult)) {
+        return { address, symbol: token.symbol, decimals: token.decimals, status: "unavailable" as const, balanceRaw: null, observedBlock: base.latestBlock };
+      }
+      const onchainDecimals = decodeFunctionResult({ abi: decimalsAbi, functionName: "decimals", data: decimalsResult as Hex });
+      if (onchainDecimals !== token.decimals) {
+        return { address, symbol: token.symbol, decimals: token.decimals, status: "metadata_mismatch" as const, balanceRaw: null, observedBlock: base.latestBlock };
+      }
+      const data = encodeFunctionData({ abi: balanceOfAbi, functionName: "balanceOf", args: [getAddress(holderAddress)] });
+      const result = await requestRpcResult(network.rpcUrl, 10, "eth_call", fetchImpl, [{ to: address, data }, blockTag]);
+      let balance: bigint;
+      try {
+        if (typeof result !== "string" || !/^0x[0-9a-f]{64}$/i.test(result)) throw new Error("invalid_balance_encoding");
+        balance = decodeFunctionResult({ abi: balanceOfAbi, functionName: "balanceOf", data: result as Hex });
+      } catch {
+        return { address, symbol: token.symbol, decimals: token.decimals, status: "unavailable" as const, balanceRaw: null, observedBlock: base.latestBlock };
+      }
+      return { address, symbol: token.symbol, decimals: token.decimals, status: "available" as const, balanceRaw: balance.toString(), observedBlock: base.latestBlock };
+    } catch {
+      return { address, symbol: token.symbol, decimals: token.decimals, status: "unavailable" as const, balanceRaw: null, observedBlock: base.latestBlock };
+    }
+  }));
 }
 
 /** Reads only eth_chainId and eth_blockNumber from the repository's fixed Robinhood RPC allowlist. */
