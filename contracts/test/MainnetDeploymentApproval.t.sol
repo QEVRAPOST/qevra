@@ -26,6 +26,18 @@ contract MainnetDeploymentApprovalHarness {
         return MainnetDeploymentApproval.ownerDigest(record);
     }
 
+    function ownerRiskAcceptanceDigest(MainnetDeploymentApproval.Record memory record) external pure returns (bytes32) {
+        return MainnetDeploymentApproval.ownerRiskAcceptanceDigest(record);
+    }
+
+    function ownerRiskAcceptancePersonalSignMessage(MainnetDeploymentApproval.Record memory record)
+        external
+        pure
+        returns (bytes32)
+    {
+        return MainnetDeploymentApproval.ownerRiskAcceptancePersonalSignMessage(record);
+    }
+
     function verify(
         MainnetDeploymentApproval.Record memory record,
         bytes memory reviewSignature,
@@ -33,6 +45,14 @@ contract MainnetDeploymentApprovalHarness {
         uint256 now_
     ) external pure {
         MainnetDeploymentApproval.verify(record, reviewSignature, ownerSignature, now_);
+    }
+
+    function verifyOwnerRiskAcceptance(
+        MainnetDeploymentApproval.Record memory record,
+        bytes memory ownerSignature,
+        uint256 now_
+    ) external pure {
+        MainnetDeploymentApproval.verifyOwnerRiskAcceptance(record, ownerSignature, now_);
     }
 
     function verifyLegacyGasPrice(uint256 observed, uint256 approved) external pure {
@@ -100,6 +120,97 @@ contract MainnetDeploymentApprovalTest {
         harness.verify(record, reviewSignature, ownerSignature, NOW);
     }
 
+    function test_acceptsOwnerRiskAcceptanceForExactDormantDeploymentWithoutReviewer() public {
+        MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
+        MainnetDeploymentApproval.Record memory record = _record();
+        record.releasePolicy = 1;
+        record.reviewer = address(0);
+        record.reviewPackageSha256 = bytes32(0);
+        record.independentReviewReportSha256 = bytes32(0);
+        bytes memory ownerSignature = _signature(OWNER_KEY, harness.ownerRiskAcceptanceDigest(record));
+
+        harness.verifyOwnerRiskAcceptance(record, ownerSignature, NOW);
+    }
+
+    function test_ownerRiskMessageProducesTheDigestUsedByMetaMaskPersonalSign() public {
+        MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
+        MainnetDeploymentApproval.Record memory record = _record();
+        record.releasePolicy = 1;
+        record.reviewer = address(0);
+        record.reviewPackageSha256 = bytes32(0);
+        record.independentReviewReportSha256 = bytes32(0);
+        bytes32 message = harness.ownerRiskAcceptancePersonalSignMessage(record);
+        bytes32 observedDigest = _personalSignDigest(message);
+
+        require(observedDigest == harness.ownerRiskAcceptanceDigest(record), "owner risk personal_sign digest mismatch");
+    }
+
+    function test_ownerRiskAcceptanceRejectsChangedDeploymentBatch() public {
+        MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
+        MainnetDeploymentApproval.Record memory record = _record();
+        record.releasePolicy = 1;
+        record.reviewer = address(0);
+        record.reviewPackageSha256 = bytes32(0);
+        record.independentReviewReportSha256 = bytes32(0);
+        bytes memory ownerSignature = _signature(OWNER_KEY, harness.ownerRiskAcceptanceDigest(record));
+        record.deploymentBatchHash = keccak256("changed operations");
+
+        vm.expectRevert(abi.encodeWithSelector(MainnetDeploymentApproval.InvalidOwnerSignature.selector));
+        harness.verifyOwnerRiskAcceptance(record, ownerSignature, NOW);
+    }
+
+    function test_ownerRiskAcceptanceRejectsChangedFeeCeiling() public {
+        MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
+        MainnetDeploymentApproval.Record memory record = _record();
+        record.releasePolicy = 1;
+        record.reviewer = address(0);
+        record.reviewPackageSha256 = bytes32(0);
+        record.independentReviewReportSha256 = bytes32(0);
+        bytes memory ownerSignature = _signature(OWNER_KEY, harness.ownerRiskAcceptanceDigest(record));
+        record.maxTotalFeeWei += 1;
+
+        vm.expectRevert(abi.encodeWithSelector(MainnetDeploymentApproval.InvalidOwnerSignature.selector));
+        harness.verifyOwnerRiskAcceptance(record, ownerSignature, NOW);
+    }
+
+    function test_ownerRiskAcceptanceRejectsChangedOwnerOrStartingNonce() public {
+        MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
+        MainnetDeploymentApproval.Record memory record = _record();
+        record.releasePolicy = 1;
+        record.reviewer = address(0);
+        record.reviewPackageSha256 = bytes32(0);
+        record.independentReviewReportSha256 = bytes32(0);
+        bytes memory ownerSignature = _signature(OWNER_KEY, harness.ownerRiskAcceptanceDigest(record));
+        record.startingDeployerNonce += 1;
+
+        vm.expectRevert(abi.encodeWithSelector(MainnetDeploymentApproval.InvalidOwnerSignature.selector));
+        harness.verifyOwnerRiskAcceptance(record, ownerSignature, NOW);
+    }
+
+    function test_reviewSignaturesCannotAuthorizeTheOwnerRiskPolicy() public {
+        MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
+        MainnetDeploymentApproval.Record memory record = _record();
+        (bytes memory reviewSignature, bytes memory ownerSignature) = _sign(harness, record);
+        record.releasePolicy = 1;
+
+        vm.expectRevert(abi.encodeWithSelector(MainnetDeploymentApproval.InvalidApprovalRecord.selector));
+        harness.verify(record, reviewSignature, ownerSignature, NOW);
+    }
+
+    function test_ownerRiskAcceptanceCannotAuthorizeTheIndependentReviewPolicy() public {
+        MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
+        MainnetDeploymentApproval.Record memory record = _record();
+        record.releasePolicy = 1;
+        record.reviewer = address(0);
+        record.reviewPackageSha256 = bytes32(0);
+        record.independentReviewReportSha256 = bytes32(0);
+        bytes memory ownerSignature = _signature(OWNER_KEY, harness.ownerRiskAcceptanceDigest(record));
+        record.releasePolicy = 0;
+
+        vm.expectRevert(abi.encodeWithSelector(MainnetDeploymentApproval.InvalidApprovalRecord.selector));
+        harness.verifyOwnerRiskAcceptance(record, ownerSignature, NOW);
+    }
+
     function test_rejectsExpiredOrExcessivelyLongApproval() public {
         MainnetDeploymentApprovalHarness harness = new MainnetDeploymentApprovalHarness();
         MainnetDeploymentApproval.Record memory record = _record();
@@ -158,6 +269,7 @@ contract MainnetDeploymentApprovalTest {
             attestor: address(0xA771),
             reviewer: vm.addr(REVIEWER_KEY),
             ownerProfile: 1,
+            releasePolicy: 0,
             startingDeployerNonce: 18,
             deploymentBatchHash: keccak256("five-contract inactive batch"),
             reviewPackageSha256: keccak256("review package sha256"),

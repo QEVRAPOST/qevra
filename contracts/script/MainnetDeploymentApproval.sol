@@ -6,11 +6,18 @@ pragma solidity 0.8.30;
 library MainnetDeploymentApproval {
     uint256 internal constant MAX_APPROVAL_TTL = 24 hours;
     uint256 private constant SECP256K1_HALF_ORDER = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
+    uint8 internal constant POLICY_INDEPENDENT_REVIEW_REQUIRED = 0;
+    uint8 internal constant POLICY_OWNER_APPROVED_DORMANT = 1;
     bytes32 private constant REVIEW_TYPEHASH = keccak256(
-        "VeyraMainnetIndependentReview(uint256 chainId,address deployer,address owner,address attestor,uint8 ownerProfile,uint64 startingDeployerNonce,bytes32 deploymentBatchHash,bytes32 reviewPackageSha256,bytes32 independentReviewReportSha256,address reviewer,bytes32 decision)"
+        "VeyraMainnetIndependentReviewV2(uint256 chainId,address deployer,address owner,address attestor,uint8 ownerProfile,uint8 releasePolicy,uint64 startingDeployerNonce,bytes32 deploymentBatchHash,bytes32 reviewPackageSha256,bytes32 independentReviewReportSha256,address reviewer,bytes32 decision)"
     );
     bytes32 private constant OWNER_APPROVAL_TYPEHASH =
-        keccak256("VeyraMainnetOwnerApproval(bytes32 deploymentAndReviewContextHash,bytes32 feeApprovalHash)");
+        keccak256("VeyraMainnetOwnerApprovalV2(bytes32 deploymentAndReviewContextHash,bytes32 feeApprovalHash)");
+    bytes32 private constant OWNER_RISK_ACCEPTANCE_TYPEHASH = keccak256(
+        "VeyraMainnetDormantDeploymentRiskAcceptance(uint256 chainId,address deployer,address owner,address attestor,uint8 ownerProfile,uint8 releasePolicy,uint64 startingDeployerNonce,bytes32 deploymentBatchHash,uint256 maxFeePerGasWei,uint256 maxTotalFeeWei,uint256 expiresAt,bytes32 riskAcceptance)"
+    );
+    bytes32 private constant OWNER_RISK_ACCEPTANCE =
+        keccak256("VEYRA_OWNER_ACCEPTS_SINGLE_KEY_RISK_FOR_DORMANT_DEPLOYMENT_ONLY_V1");
     bytes32 private constant APPROVE_INACTIVE_DEPLOYMENT = keccak256("APPROVE_EOA_INACTIVE_DEPLOYMENT_ONLY");
 
     struct Record {
@@ -20,6 +27,7 @@ library MainnetDeploymentApproval {
         address attestor;
         address reviewer;
         uint8 ownerProfile;
+        uint8 releasePolicy;
         uint64 startingDeployerNonce;
         bytes32 deploymentBatchHash;
         bytes32 reviewPackageSha256;
@@ -49,6 +57,7 @@ library MainnetDeploymentApproval {
                 record.owner,
                 record.attestor,
                 record.ownerProfile,
+                record.releasePolicy,
                 record.startingDeployerNonce,
                 record.deploymentBatchHash,
                 record.reviewPackageSha256,
@@ -89,12 +98,38 @@ library MainnetDeploymentApproval {
         return _toPersonalSignDigest(ownerPersonalSignMessage(record));
     }
 
+    /// @notice EIP-191 message for an owner accepting single-key risk for this dormant deployment only.
+    function ownerRiskAcceptancePersonalSignMessage(Record memory record) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                OWNER_RISK_ACCEPTANCE_TYPEHASH,
+                record.chainId,
+                record.deployer,
+                record.owner,
+                record.attestor,
+                record.ownerProfile,
+                record.releasePolicy,
+                record.startingDeployerNonce,
+                record.deploymentBatchHash,
+                record.maxFeePerGasWei,
+                record.maxTotalFeeWei,
+                record.expiresAt,
+                OWNER_RISK_ACCEPTANCE
+            )
+        );
+    }
+
+    function ownerRiskAcceptanceDigest(Record memory record) internal pure returns (bytes32) {
+        return _toPersonalSignDigest(ownerRiskAcceptancePersonalSignMessage(record));
+    }
+
     function verify(Record memory record, bytes memory reviewerSignature, bytes memory ownerSignature, uint256 now_)
         internal
         pure
     {
         if (
-            record.chainId != 4_663 || record.ownerProfile != 1 || record.deployer == address(0)
+            record.chainId != 4_663 || record.ownerProfile != 1
+                || record.releasePolicy != POLICY_INDEPENDENT_REVIEW_REQUIRED || record.deployer == address(0)
                 || record.owner == address(0) || record.attestor == address(0)
                 || record.deploymentBatchHash == bytes32(0) || record.reviewPackageSha256 == bytes32(0)
                 || record.independentReviewReportSha256 == bytes32(0) || record.owner == record.deployer
@@ -110,6 +145,24 @@ library MainnetDeploymentApproval {
         if (record.maxFeePerGasWei == 0 || record.maxTotalFeeWei == 0) revert InvalidFeeApproval();
         if (_recover(reviewDigest(record), reviewerSignature) != record.reviewer) revert InvalidReviewerSignature();
         if (_recover(ownerDigest(record), ownerSignature) != record.owner) revert InvalidOwnerSignature();
+    }
+
+    function verifyOwnerRiskAcceptance(Record memory record, bytes memory ownerSignature, uint256 now_) internal pure {
+        if (
+            record.chainId != 4_663 || record.ownerProfile != 1 || record.releasePolicy != POLICY_OWNER_APPROVED_DORMANT
+                || record.deployer == address(0) || record.owner == address(0) || record.attestor == address(0)
+                || record.reviewer != address(0) || record.deploymentBatchHash == bytes32(0)
+                || record.reviewPackageSha256 != bytes32(0) || record.independentReviewReportSha256 != bytes32(0)
+                || record.owner == record.deployer || record.owner == record.attestor
+                || record.deployer == record.attestor
+        ) revert InvalidApprovalRecord();
+        if (record.expiresAt <= now_ || record.expiresAt > now_ + MAX_APPROVAL_TTL) {
+            revert InvalidApprovalWindow();
+        }
+        if (record.maxFeePerGasWei == 0 || record.maxTotalFeeWei == 0) revert InvalidFeeApproval();
+        if (_recover(ownerRiskAcceptanceDigest(record), ownerSignature) != record.owner) {
+            revert InvalidOwnerSignature();
+        }
     }
 
     function verifyLegacyGasPrice(uint256 observedGasPrice, uint256 approvedGasPrice) internal pure {

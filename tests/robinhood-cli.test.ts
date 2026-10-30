@@ -57,7 +57,7 @@ test("deployment readiness always blocks the vulnerable Phase 0 harness and gate
   assert.match(testnet.reason, /evidenceanchor.*explicit owner authorization/i);
   assert.match(testnet.reason, /phase 0 research harness and verifier remain excluded/i);
   assert.equal(mainnet.ready, false);
-  assert.match(mainnet.reason, /security review and owner approval/i);
+  assert.match(mainnet.reason, /explicit release policy.*owner authorization/i);
 });
 
 test("Explorer readiness requires HTTPS and remains blocked without an approved artifact", () => {
@@ -93,12 +93,33 @@ test("Mainnet preflight carries the configured contract owner as a public-only a
     VEYRA_MAINNET_ACCOUNT: "robinhood-mainnet",
     VEYRA_MAINNET_OWNER: owner,
     VEYRA_MAINNET_OWNER_MODE: "EOA_INACTIVE",
+    VEYRA_MAINNET_RELEASE_POLICY: "OWNER_APPROVED_DORMANT",
   } as unknown as NodeJS.ProcessEnv);
 
   assert.equal(plan.ownerAddress, owner);
   assert.equal(plan.ownerMode, "EOA_INACTIVE");
+  assert.equal(plan.releasePolicy, "OWNER_APPROVED_DORMANT");
   assert.equal(plan.keyMaterialAccessed, false);
   assert.equal(plan.deploymentReady, false);
+});
+
+test("Mainnet release policy is explicit and fails closed when missing or invalid", () => {
+  const base = {
+    VEYRA_MAINNET_ACCOUNT: "robinhood-mainnet",
+    VEYRA_MAINNET_OWNER: "0x0000000000000000000000000000000000004663",
+    VEYRA_MAINNET_OWNER_MODE: "EOA_INACTIVE",
+  } as unknown as NodeJS.ProcessEnv;
+  assert.equal(buildDeploymentPreflight("mainnet", DEPLOYER, base).releasePolicy, null);
+  assert.equal(buildDeploymentPreflight("mainnet", DEPLOYER, {
+    ...base,
+    VEYRA_MAINNET_RELEASE_POLICY: "OWNER_APPROVED_ANYTHING",
+  } as unknown as NodeJS.ProcessEnv).releasePolicy, null);
+  const reviewPolicy = buildDeploymentPreflight("mainnet", DEPLOYER, {
+    ...base,
+    VEYRA_MAINNET_RELEASE_POLICY: "INDEPENDENT_REVIEW_REQUIRED",
+  } as unknown as NodeJS.ProcessEnv);
+  assert.equal(reviewPolicy.releasePolicy, "INDEPENDENT_REVIEW_REQUIRED");
+  assert.match(reviewPolicy.reason, /independent reviewer signature/i);
 });
 
 function eoaOwnerReader(overrides: Partial<MainnetEoaOwnerReader> = {}): MainnetEoaOwnerReader {

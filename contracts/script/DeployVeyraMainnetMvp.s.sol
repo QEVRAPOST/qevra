@@ -53,6 +53,11 @@ contract DeployVeyraMainnetMvp {
         EOA_INACTIVE
     }
 
+    enum ReleasePolicy {
+        INDEPENDENT_REVIEW_REQUIRED,
+        OWNER_APPROVED_DORMANT
+    }
+
     uint256 public constant ROBINHOOD_MAINNET_CHAIN_ID = 4_663;
     uint256 public constant APPROVAL_TTL = 24 hours;
     address public constant TESTNET_DEPLOYER = 0xfA142bF0383782Caa349C5C56A7B7D565eEFA562;
@@ -64,7 +69,7 @@ contract DeployVeyraMainnetMvp {
     bytes32 private constant MODULE_GUARD_STORAGE_SLOT =
         0xb104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947;
     address private constant SAFE_MODULE_SENTINEL = address(1);
-    bytes32 private constant DEPLOYMENT_BATCH_DOMAIN = keccak256("VEYRA_ROBINHOOD_MAINNET_MVP_BATCH_V1");
+    bytes32 private constant DEPLOYMENT_BATCH_DOMAIN = keccak256("VEYRA_ROBINHOOD_MAINNET_MVP_BATCH_V2");
     bytes32 private constant DEPLOYMENT_OPERATIONS = keccak256(
         "deploy-slots-6-10-in-order;constructor-refs-guard-to-slots-6-7;executor-to-slot-8;attestor-role-to-configured-attestor;set-slot-8-executor-to-slot-9;transfer-owner-slots-6-7-8-10;empty-token-policy;empty-router-policy;attestation-publishing-disabled"
     );
@@ -78,6 +83,7 @@ contract DeployVeyraMainnetMvp {
     error OwnerMustBeEoa(address owner);
     error OwnerRoleOverlap(address owner);
     error InvalidOwnerProfile();
+    error InvalidReleasePolicy();
     error AttestationPublicationUnexpectedlyEnabled();
     error InvalidAttestor();
     error RegistryOwnerMismatch(address expected, address observed);
@@ -114,7 +120,8 @@ contract DeployVeyraMainnetMvp {
         uint64 indexed startingDeployerNonce,
         address indexed owner,
         address deployer,
-        address attestor
+        address attestor,
+        uint8 releasePolicy
     );
 
     function validateDeploymentConfiguration(address deployer, address owner, address attestor) external view {
@@ -144,13 +151,19 @@ contract DeployVeyraMainnetMvp {
         address owner = vm.envAddress("VEYRA_MAINNET_OWNER");
         address attestor = vm.envAddress("VEYRA_MAINNET_ATTESTOR");
         OwnerProfile ownerProfile = _parseOwnerProfile(vm.envString("VEYRA_MAINNET_OWNER_MODE"));
+        ReleasePolicy releasePolicy = _parseReleasePolicy(vm.envString("VEYRA_MAINNET_RELEASE_POLICY"));
         _validateDeploymentConfiguration(deployer, owner, attestor, ownerProfile);
 
         uint64 startingDeployerNonce = vm.getNonce(deployer);
-        bytes32 batchHash = _deploymentBatchHash(deployer, owner, attestor, ownerProfile, startingDeployerNonce);
-        emit MainnetMvpApprovalContext(batchHash, startingDeployerNonce, owner, deployer, attestor);
+        bytes32 batchHash =
+            _deploymentBatchHash(deployer, owner, attestor, ownerProfile, releasePolicy, startingDeployerNonce);
+        emit MainnetMvpApprovalContext(
+            batchHash, startingDeployerNonce, owner, deployer, attestor, uint8(releasePolicy)
+        );
         if (vm.isContext(VmVeyraMainnetDeploy.ForgeContext.ScriptBroadcast)) {
-            _requireBroadcastApproval(deployer, owner, attestor, ownerProfile, startingDeployerNonce, batchHash);
+            _requireBroadcastApproval(
+                deployer, owner, attestor, ownerProfile, releasePolicy, startingDeployerNonce, batchHash
+            );
         }
 
         vm.startBroadcast(deployer);
@@ -205,9 +218,10 @@ contract DeployVeyraMainnetMvp {
         address owner,
         address attestor,
         OwnerProfile ownerProfile,
+        ReleasePolicy releasePolicy,
         uint64 startingDeployerNonce
     ) external pure returns (bytes32) {
-        return _deploymentBatchHash(deployer, owner, attestor, ownerProfile, startingDeployerNonce);
+        return _deploymentBatchHash(deployer, owner, attestor, ownerProfile, releasePolicy, startingDeployerNonce);
     }
 
     /// @notice Reads public role config and current Mainnet nonce, then returns the exact batch hash.
@@ -217,8 +231,9 @@ contract DeployVeyraMainnetMvp {
         address owner = vm.envAddress("VEYRA_MAINNET_OWNER");
         address attestor = vm.envAddress("VEYRA_MAINNET_ATTESTOR");
         OwnerProfile ownerProfile = _parseOwnerProfile(vm.envString("VEYRA_MAINNET_OWNER_MODE"));
+        ReleasePolicy releasePolicy = _parseReleasePolicy(vm.envString("VEYRA_MAINNET_RELEASE_POLICY"));
         startingDeployerNonce = vm.getNonce(deployer);
-        batchHash = _deploymentBatchHash(deployer, owner, attestor, ownerProfile, startingDeployerNonce);
+        batchHash = _deploymentBatchHash(deployer, owner, attestor, ownerProfile, releasePolicy, startingDeployerNonce);
     }
 
     /// @notice Reads the broadcast approval fields and returns canonical EIP-191 signing digests.
@@ -228,8 +243,13 @@ contract DeployVeyraMainnetMvp {
     {
         MainnetDeploymentApproval.Record memory record;
         (batchHash, record) = _currentMainnetApprovalRecord();
-        reviewerDigest = MainnetDeploymentApproval.reviewDigest(record);
-        ownerDigest = MainnetDeploymentApproval.ownerDigest(record);
+        if (record.releasePolicy == MainnetDeploymentApproval.POLICY_OWNER_APPROVED_DORMANT) {
+            reviewerDigest = bytes32(0);
+            ownerDigest = MainnetDeploymentApproval.ownerRiskAcceptanceDigest(record);
+        } else {
+            reviewerDigest = MainnetDeploymentApproval.reviewDigest(record);
+            ownerDigest = MainnetDeploymentApproval.ownerDigest(record);
+        }
     }
 
     /// @notice Returns the raw 32-byte messages for MetaMask `personal_sign`.
@@ -240,8 +260,13 @@ contract DeployVeyraMainnetMvp {
     {
         MainnetDeploymentApproval.Record memory record;
         (batchHash, record) = _currentMainnetApprovalRecord();
-        reviewerMessage = MainnetDeploymentApproval.reviewPersonalSignMessage(record);
-        ownerMessage = MainnetDeploymentApproval.ownerPersonalSignMessage(record);
+        if (record.releasePolicy == MainnetDeploymentApproval.POLICY_OWNER_APPROVED_DORMANT) {
+            reviewerMessage = bytes32(0);
+            ownerMessage = MainnetDeploymentApproval.ownerRiskAcceptancePersonalSignMessage(record);
+        } else {
+            reviewerMessage = MainnetDeploymentApproval.reviewPersonalSignMessage(record);
+            ownerMessage = MainnetDeploymentApproval.ownerPersonalSignMessage(record);
+        }
     }
 
     function _currentMainnetApprovalRecord()
@@ -253,19 +278,29 @@ contract DeployVeyraMainnetMvp {
         address owner = vm.envAddress("VEYRA_MAINNET_OWNER");
         address attestor = vm.envAddress("VEYRA_MAINNET_ATTESTOR");
         OwnerProfile ownerProfile = _parseOwnerProfile(vm.envString("VEYRA_MAINNET_OWNER_MODE"));
+        ReleasePolicy releasePolicy = _parseReleasePolicy(vm.envString("VEYRA_MAINNET_RELEASE_POLICY"));
         uint64 startingDeployerNonce = vm.getNonce(deployer);
-        batchHash = _deploymentBatchHash(deployer, owner, attestor, ownerProfile, startingDeployerNonce);
+        batchHash = _deploymentBatchHash(deployer, owner, attestor, ownerProfile, releasePolicy, startingDeployerNonce);
+        address reviewer;
+        bytes32 reviewPackageSha256;
+        bytes32 independentReviewReportSha256;
+        if (releasePolicy == ReleasePolicy.INDEPENDENT_REVIEW_REQUIRED) {
+            reviewer = vm.envAddress("VEYRA_MAINNET_REVIEWER");
+            reviewPackageSha256 = vm.envBytes32("VEYRA_MAINNET_REVIEW_PACKAGE_SHA256");
+            independentReviewReportSha256 = vm.envBytes32("VEYRA_MAINNET_INDEPENDENT_REVIEW_SHA256");
+        }
         record = MainnetDeploymentApproval.Record({
             chainId: block.chainid,
             deployer: deployer,
             owner: owner,
             attestor: attestor,
-            reviewer: vm.envAddress("VEYRA_MAINNET_REVIEWER"),
+            reviewer: reviewer,
             ownerProfile: uint8(ownerProfile),
+            releasePolicy: uint8(releasePolicy),
             startingDeployerNonce: startingDeployerNonce,
             deploymentBatchHash: batchHash,
-            reviewPackageSha256: vm.envBytes32("VEYRA_MAINNET_REVIEW_PACKAGE_SHA256"),
-            independentReviewReportSha256: vm.envBytes32("VEYRA_MAINNET_INDEPENDENT_REVIEW_SHA256"),
+            reviewPackageSha256: reviewPackageSha256,
+            independentReviewReportSha256: independentReviewReportSha256,
             maxFeePerGasWei: vm.envUint("VEYRA_MAINNET_APPROVED_MAX_FEE_PER_GAS_WEI"),
             maxTotalFeeWei: vm.envUint("VEYRA_MAINNET_APPROVED_MAX_TOTAL_FEE_WEI"),
             expiresAt: vm.envUint("VEYRA_MAINNET_APPROVAL_EXPIRES_AT")
@@ -302,11 +337,22 @@ contract DeployVeyraMainnetMvp {
         revert InvalidOwnerProfile();
     }
 
+    function _parseReleasePolicy(string memory value) private pure returns (ReleasePolicy) {
+        if (keccak256(bytes(value)) == keccak256("INDEPENDENT_REVIEW_REQUIRED")) {
+            return ReleasePolicy.INDEPENDENT_REVIEW_REQUIRED;
+        }
+        if (keccak256(bytes(value)) == keccak256("OWNER_APPROVED_DORMANT")) {
+            return ReleasePolicy.OWNER_APPROVED_DORMANT;
+        }
+        revert InvalidReleasePolicy();
+    }
+
     function _deploymentBatchHash(
         address deployer,
         address owner,
         address attestor,
         OwnerProfile ownerProfile,
+        ReleasePolicy releasePolicy,
         uint64 startingDeployerNonce
     ) private pure returns (bytes32) {
         return keccak256(
@@ -317,6 +363,7 @@ contract DeployVeyraMainnetMvp {
                 owner,
                 attestor,
                 uint8(ownerProfile),
+                uint8(releasePolicy),
                 startingDeployerNonce,
                 keccak256(type(VeyraTokenPolicyRegistry).creationCode),
                 keccak256(type(VeyraRouterRegistry).creationCode),
@@ -333,33 +380,51 @@ contract DeployVeyraMainnetMvp {
         address owner,
         address attestor,
         OwnerProfile ownerProfile,
+        ReleasePolicy releasePolicy,
         uint64 startingDeployerNonce,
         bytes32 batchHash
     ) private {
         if (ownerProfile != OwnerProfile.EOA_INACTIVE) revert BroadcastApprovalRequired();
 
+        address reviewer;
+        bytes32 reviewPackageSha256;
+        bytes32 independentReviewReportSha256;
+        if (releasePolicy == ReleasePolicy.INDEPENDENT_REVIEW_REQUIRED) {
+            reviewer = vm.envAddress("VEYRA_MAINNET_REVIEWER");
+            reviewPackageSha256 = vm.envBytes32("VEYRA_MAINNET_REVIEW_PACKAGE_SHA256");
+            independentReviewReportSha256 = vm.envBytes32("VEYRA_MAINNET_INDEPENDENT_REVIEW_SHA256");
+        }
         MainnetDeploymentApproval.Record memory record = MainnetDeploymentApproval.Record({
             chainId: block.chainid,
             deployer: deployer,
             owner: owner,
             attestor: attestor,
-            reviewer: vm.envAddress("VEYRA_MAINNET_REVIEWER"),
+            reviewer: reviewer,
             ownerProfile: uint8(ownerProfile),
+            releasePolicy: uint8(releasePolicy),
             startingDeployerNonce: startingDeployerNonce,
             deploymentBatchHash: batchHash,
-            reviewPackageSha256: vm.envBytes32("VEYRA_MAINNET_REVIEW_PACKAGE_SHA256"),
-            independentReviewReportSha256: vm.envBytes32("VEYRA_MAINNET_INDEPENDENT_REVIEW_SHA256"),
+            reviewPackageSha256: reviewPackageSha256,
+            independentReviewReportSha256: independentReviewReportSha256,
             maxFeePerGasWei: vm.envUint("VEYRA_MAINNET_APPROVED_MAX_FEE_PER_GAS_WEI"),
             maxTotalFeeWei: vm.envUint("VEYRA_MAINNET_APPROVED_MAX_TOTAL_FEE_WEI"),
             expiresAt: vm.envUint("VEYRA_MAINNET_APPROVAL_EXPIRES_AT")
         });
 
-        MainnetDeploymentApproval.verify(
-            record,
-            vm.envBytes("VEYRA_MAINNET_REVIEWER_SIGNATURE"),
-            vm.envBytes("VEYRA_MAINNET_OWNER_APPROVAL_SIGNATURE"),
-            block.timestamp
-        );
+        if (releasePolicy == ReleasePolicy.INDEPENDENT_REVIEW_REQUIRED) {
+            MainnetDeploymentApproval.verify(
+                record,
+                vm.envBytes("VEYRA_MAINNET_REVIEWER_SIGNATURE"),
+                vm.envBytes("VEYRA_MAINNET_OWNER_APPROVAL_SIGNATURE"),
+                block.timestamp
+            );
+        } else if (releasePolicy == ReleasePolicy.OWNER_APPROVED_DORMANT) {
+            MainnetDeploymentApproval.verifyOwnerRiskAcceptance(
+                record, vm.envBytes("VEYRA_MAINNET_OWNER_RISK_ACCEPTANCE_SIGNATURE"), block.timestamp
+            );
+        } else {
+            revert BroadcastApprovalRequired();
+        }
         MainnetDeploymentApproval.verifyLegacyGasPrice(tx.gasprice, record.maxFeePerGasWei);
     }
 

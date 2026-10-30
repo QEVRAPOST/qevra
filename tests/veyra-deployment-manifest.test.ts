@@ -255,7 +255,62 @@ test("server loader reads only validated records from the checked-in chain manif
       sourceVerification: "not_verified",
     },
   ]);
-  assert.deepEqual(registry.roadmapContracts.filter((record) => record.networkId === "mainnet"), []);
+  const mainnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "mainnet");
+  assert.deepEqual(mainnetRecords.map(({ name, architectureSlot, address, transactionHash, blockNumber, runtimeBytecodeHash }) => ({
+    name,
+    architectureSlot,
+    address,
+    transactionHash,
+    blockNumber,
+    runtimeBytecodeHash,
+  })), [
+    {
+      name: "VeyraTokenPolicyRegistry",
+      architectureSlot: 6,
+      address: "0xe9fD2E8D70E59441f6524d5294A12319D91E865c",
+      transactionHash: "0x2ca8ade7c187f7a318e1f95b273c74bc8c1ed3095fce3a8fde61463db39b2033",
+      blockNumber: "101780339",
+      runtimeBytecodeHash: "0xfb960c0e27c6a4bd4112ba3e11085d07c389e4f8687aa455d68d30a8f708c0c3",
+    },
+    {
+      name: "VeyraRouterRegistry",
+      architectureSlot: 7,
+      address: "0x6e9Af9C6e69Ec9375d85E554e3b909F421Fbb385",
+      transactionHash: "0xf943794eba0b148c597937e0ad61afdc2d5d68ac29d5e3325b33e369135d290e",
+      blockNumber: "101780371",
+      runtimeBytecodeHash: "0x66fd6737cf28ac0d8d6f8acfd82e44a219d003c7f21b15d13a3924fb4e28a540",
+    },
+    {
+      name: "VeyraSwapIntentGuard",
+      architectureSlot: 8,
+      address: "0xC73744e090d9CAc6d9eB1883440862f9e8847098",
+      transactionHash: "0xf9a7c55639a3d4628f4e3d9f0ab700a3aa10f7469b7d8d5cfc0535eda3552296",
+      blockNumber: "101780385",
+      runtimeBytecodeHash: "0xad9255dcc456d1808a8e15999b9c9de04270fd2cc66c283f597fa0ac69c15947",
+    },
+    {
+      name: "VeyraSwapExecutor",
+      architectureSlot: 9,
+      address: "0x804d1A596AE0269f67A1B061eB1b963c376a2e9d",
+      transactionHash: "0x32f52600c8d5731e9d0090dc9fefe384e43a6223f6666635fcd3802d11ab3935",
+      blockNumber: "101780404",
+      runtimeBytecodeHash: "0x01ba61314e4fa2955c7a4775430ef49caad89c722ec80fbc255da7e53e8aa872",
+    },
+    {
+      name: "VeyraResearchAttestationRegistry",
+      architectureSlot: 10,
+      address: "0xCD9A244b9aE86dd7fF15402aAB7e138bf1D0eE51",
+      transactionHash: "0x2227da7c184ae1db6f1d0974e91c583fecedb60bb67c5f2cf1d3f24412e2866d",
+      blockNumber: "101780468",
+      runtimeBytecodeHash: "0xed6e6873cf02a268651390aba07beafd84827f61320dcc44842ac9da38aa90b8",
+    },
+  ]);
+  assert.ok(mainnetRecords.every((record) => record.chainId === 4_663
+    && record.observedChainId === 4_663
+    && record.deploymentStatus === "verified"
+    && record.receiptStatus === "success"
+    && record.sourceVerification === "not_verified"));
+  assert.deepEqual(registry.roadmapContracts.filter((record) => record.architectureSlot <= 5), []);
   assert.deepEqual(registry.standaloneResearchEvidenceAnchors, [{
     name: "VeyraResearchEvidenceAnchor",
     purpose: "Anchors only nonzero hashes of research reports and run identifiers; does not attest to truth or implement architecture slot 10.",

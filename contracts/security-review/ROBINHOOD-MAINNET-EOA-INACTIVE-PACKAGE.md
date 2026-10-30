@@ -1,8 +1,10 @@
 # Robinhood Mainnet EOA_INACTIVE Deployment Review Package
 
-**Review status: NOT REVIEWED / NOT APPROVED.** This is a source and test
-package for an independent reviewer. It is not an audit, deployment receipt,
-owner approval, or claim that the contracts are safe to activate.
+**Review status: NOT INDEPENDENTLY REVIEWED / NO OWNER BROADCAST APPROVAL.**
+This is a source, test, and deployment-policy package. `OWNER_APPROVED_DORMANT`
+is an opt-in alternative to the application's reviewer-signature release
+policy; it is not an audit, deployment receipt, or claim that the contracts
+are safe to activate.
 
 ## Scope and deployment decision
 
@@ -10,11 +12,11 @@ Scope is architecture slots 6–10 only:
 
 | Slot | Contract | Intended first-deployment state | Current decision |
 |---:|---|---|---|
-| 6 | `VeyraTokenPolicyRegistry` | Empty; no token policy enabled | NO-GO until independent review and owner approval |
-| 7 | `VeyraRouterRegistry` | Empty; no router enabled | NO-GO until independent review and owner approval |
-| 8 | `VeyraSwapIntentGuard` | Bound to slot 6, slot 7, and slot 9; no route | NO-GO until independent review and owner approval |
-| 9 | `VeyraSwapExecutor` | Deployed with immutable slot 8 guard; no route can pass empty registries | NO-GO until execution review and route integration review |
-| 10 | `VeyraResearchAttestationRegistry` | Initial attestor assigned; publication disabled | NO-GO until independent review, privacy policy, and owner approval |
+| 6 | `VeyraTokenPolicyRegistry` | Empty; no token policy enabled | CONDITIONAL GO for dormant deployment only; NO-GO for activation |
+| 7 | `VeyraRouterRegistry` | Empty; no router enabled | CONDITIONAL GO for dormant deployment only; NO-GO for activation |
+| 8 | `VeyraSwapIntentGuard` | Bound to slot 6, slot 7, and slot 9; no route | CONDITIONAL GO for dormant deployment only; NO-GO for activation |
+| 9 | `VeyraSwapExecutor` | Deployed with immutable slot 8 guard; empty registries prevent a supported route | CONDITIONAL GO for dormant deployment only; NO-GO for execution until independent route review |
+| 10 | `VeyraResearchAttestationRegistry` | Initial attestor assigned; publication disabled | CONDITIONAL GO for dormant deployment only; NO-GO for publication pending privacy policy |
 
 The EOA owner profile is deliberately accepted only as `EOA_INACTIVE`. It is a
 single-key authority and is not equivalent to a Safe. An inactive deployment
@@ -22,6 +24,15 @@ is not permission to configure a token/router, execute swaps, or publish
 attestations. Slots 1–5 remain separate future account/PQ research and are not
 included in this batch. The standalone Evidence Anchor is not slot 10 and is
 not part of this batch.
+
+The conditional deployment decision is available only after an explicit
+`OWNER_APPROVED_DORMANT` EIP-191 signature for the fresh exact batch and fees.
+This is application-level release authorization, not a Robinhood Chain rule.
+It does not technically lock later activation: the EOA owner can enable token
+and router policies or attestation publication with the contracts' existing
+owner permissions. A separate review/approval rule for those later actions is
+operational only. Do not use this path if the owner cannot accept that residual
+authority.
 
 ## Chain and role configuration
 
@@ -32,8 +43,10 @@ not part of this batch.
 - Deployer: `0x160CD6fe46aa4A5eb3F3a471C7ae0f07B0c2fb97`.
 - Owner: `0x3cdb91a29b73dab9219d9a287543800b417b6dbb`.
 - Attestor: `0x6dEdb07C81D315fF493C0ABCD8c9e5E0b0287bB0`.
-- Foundry signer alias: `veyra-robinhood-mainnet` (alias presence and key
-  control have not been inspected or proven by this review package).
+- Foundry signer alias: `veyra-robinhood-mainnet` (a local file with this name
+  exists, but its JSON has no address field and the default Foundry wallet list
+  does not include the configured deployer address; the alias-to-deployer
+  match and key control remain unverified).
 - No Mainnet receipt or contract address is claimed. The Mainnet manifest
   remains `no_verified_deployments` with an empty `contracts` array.
 
@@ -95,6 +108,59 @@ no owner runtime code. The observed gas prices were `20744000 wei` and
 (`0.000104356726096 ETH`); this is not a fresh simulation or funding target.
 No funds should be sent based on that calculation.
 
+Fresh non-broadcast preflight evidence (2026-10-29):
+
+- The official Robinhood RPC, PublicNode, and dRPC independently returned
+  chain ID `4663`; latest blocks `101183776`, `101183787`, and `101183788`.
+- All three returned deployer balance `300000000000000 wei` (`0.0003 ETH`),
+  latest nonce `0`, pending nonce `0`, and no runtime code at the configured
+  EOA owner address.
+- Observed `eth_gasPrice`: official `24238000 wei`, PublicNode `22800000 wei`,
+  dRPC `22864000 wei`.
+- A fresh Foundry simulation at `2026-10-29T20:33:37.506Z` passed on the
+  official RPC without `--broadcast`, without opening the keystore, and with
+  the public role addresses supplied in the deployment brief. It simulated 10
+  operations (5 creates and 5 calls) and summed 5,022,946 transaction gas
+  limits. Its fixed legacy simulation gas price was `21020000 wei`
+  (`0.02102 gwei`), for a nominal aggregate fee of `105582324920000 wei`
+  (`0.000105582324920000 ETH`). At the later official `eth_gasPrice` sample,
+  multiplying the same simulated gas limits gives `121746165148000 wei`
+  (`0.000121746165148000 ETH`). This arithmetic is not an approved fee ceiling
+  or funding instruction and does not include an operator-approved margin.
+- The nonce-bound batch hash was independently recomputed from the compiled
+  creation-code hashes and confirmed as
+  `0x79a2b5882781ffd036697c82945842d9909bf954754f4c50cdd1fe7f1151889d`.
+- The encrypted keystore alias file exists locally, but the alias-to-deployer
+  address match has not been verified. The runtime `.env` has no Mainnet
+  deployment role or approval values; `.env.example` contains only empty
+  placeholders for public role/profile/alias values and no approval fields.
+  No approval signatures or independent reviewer report are present in this
+  package.
+
+Fresh read-only preflight and fixed-price non-broadcast simulation (2026-10-30):
+
+- Official Robinhood RPC and PublicNode both returned chain ID `4663`, latest
+  and pending deployer nonces `0`, deployer balance `300000000000000 wei`
+  (`0.0003 ETH`), and no owner runtime code. The attestor address also had no
+  runtime code. Official `eth_gasPrice` returned `20000000 wei` (`0.02 gwei`).
+- A new `OWNER_APPROVED_DORMANT` simulation used no account, key, signature, or
+  broadcast. It passed chain `4663` and generated 10 non-broadcast operation
+  records with no receipts. With the fixed legacy price `40036001 wei/gas`
+  (`0.040036001 gwei`), the transaction gas-limit sum is `5,090,509`; the
+  conservative aggregate fee ceiling is `203803623414509 wei`
+  (`0.000203803623414509 ETH`). This candidate is not owner-approved. Against
+  the observed balance it leaves `0.000096196376585491 ETH` before any other
+  spending or safety reserve. Re-simulate if nonce, roles, bytecode, price, or
+  operation set changes.
+- The read-only batch-hash helper returned
+  `0x7c47ca63b965a10c8846cde6da507f149bdd2027c0699dd793fafbc17c0d53ae`
+  for starting nonce `0` and `OWNER_APPROVED_DORMANT`. It is only a preflight
+  hash, not deployment evidence or an owner signature.
+- The current encrypted account file could not be matched to the configured
+  deployer from its metadata. Do not broadcast until the operator resolves the
+  alias locally with `cast wallet address --account veyra-robinhood-mainnet`
+  and confirms the displayed address privately.
+
 Since the last full simulation, the deployment script and approval library
 gained a read-only helper that emits pre-prefix messages for standard MetaMask
 `personal_sign`; it preserves the existing approval digests and verification
@@ -131,17 +197,18 @@ The script's initial state is:
 
 | Gate | Implementation | Current behavior |
 |---|---|---|
-| CLI Mainnet readiness | `scripts/robinhood.ts`: `deploymentReadiness()` and `buildDeploymentPreflight()` | Always returns `deploymentReady: false` for Mainnet with the independent-review/owner-approval blocker. It additionally requires public deployer/owner addresses, `VEYRA_MAINNET_OWNER_MODE=EOA_INACTIVE`, and a separate non-Testnet encrypted `VEYRA_MAINNET_ACCOUNT` alias. It never reads key material. |
+| CLI Mainnet readiness | `scripts/robinhood.ts`: `deploymentReadiness()` and `buildDeploymentPreflight()` | Always returns `deploymentReady: false` until matching authorization and fees are validated. It additionally requires an explicit `VEYRA_MAINNET_RELEASE_POLICY`, public deployer/owner addresses, `VEYRA_MAINNET_OWNER_MODE=EOA_INACTIVE`, and a separate non-Testnet encrypted `VEYRA_MAINNET_ACCOUNT` alias. It never reads key material. |
 | CLI EOA checks | `verifyMainnetEoaOwner()` | Reads chain ID and owner runtime code, rejects role overlap and RPC failure; reports `keyControlProven: false`. It cannot establish control of either key. |
-| Foundry configuration | `DeployVeyraMainnetMvp.run()` / `_validateDeploymentConfiguration()` | Requires chain 4663, `tx.origin` equal to the configured deployer, deployer distinct from the Testnet deployer, distinct nonzero roles, and an EOA owner with no code for `EOA_INACTIVE`. It binds the current deployer nonce, role addresses, five creation-code hashes, owner profile, and fixed operation plan into the batch hash. |
-| Foundry broadcast authorization | `run()` checks `ScriptBroadcast`, then `_requireBroadcastApproval()` before `startBroadcast()` | For `EOA_INACTIVE`, requires a distinct reviewer signature and owner signature over the package/report/batch/role context; rejects expired or >24-hour approval, malformed/high-s signatures, and any `tx.gasprice` not exactly the owner-signed legacy gas price. `SAFE_2_OF_3` remains rejected by this broadcast authorization path; it is not an alternate bypass. |
+| Foundry configuration | `DeployVeyraMainnetMvp.run()` / `_validateDeploymentConfiguration()` | Requires chain 4663, `tx.origin` equal to configured deployer, deployer distinct from Testnet deployer, distinct nonzero roles, and a code-free EOA owner. It binds the selected policy, nonce, role addresses, five creation-code hashes, owner profile, and fixed operation plan into the batch hash. |
+| Foundry broadcast authorization | `run()` checks `ScriptBroadcast`, then `_requireBroadcastApproval()` before `startBroadcast()` | `INDEPENDENT_REVIEW_REQUIRED` requires reviewer and owner signatures. Opt-in `OWNER_APPROVED_DORMANT` requires an EIP-191 owner signature over single-key risk acceptance and exact chain, roles, policy, nonce, batch, fee ceilings, and expiry. Both reject malformed/high-s, expired or >24-hour signatures and require exact signed legacy gas price. `SAFE_2_OF_3` remains rejected by this broadcast path. |
 | Aggregate fee limit | `MainnetDeploymentApproval.Record.maxTotalFeeWei` and operator procedure | The total cap is bound into the owner's signature but is not mechanically checked by Solidity because Foundry does not expose the aggregate transaction gas limits to the script. Before any deployer signature, the operator must verify `sum(tx gas limits) × signed gas price <= maxTotalFeeWei`; stop if false. |
 
 The broadcast signature check closes a reproducible gap in the prior script:
 its comment said to simulate until owner approval, but direct `forge script
 --broadcast` did not enforce an approval record. This patch places the signed
-gate before `startBroadcast`. A non-broadcast simulation remains available and
-does not request a signer. No approval signatures exist yet.
+gate before `startBroadcast`. The two policy signatures have separate domains;
+neither can authorize the other path. A non-broadcast simulation remains
+available and does not request a signer. No approval signatures exist yet.
 
 `VeyraSwapExecutor` is not ownable. It accepts only a caller equal to the
 intent account, consumes an exact fresh guard lock, performs typed token and
@@ -199,14 +266,17 @@ campaign covering arbitrary route configurations. These are reviewer work,
 not assumed passes.
 
 Exact local check evidence on this prepared source: `forge test --root contracts`
-passed 65 tests across 9 suites, with 0 failures and 0 skips. The focused
-Mainnet deployment and approval suites passed 24 tests (15 deployment-script
-tests and 9 approval tests). `bun test tests/robinhood-cli.test.ts` passed 12
-tests; the full `bun run test` suite passed 409 tests, skipped 5, and failed 0.
+passed 73 tests across 9 suites, with 0 failures and 0 skips. The focused
+Mainnet deployment and approval suites passed 32 tests (16 deployment-script
+tests and 16 approval tests). `bun test tests/robinhood-cli.test.ts` passed 13
+tests; `bun run test` passed 461 tests, skipped 5, and failed 0.
 `bun run typecheck`, `bun run lint`, targeted `forge fmt --check`, and
-`forge build --root contracts` passed. The full Foundry build emitted existing
-lint warnings in the Phase 0 harness and timestamp checks; those remain review
-items, not test failures. These are local checks, not independent review.
+`forge build --offline` passed. Foundry emitted existing lint warnings in the
+Phase 0 harness and timestamp checks; they are not test failures. The optional
+`forge build --sizes` report exits nonzero because the local deployment script
+artifact is 32,883 bytes, above EIP-170. It is not deployed; all five intended
+contract runtime bytecodes remain below EIP-170 and the RPC-backed script
+simulation completed. These checks are not independent review.
 
 ## Source and configuration hashes
 
@@ -216,9 +286,9 @@ private environment files are included.
 
 | File | SHA-256 |
 |---|---|
-| `.env.example` | `b02647c8da99ae3ce0ab0d4df8bf395eb9c77ca569dd47080a9419388ab8fbd5` |
-| `scripts/robinhood.ts` | `da3693096d98b79412366f31f47ebd82f4e74a725fca3cf557be715c03aee21a` |
-| `contracts/README.md` | `6251f49041adbd7070e31251e4eb23e679747a7129ae4b6a9d63a498236d3086` |
+| `.env.example` | `01e345591db776903732466e336053d1cca53e4077a27748419f2ff2bd6f38c3` |
+| `scripts/robinhood.ts` | `54214ba4723ed51f24fc65a23cbf6871458584754f83cca354fb59ab07e53511` |
+| `contracts/README.md` | `83666c636180966dc3f5698aa0c992ca01796330d9e38155221102403ba48b71` |
 | `contracts/deployments/robinhood-mainnet.json` | `da4ce2385a1565bb2a9b7973d6f207bd8e2e64ee57c988c509112510e9184ccd` |
 | `contracts/src/access/VeyraAccessManaged.sol` | `9cb6d650fc86066bd2e5e0c5cda248179b27a05f9362edb0c62ad27426886576` |
 | `contracts/src/policy/VeyraTokenPolicyRegistry.sol` | `bda87598a092da6d6ad9f7813c2faf81dae1bf987a76c123fae893333419f284` |
@@ -226,13 +296,14 @@ private environment files are included.
 | `contracts/src/swap/VeyraSwapIntentGuard.sol` | `fe4bf09141ee7fd3769fd368142593a2a61e00fe93f5bf217ec28c417694208f` |
 | `contracts/src/swap/VeyraSwapExecutor.sol` | `fb807282315323e6a3837f246c856a2869fb0b0eeb7ac5543d27c932bc925220` |
 | `contracts/src/research/VeyraResearchAttestationRegistry.sol` | `58c8a576d687dcb89f9d881f0cd09968aa8d73e4c1af9485337ce2f739c62507` |
-| `contracts/script/DeployVeyraMainnetMvp.s.sol` | `7dc749a76929b1969c965be992ba6ff7edefdfae8925eb1aa66d8506dc51807a` |
-| `contracts/script/MainnetDeploymentApproval.sol` | `8c7cad77bbc0ff5f6a1a044616020545cd529e6336bfefa88aeac5cfec396a2a` |
+| `contracts/script/DeployVeyraMainnetMvp.s.sol` | `90bc768e694a757b0656102affb3312b221ac1016eb57f76dd520945348ce367` |
+| `contracts/script/MainnetDeploymentApproval.sol` | `ec72950e14c57af46fdfe926cc7ec5ccc9cc95101c81f31e31791f9be983bbb1` |
 | `contracts/foundry.toml` | `2cde2e67bde3308087c03df66779cec4c02cdd7a722d47a41948054d35bedecb` |
-| `contracts/test/DeployVeyraMainnetMvp.t.sol` | `1b6edfd2baf9ef682d1efe731f6afca505a31f4fbbd74265761e2835e297c1e9` |
-| `contracts/test/MainnetDeploymentApproval.t.sol` | `1f4b3ee8b0b6445628a329884df91b8788cdb426f44351b2c9668452440eeb44` |
+| `contracts/test/DeployVeyraMainnetMvp.t.sol` | `895716792983f7427a24b581665c95dc81aa5e8ef9ad062ac766e873dee78b08` |
+| `contracts/test/MainnetDeploymentApproval.t.sol` | `78f628537eebb2a50c40c7d30d17c2e15b873c970fef9d4042dba55b441def2b` |
 | `contracts/test/VeyraArchitectureRegistry.t.sol` | `2ef59175f3d5186a6ebf55cdc3ba3d848cba6de9f7b43e5a85b76b20df0d2933` |
 | `contracts/test/VeyraSwapExecution.t.sol` | `6cf09d01e1a0e4f6db03e3ea354180a23455817673310edcb8161d4cf432c796` |
+| `tests/robinhood-cli.test.ts` | `116f6e58d8e3e0807ca02f9179a9ce226efcf188d369aa9ef762603eead1697b` |
 
 Recompute with:
 
@@ -251,6 +322,7 @@ shasum -a 256 \
   contracts/test/MainnetDeploymentApproval.t.sol \
   contracts/test/VeyraArchitectureRegistry.t.sol \
   contracts/test/VeyraSwapExecution.t.sol \
+  tests/robinhood-cli.test.ts \
   .env.example scripts/robinhood.ts contracts/README.md \
   contracts/deployments/robinhood-mainnet.json
 ```
@@ -265,13 +337,43 @@ explicit decision limited to the inactive deployment batch.
 
 ## Signed approval record
 
-The Foundry script refuses its `ScriptBroadcast` context until both signatures
-verify. The record to preserve alongside the signed reviewer report contains:
+`INDEPENDENT_REVIEW_REQUIRED` uses the dual-signature record below. The
+opt-in `OWNER_APPROVED_DORMANT` path uses a distinct owner-only record and
+does not require a reviewer or report:
+
+```text
+schema: veyra-robinhood-mainnet-owner-approved-dormant-v1
+chainId: 4663
+ownerProfile: EOA_INACTIVE
+releasePolicy: OWNER_APPROVED_DORMANT
+deployer: 0x160CD6fe46aa4A5eb3F3a471C7ae0f07B0c2fb97
+owner: 0x3cdb91a29b73dab9219d9a287543800b417b6dbb
+attestor: 0x6dEdb07C81D315fF493C0ABCD8c9e5E0b0287bB0
+startingDeployerNonce: <fresh RPC value>
+deploymentBatchHash: <from fresh non-broadcast simulation>
+maxFeePerGasWei: <owner-approved exact legacy gas price>
+maxTotalFeeWei: <owner-approved aggregate ceiling>
+expiresAt: <Unix timestamp, no more than 24 hours after signing>
+riskAcceptance: VEYRA_OWNER_ACCEPTS_SINGLE_KEY_RISK_FOR_DORMANT_DEPLOYMENT_ONLY_V1
+ownerRiskAcceptanceSignature: <EIP-191 owner signature>
+```
+
+This EIP-191 signature verifies against the configured owner and binds the
+exact policy, deployment batch, roles, nonce, fees, and expiry. It authorizes
+only the deployment batch. It is not independent security approval, and it
+does not technically prevent the owner from activating the contracts later.
+Do not treat it as a deployment approval unless the owner has inspected and
+accepted the single-key and future-activation risks.
+
+`INDEPENDENT_REVIEW_REQUIRED` refuses its `ScriptBroadcast` context until both
+reviewer and owner signatures verify. Its record to preserve alongside the
+signed reviewer report contains:
 
 ```text
 schema: veyra-robinhood-mainnet-approval-v1
 chainId: 4663
 ownerProfile: EOA_INACTIVE
+releasePolicy: INDEPENDENT_REVIEW_REQUIRED
 deployer: 0x160CD6fe46aa4A5eb3F3a471C7ae0f07B0c2fb97
 owner: 0x3cdb91a29b73dab9219d9a287543800b417b6dbb
 attestor: 0x6dEdb07C81D315fF493C0ABCD8c9e5E0b0287bB0
@@ -302,7 +404,12 @@ It does not approve route activation, token policies, public attestations,
 future upgrades, custody, or any different batch. Never sign until the
 independent report and fresh simulation match all fields above.
 
-## Required human sequence after this package is reviewed
+## Independent-review-only signing sequence
+
+The following steps apply only when `INDEPENDENT_REVIEW_REQUIRED` is selected.
+They are not prerequisites for `OWNER_APPROVED_DORMANT`; that mode instead
+requires the separate owner risk-acceptance record above and the explicit
+operator broadcast decision below.
 
 1. An independent reviewer verifies every source hash, runs the listed tests,
    reads the full deployment and authorization path, reviews the dormant-state
@@ -314,7 +421,8 @@ independent report and fresh simulation match all fields above.
    simulation. Record observed chain, nonce, owner code, ten transaction gas
    limits, fee quote, and batch hash. Stop if any code/config hash, nonce, role,
    or operation differs from the review. Re-run CLI public-address preflight;
-   it must still report the hard review/owner gate and must not read keystore
+   it must report the selected policy and remain not-ready until all matching
+   broadcast approval fields are configured. It must not read keystore
    material.
 3. Freeze the review package, hash it and the completed reviewer report, set
    the reviewer identity and proposed fee fields, then regenerate both digests
@@ -336,8 +444,10 @@ independent report and fresh simulation match all fields above.
 5. Only after written owner authorization for these exact contents and fee
    ceilings, fund the deployer with at least the freshly simulated aggregate
    fee plus an owner-approved margin. Recheck balance, chain, nonce, owner code,
-   signatures and expiry immediately before broadcast. The initial balance was
-   zero, so the prior estimate is not sufficient funding.
+   signatures and expiry immediately before broadcast. A prior read observed
+   0.0003 ETH; at the simulated candidate cap, that leaves approximately
+   0.000096196376585491 ETH above the aggregate gas-limit ceiling before any
+   other spending. This is not a fresh balance check or an approved reserve.
 6. Broadcast once with the exact approved legacy gas price, encrypted Foundry
    alias and all signed approval fields. Do not use `--resume`; a partial batch
    requires a separately reviewed state-aware recovery authorization.
@@ -351,14 +461,14 @@ independent report and fresh simulation match all fields above.
 
 | ID | Severity | Finding / unresolved question | Required action |
 |---|---|---|---|
-| R-01 | Critical release blocker | No independent security-review report or reviewer signature exists in this package. | Independent reviewer examines exact hashes, tests, bytecode, initial state, deployment script, and risks; issue a signed report explicitly approving only `EOA_INACTIVE` deployment, with findings and rationale. |
+| R-01 | High before activation | No independent security review exists. The owner-risk release policy permits a dormant deployment without claiming one. | Before configuring policies, executing a route, or enabling publication, obtain independent review of exact token/router semantics, executor compatibility, adversarial tests, and attestation privacy. |
 | R-02 | High | The owner is a single EOA. Read-only code absence does not prove operator key control or safe custody. | Confirm owner address through a hardware-backed wallet, verify the signed approval recovers to that address, document key custody and recovery; accept single-key risk explicitly. Do not call it multisig. |
 | R-03 | High | Token and router registries enforce admin assertions and runtime hashes, not independent safety. | Keep both empty. Before any activation, review exact token semantics and router bytecode/source, test exact-transfer behavior and route calldata, then use a separately approved activation transaction. |
 | R-04 | High | The executor's typed `swapExactTokensForTokens` route is not proven compatible with 0x Swap API v2 AllowanceHolder or any Robinhood Mainnet deployment. | Keep executor unreachable through empty policies. Build and independently review an adapter for one verified route, validate spender/target/recipient/chain/allowance/simulation, and test on an isolated fork before enabling. |
 | R-05 | High | The guard/executor tests cover core lock, replay, caller, output, and residue checks but not malicious token callbacks or a systematic adversarial route matrix. | Add adversarial mocks and fuzz/invariant tests for callbacks/reentrancy, false/no-return/malformed token results, fee-on-transfer/rebase behavior, malicious router output/recipient behavior, nonce/expiry/slippage boundaries; review all results. |
 | R-06 | High for publication | Attestation events and getters expose report, manifest, and run digests and their linkage. Hashes can still be correlated or dictionary-tested; owner can enable publication. | Keep publication disabled. Define which identifiers may be committed, use high-entropy salts where appropriate, document retention/revocation limits, and get privacy approval before enabling. |
 | R-07 | Medium | Official docs state EVM compatibility but do not identify a hardfork. | Keep Cancun target explicit; preserve RPC `eth_estimateGas` evidence for exact creation code and require bytecode/receipt verification after any approved deployment. Resolve the target revision with chain documentation/support if possible. |
-| R-08 | High | No Foundry signer alias/key-control proof, fresh simulation fee cap, owner approval signature, or approved funding decision is included. Read-only RPC observed a 0.0003 ETH deployer balance at blocks 101036006/101036350, but this observation is not funding authorization. | After review, refresh nonce, balance, fee market, simulation, and account-alias checks; obtain explicit owner approval for the exact funding amount; verify address control without exposing key material. |
+| R-08 | High before broadcast | The named keystore file exists, but it contains no address metadata and the default Foundry wallet list does not include the configured deployer. Owner signature, fee approval, and funding decision are also absent. | Run `cast wallet address --account veyra-robinhood-mainnet` locally and privately confirm it matches the deployer; if it does not, select the correct already-controlled encrypted account. Refresh nonce, balance, fees, and simulation before authorizing. |
 
 No source change in this package should clear these findings by assertion. The
 external reviewer owns the independent judgment; the operator owns the final
@@ -366,30 +476,34 @@ single-key transaction decision.
 
 ## Required approval and execution order
 
-1. Freeze the reviewed checkout and recompute source hashes and package SHA-256.
-2. An independent reviewer verifies code, tests, configuration, source hashes,
-   dormant state, and unresolved findings; the reviewer supplies a signed
-   report and an approval-or-rejection decision.
-3. After that report exists, refresh chain ID, owner code, deployer nonce,
-   balance, bytecode sizes, and non-broadcast simulation. The exact batch hash
-   includes the starting nonce and compiled creation-code hashes; the package
-   SHA-256 independently covers the deployment script source.
-4. Compute both final EIP-191 digests using
-   `currentMainnetApprovalDigests()` and both raw MetaMask messages using
-   `currentMainnetPersonalSignMessages()`. The reviewer signs the reviewer
-   message first. The owner reviews the report and exact fee budget, then
-   explicitly signs the owner message in MetaMask with `personal_sign`.
-5. Verify that all 10 transactions' aggregate gas limit times the exact
-   per-gas ceiling fits the signed `maxTotalFeeWei`, and verify deployer
-   balance covers that maximum plus an explicitly approved margin.
-6. Only after a separate owner decision authorizes broadcast, set the
-   broadcast-only approval variables and use the encrypted Foundry account.
-   The invocation must use the signed fee ceiling and must not use `--resume`.
-7. After each receipt, verify chain, sender, status, address, runtime bytecode
-   hash, owner, guard/executor linkage, empty registries, and disabled
-   attestation publication. Update `robinhood-mainnet.json` only from genuine
-   receipts and verified post-deployment reads.
+1. The owner reads the package and chooses a policy. For
+   `OWNER_APPROVED_DORMANT`, explicitly accept single-key EOA authority and the
+   fact that existing owner permissions can activate contracts later without a
+   contract-enforced reviewer gate. If unacceptable, stop.
+2. Verify locally that the encrypted Foundry alias resolves to the configured
+   deployer without disclosing its password or key. Read-only verify role
+   addresses, chain 4663, owner code absence, nonce, and balance.
+3. Run a fresh non-broadcast simulation for the selected policy. Record the
+   exact 10 transaction gas limits, fee quote, selected release policy, and
+   nonce-bound batch hash. Stop if roles, bytecode, operation order, or dormant
+   invariants differ from the intended plan.
+4. Set release policy, exact per-gas and total fee ceilings, and an expiry of
+   no more than 24 hours. Generate the current approval digests/messages. The
+   owner-risk path has no reviewer fields; the configured owner signs its
+   single-key risk-acceptance message after inspecting the exact record.
+5. Verify the signature against the final digest and confirm the recovered
+   address is the configured owner. Manually check
+   `sum(gasLimit × maxFeePerGasWei) <= maxTotalFeeWei`; Solidity does not enforce
+   this aggregate comparison. Any changed field invalidates the signature.
+6. Obtain a separate explicit operator decision for the exact transaction plan
+   and fee ceiling. Fund only the fresh aggregate estimate plus an approved
+   margin, recheck chain/nonce/balance/owner code/signature/expiry, and broadcast
+   once using the encrypted alias. Do not use `--resume`; partial execution
+   needs a new state-aware plan and authorization.
+7. Verify all ten receipts, ordering, runtime bytecode, owner, empty registries,
+   guard/executor links, assigned attestor, and disabled publication. Update
+   the manifest only from genuine receipt and code evidence.
 
-Any changed source hash, role address, nonce, batch, review report, fee ceiling,
-or expiry invalidates the approvals and requires a fresh review/record. No
-transaction has been signed or broadcast as part of preparing this package.
+Any changed source hash, role address, nonce, batch, release policy, fee ceiling,
+or expiry invalidates the approval and requires a fresh record. No transaction
+has been signed or broadcast as part of preparing this package.

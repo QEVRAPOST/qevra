@@ -158,7 +158,9 @@ The Mainnet configuration is separate (`chain_id = 4663`, RPC alias
 read-only CLI preflight requires a separate encrypted account alias and rejects
 the Testnet alias. The Foundry script requires public deployer, owner, and
 attestor addresses plus `VEYRA_MAINNET_OWNER_MODE`, which must be exactly
-`SAFE_2_OF_3` or `EOA_INACTIVE`. Safe mode retains the SafeL2 v1.4.1 2-of-3
+`SAFE_2_OF_3` or `EOA_INACTIVE`, and `VEYRA_MAINNET_RELEASE_POLICY`, which must
+be exactly `INDEPENDENT_REVIEW_REQUIRED` or `OWNER_APPROVED_DORMANT`. Missing
+or invalid release policy values fail closed. Safe mode retains the SafeL2 v1.4.1 2-of-3
 checks: canonical implementation and factory, three distinct owners, threshold
 two, no modules or guards, canonical fallback handler, and no signer overlap
 with deployer or attestor.
@@ -170,62 +172,72 @@ that the address is not intended for future counterfactual code. EOA ownership
 is a single-key authority model, not equivalent to a Safe. The deployment
 script starts token and router registries empty, wires the guard to its
 executor without adding a route, and starts attestation publication disabled.
-The owner can later configure policies or enable publication; each activation
-remains separately blocked pending review and approval. These configured
-addresses are public addresses, not private keys.
+The owner can later configure policies or enable publication. This deployment
+approval authorizes no later activation. That restriction is an operator policy
+only: the EOA owner has on-chain authority to activate these controls without a
+contract-enforced reviewer gate. If that residual single-key authority is
+unacceptable, do not deploy under the EOA profile. These configured addresses
+are public addresses, not private keys.
 
 Set the public role addresses and explicit profile in the local environment.
 Keep the encrypted signer only in Foundry's keystore. Run the read-only CLI
 preflight with `bun scripts/robinhood.ts deploy preflight mainnet
 "$VEYRA_MAINNET_DEPLOYER"`. A passing identity/configuration check does not
-remove the independent contract-review or transaction-approval gates.
+remove the selected release-policy signature, fee approval, or owner
+authorization gate.
 
-### Independent review and broadcast approval
+### Release policy and broadcast approval
 
 The Mainnet Foundry script keeps non-broadcast simulation available without
-approval. A direct `forge script --broadcast` now fails closed unless the
-EOA_INACTIVE batch has both an independent reviewer signature and an owner
-signature. The record is EIP-191 based and binds chain 4663, deployer, owner,
-attestor, profile, current deployer nonce, the five creation-code hashes,
-the fixed ten-operation order, the review
-package SHA-256, the independent review report SHA-256, the maximum fee per
-gas, the maximum total fee, and an expiry of no more than 24 hours.
+approval. A direct `forge script --broadcast` fails closed unless the exact
+EOA_INACTIVE batch has the authorization selected by
+`VEYRA_MAINNET_RELEASE_POLICY`. The batch hash includes the selected policy.
 
-Broadcast-only environment variables (keep these out of `.env.example` and
-Git; the signatures are authorization records, never signer keys):
+- `INDEPENDENT_REVIEW_REQUIRED` preserves the reviewer-plus-owner signature
+  path and binds the report/package/batch/roles and the exact fee ceilings.
+- `OWNER_APPROVED_DORMANT` is an explicit opt-in for deployment only. The owner
+  signs acceptance of EOA single-key risk and the exact chain 4663, deployer,
+  owner, attestor, profile, policy, starting nonce, batch hash, fee per gas,
+  aggregate fee cap, and expiry. This path asserts no reviewer or report.
+
+Both signatures are EIP-191, expire within 24 hours, and are checked before
+`startBroadcast`. The selected price must equal the signed legacy gas price.
+Neither policy authorizes a route, token policy, public attestation,
+transaction execution, custody, or later activation. The EOA owner can still
+activate these controls directly on-chain; no runtime contract enforces an
+independent-review gate for future changes.
+
+Common broadcast-only fee variables (keep signatures out of `.env.example`
+and Git; signatures are authorization records, never signer keys):
 
 ```text
-VEYRA_MAINNET_REVIEWER
-VEYRA_MAINNET_REVIEW_PACKAGE_SHA256
-VEYRA_MAINNET_INDEPENDENT_REVIEW_SHA256
 VEYRA_MAINNET_APPROVED_MAX_FEE_PER_GAS_WEI
 VEYRA_MAINNET_APPROVED_MAX_TOTAL_FEE_WEI
 VEYRA_MAINNET_APPROVAL_EXPIRES_AT
-VEYRA_MAINNET_REVIEWER_SIGNATURE
-VEYRA_MAINNET_OWNER_APPROVAL_SIGNATURE
 ```
 
-The reviewer address must be distinct from deployer, owner, and attestor. The
-reviewer signs the package, independent report, batch hash, and role
-configuration. The owner signs the same context plus both fee ceilings and the
-expiry. `currentMainnetDeploymentBatchHash()` and
-`currentMainnetApprovalDigests()` expose the canonical values for independent
-verification. The script rejects invalid,
-expired, overlong, malformed, high-s, role-overlapping, or context-mismatched
-approvals, and requires the simulated transaction gas price to equal the
-signed per-gas ceiling. Use a legacy transaction with the exact approved
-`--with-gas-price` value; do not fall back to an unbounded EIP-1559 fee preset.
+`INDEPENDENT_REVIEW_REQUIRED` additionally requires
+`VEYRA_MAINNET_REVIEWER`, `VEYRA_MAINNET_REVIEW_PACKAGE_SHA256`,
+`VEYRA_MAINNET_INDEPENDENT_REVIEW_SHA256`,
+`VEYRA_MAINNET_REVIEWER_SIGNATURE`, and
+`VEYRA_MAINNET_OWNER_APPROVAL_SIGNATURE`. `OWNER_APPROVED_DORMANT` instead
+requires `VEYRA_MAINNET_OWNER_RISK_ACCEPTANCE_SIGNATURE` and does not read
+reviewer/report fields. Keep authorization signatures in the ignored local
+runtime environment.
 
-The script cannot establish reviewer independence or the report's truth. The
-operator must verify the reviewer's identity and report, then compare the sum
-of all ten simulated transaction gas limits multiplied by the approved per-gas
-ceiling against the signed total-fee ceiling before allowing Foundry to request
-a signer. Do not use `--resume`: it does not re-run the script approval gate.
-If a batch partially broadcasts, stop and request a new review and approval for
-a state-aware recovery plan.
+For independent-review mode, the reviewer address must be distinct from the
+deployer, owner, and attestor. The reviewer signs the package, independent
+report, batch hash, and role configuration. The owner signs that context plus
+the fee ceilings and expiry. The script rejects invalid, expired, overlong,
+malformed, high-s, role-overlapping, or context-mismatched approvals. In both
+modes, manually compare the sum of all ten simulated transaction gas limits
+multiplied by the signed per-gas ceiling against the signed total-fee ceiling;
+the script cannot enforce this aggregate bound. Do not use `--resume`: it does
+not re-run the script approval gate. If a batch partially broadcasts, stop and
+request a new state-aware recovery authorization.
 
-After an independent report exists, generate the current nonce-bound batch
-hash and signing digests without `--broadcast` or `--account`:
+Set the release policy, exact fee values, and expiry, then generate the current
+nonce-bound batch hash and signing values without `--broadcast` or `--account`:
 
 ```sh
 cd contracts
@@ -233,8 +245,8 @@ forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
   --profile robinhood_mainnet --rpc-url robinhood_mainnet \
   --sig 'currentMainnetDeploymentBatchHash()'
 
-# Set the report/package hashes, reviewer address and signed fee/expiry fields,
-# then regenerate both EIP-191 digests against the same fresh nonce.
+# For independent-review mode only, set reviewer/report/package fields. In
+# either mode, set the exact fee ceilings and expiry first.
 forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
   --profile robinhood_mainnet --rpc-url robinhood_mainnet \
   --sig 'currentMainnetApprovalDigests()'
@@ -273,35 +285,37 @@ const signature = await provider.request({
 });
 ```
 
-Use the reviewer message for the independent reviewer and the owner message
-for the configured owner. This is a message signature for the exact approval
-record, not a transaction, and it does not change the wallet network. Do not
-call `personal_sign` on `reviewerDigest` or `ownerDigest`; MetaMask would add a
-second prefix. Do not use deprecated `eth_sign`. MetaMask displays this
-32-byte message as hex, so the signer must independently inspect the review
-report, batch hash, roles, nonce, and fee limits before explicitly approving
-the prompt. The script makes no account permission request and does not switch
-chains. Verify the returned signature against the corresponding final digest
-with `cast wallet verify --address <signer> --no-hash <digest> <signature>`.
-Never pass a private key or keystore password on the command line.
+Use the reviewer message only for independent-review mode. In
+`OWNER_APPROVED_DORMANT`, the helper returns a zero reviewer message and the
+owner message encodes the single-key risk acceptance. This is a message
+signature for the exact approval record, not a transaction. Do not sign a zero
+message, call `personal_sign` on a final digest, or use deprecated `eth_sign`;
+MetaMask must prefix the raw 32-byte message once. Before approving the hex
+prompt, inspect the exact role addresses, policy, nonce, batch hash, fee limits,
+and expiry. The helper does not request account access or switch networks.
+Verify the returned signature against its final digest with
+`cast wallet verify --address <signer> --no-hash <digest> <signature>`. Never
+pass a private key or keystore password on the command line.
 
 Mainnet deployment simulation (never add `--broadcast` before explicit
 approval):
 
 ```sh
-forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
+VEYRA_MAINNET_RELEASE_POLICY=OWNER_APPROVED_DORMANT forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
   --profile robinhood_mainnet --rpc-url robinhood_mainnet --sender "$VEYRA_MAINNET_DEPLOYER" \
   --sig 'run()' --gas-estimate-multiplier 130
 ```
 
-For the current EOA_INACTIVE path, this simulation intentionally omits
-`--broadcast` and `--account`; it does not require approval signatures. The
-attestation registry's assigned publisher cannot record anything until its
-EOA owner explicitly enables publication.
+This non-broadcast simulation omits `--account`; it creates no receipt and
+does not require approval signatures. It verifies only the selected initial
+deployment path. Attestation publication remains disabled until the EOA owner
+explicitly changes it.
 
-After independent review, signed reviewer and owner approval, fresh simulation,
-and manual aggregate-fee verification, use the encrypted Foundry account alias
-with the exact approved price:
+After a fresh simulation, the selected policy's exact signatures, explicit
+owner authorization, and manual aggregate-fee verification, use the encrypted
+Foundry account alias with the exact approved price. The owner-risk path needs
+`VEYRA_MAINNET_OWNER_RISK_ACCEPTANCE_SIGNATURE`; the review path needs its
+reviewer and owner signatures plus report/package hashes:
 
 ```sh
 forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \

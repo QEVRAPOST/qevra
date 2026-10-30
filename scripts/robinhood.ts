@@ -322,10 +322,12 @@ export function resolveRobinhoodNetwork(value: string): NetworkOption {
   return network;
 }
 
+export type MainnetReleasePolicy = "INDEPENDENT_REVIEW_REQUIRED" | "OWNER_APPROVED_DORMANT";
+
 export function deploymentReadiness(networkId: NetworkId): { ready: false; reason: string } {
   resolveRobinhoodNetwork(networkId);
   return networkId === "mainnet"
-    ? { ready: false, reason: "Mainnet deployment is blocked pending independent security review and owner approval." }
+    ? { ready: false, reason: "Mainnet deployment stays blocked until an explicit release policy and matching owner authorization are configured; independent-review mode also requires reviewer approval." }
     : { ready: false, reason: "VeyraResearchEvidenceAnchor is prepared for Testnet but awaits explicit owner authorization; the Phase 0 research harness and verifier remain excluded." };
 }
 
@@ -338,6 +340,7 @@ export interface DeploymentPreflight {
   publicDeployer: `0x${string}` | null;
   ownerAddress: Address | null;
   ownerMode: "SAFE_2_OF_3" | "EOA_INACTIVE" | null;
+  releasePolicy: MainnetReleasePolicy | null;
   keyMaterialAccessed: false;
   deploymentReady: false;
   reason: string;
@@ -353,8 +356,13 @@ export function buildDeploymentPreflight(
   const requestedMainnetAccount = env.VEYRA_MAINNET_ACCOUNT?.trim() || null;
   const requestedOwnerAddress = env.VEYRA_MAINNET_OWNER?.trim() || null;
   const requestedOwnerMode = env.VEYRA_MAINNET_OWNER_MODE?.trim() || null;
+  const requestedReleasePolicy = env.VEYRA_MAINNET_RELEASE_POLICY?.trim() || null;
   const ownerMode = requestedOwnerMode === "SAFE_2_OF_3" || requestedOwnerMode === "EOA_INACTIVE"
     ? requestedOwnerMode
+    : null;
+  const releasePolicy = requestedReleasePolicy === "INDEPENDENT_REVIEW_REQUIRED"
+    || requestedReleasePolicy === "OWNER_APPROVED_DORMANT"
+    ? requestedReleasePolicy
     : null;
   const accountAlias = networkId === "testnet" ? testnetAccount : requestedMainnetAccount;
   let reason = deploymentReadiness(networkId).reason;
@@ -372,6 +380,12 @@ export function buildDeploymentPreflight(
     reason = "Mainnet requires VEYRA_MAINNET_OWNER to be a public owner address validated for the selected profile.";
   } else if (networkId === "mainnet" && !ownerAddress) {
     reason = "VEYRA_MAINNET_OWNER must be a valid public address; no key material was read.";
+  } else if (networkId === "mainnet" && !releasePolicy) {
+    reason = "Mainnet requires VEYRA_MAINNET_RELEASE_POLICY=INDEPENDENT_REVIEW_REQUIRED or OWNER_APPROVED_DORMANT; missing or invalid values fail closed.";
+  } else if (networkId === "mainnet" && releasePolicy === "OWNER_APPROVED_DORMANT") {
+    reason = "OWNER_APPROVED_DORMANT opts into owner-signed single-key risk acceptance for the exact dormant deployment only; fee approval is required and activation is not authorized.";
+  } else if (networkId === "mainnet" && releasePolicy === "INDEPENDENT_REVIEW_REQUIRED") {
+    reason = "INDEPENDENT_REVIEW_REQUIRED remains selected; an independent reviewer signature and exact owner fee approval are required before broadcast.";
   }
 
   return {
@@ -383,6 +397,7 @@ export function buildDeploymentPreflight(
     publicDeployer,
     ownerAddress,
     ownerMode,
+    releasePolicy,
     keyMaterialAccessed: false,
     deploymentReady: false,
     reason,
@@ -570,6 +585,7 @@ async function runDeployment(
     if (network.id === "mainnet") {
       process.stdout.write(`Owner profile: ${plan.ownerMode ?? "not configured or invalid"}\n`);
       process.stdout.write(`Configured Mainnet owner: ${plan.ownerAddress ?? "not configured or invalid"}\n`);
+      process.stdout.write(`Release policy: ${plan.releasePolicy ?? "not configured or invalid"}\n`);
     }
     try {
       const snapshot = await readRobinhoodNetwork(network.id);

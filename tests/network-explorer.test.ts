@@ -141,7 +141,7 @@ test("rapid Mainnet → Testnet → Mainnet selection stays loading until the la
   );
   assert.deepEqual([state0.rpc.status, state1.rpc.status, state2.rpc.status], ["loading", "loading", "loading"]);
   assert.equal(getVerifiedVeyraDeployments(state1.networkId, registry.roadmapContracts).length, 5);
-  assert.equal(getVerifiedVeyraDeployments(state2.networkId, registry.roadmapContracts).length, 0);
+  assert.equal(getVerifiedVeyraDeployments(state2.networkId, registry.roadmapContracts).length, 5);
   assert.equal(testnetRecords.length, 5);
 
   const testnetMarkup = renderNetworks(
@@ -169,10 +169,12 @@ test("rapid Mainnet → Testnet → Mainnet selection stays loading until the la
   assert.match(testnetMarkup, /Loading public Testnet status · chain ID 46630/);
   assert.match(mainnetMarkup, /id="h-ne-registry-mainnet"/);
   assert.match(mainnetMarkup, /data-network-id="mainnet" data-chain-id="4663"/);
-  assert.match(mainnetMarkup, /<strong>0\/5<\/strong> MVP contracts deployed/);
+  assert.match(mainnetMarkup, /<strong>5\/5<\/strong> MVP contracts deployed/);
   assert.match(mainnetMarkup, /Loading public Mainnet status · chain ID 4663/);
   assert.doesNotMatch(mainnetMarkup, /id="h-ne-registry-testnet"/);
-  assert.doesNotMatch(mainnetTable, /0x[0-9a-fA-F]{40}/);
+  for (const record of registry.roadmapContracts.filter((item) => item.networkId === "mainnet")) {
+    assert.ok(mainnetTable.includes(record.address));
+  }
   for (const record of testnetRecords) assert.ok(testnetTable.includes(record.address));
 
   const staleTestnetResponse = networkSelectionReducer(state2, {
@@ -490,6 +492,7 @@ test("Networks shows the five-slot MVP separately from future security research 
   const testnetTable = tableFor(testnetMarkup, "Testnet MVP architecture deployments");
   const mainnetTable = tableFor(mainnetMarkup, "Mainnet MVP architecture deployments");
   const gatedTable = tableFor(testnetMarkup, "Future architecture / security research slots on Robinhood Testnet");
+  const mainnetFutureTable = tableFor(mainnetMarkup, "Future architecture / security research slots on Robinhood Mainnet");
   const rowCount = (table: string) => (table.match(/class="ne-contract"/g) ?? []).length;
   const testnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "testnet");
   const mainnetRecords = registry.roadmapContracts.filter((record) => record.networkId === "mainnet");
@@ -501,7 +504,7 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.equal(rowCount(mainnetTable), 5, "the Mainnet MVP table should list each of its five manifest slots");
   assert.equal(rowCount(gatedTable), 5);
   assert.equal(testnetRecords.length, 5, "the validated Testnet manifest currently contains five architecture deployments");
-  assert.equal(mainnetRecords.length, 0, "the validated Mainnet manifest currently contains no architecture deployments");
+  assert.equal(mainnetRecords.length, 5, "the validated Mainnet manifest contains all five verified MVP deployments");
   assert.match(testnetMarkup, new RegExp(`<strong>${testnetRecords.length}\\/5<\\/strong> MVP contracts deployed`));
   assert.match(mainnetMarkup, new RegExp(`<strong>${mainnetRecords.length}\\/5<\\/strong> MVP contracts deployed`));
   assert.match(testnetMarkup, new RegExp(`aria-label="${testnetRecords.length} of 5 Testnet MVP contracts deployed based on verified on-chain records"`));
@@ -513,14 +516,17 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.match(testnetMarkup, /Source verification unavailable/);
   assert.match(testnetMarkup, /These contracts are deployed on Robinhood Testnet\. Product integration and security readiness are tracked separately\. Deployment does not imply Mainnet availability or security approval\./);
   assert.match(testnetMarkup, /manifest-verified on-chain records only/i);
-  assert.match(mainnetMarkup, /0 deployed · 5 future security-research slots/);
+  assert.match(mainnetMarkup, /5 deployed · 5 future security-research slots outside MVP scope/);
   assert.match(mainnetMarkup, /Mainnet MVP Deployments/);
   assert.doesNotMatch(mainnetMarkup, /<summary[^>]*><span>MVP Contracts Not Deployed<\/span>/, "Mainnet MVP slots should be visible without expanding a second table");
-  assert.equal((mainnetTable.match(/>NOT DEPLOYED<\/span>/g) ?? []).length, 5);
-  assert.equal((mainnetTable.match(/aria-label="No verified deployed address"/g) ?? []).length, 5);
-  assert.equal((mainnetTable.match(/aria-label="No deployment actions"/g) ?? []).length, 5);
-  assert.doesNotMatch(mainnetTable, /aria-label="Copy address"|aria-label="Open explorer"|aria-label="View deployment evidence"/);
-  assert.doesNotMatch(mainnetTable, /0x[0-9a-fA-F]{40}/, "Mainnet rows must not reuse Testnet or external infrastructure addresses");
+  assert.equal((mainnetTable.match(/>DEPLOYED<\/span>/g) ?? []).length, 5);
+  assert.equal((mainnetTable.match(/aria-label="Copy address"/g) ?? []).length, 5);
+  assert.equal((mainnetTable.match(/aria-label="Open explorer"/g) ?? []).length, 5);
+  assert.equal((mainnetTable.match(/aria-label="View deployment evidence"/g) ?? []).length, 5);
+  assert.equal((mainnetTable.match(/<dd>NOT ENABLED<\/dd>/g) ?? []).length, 5);
+  assert.equal((mainnetTable.match(/NOT VERIFIED/g) ?? []).length, 5);
+  assert.equal((mainnetFutureTable.match(/>NOT DEPLOYED<\/span>/g) ?? []).length, 5);
+  assert.doesNotMatch(mainnetFutureTable, /0x[0-9a-fA-F]{40}/, "Mainnet future slots must not imply deployed account infrastructure");
   const mainnetMvpNames = [
     "VeyraTokenPolicyRegistry",
     "VeyraRouterRegistry",
@@ -552,7 +558,7 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.doesNotMatch(testnetTable, /<td[^>]*data-label="Product Use"/);
   assert.doesNotMatch(testnetTable, />(?:INACTIVE|DORMANT)<\/span>/);
   assert.equal((gatedTable.match(/<dt>Product use<\/dt><dd>SECURITY BLOCKED<\/dd>/g) ?? []).length, 5);
-  assert.match(mainnetMarkup, /0 of 5 Mainnet MVP contracts deployed/);
+  assert.match(mainnetMarkup, /5 of 5 Mainnet MVP contracts deployed/);
   assert.match(testnetTable, /<dt>Manifest readiness<\/dt><dd><code>hard_no_go<\/code><\/dd>/);
   assert.match(testnetTable, /<dt>Manifest readiness<\/dt><dd><code>restricted_testnet<\/code><\/dd>/);
   assert.match(testnetTable, /<dt>Manifest readiness reason<\/dt>/);

@@ -85,15 +85,42 @@ contract DeployVeyraMainnetMvpTest {
         DeployVeyraMainnetMvp script = new DeployVeyraMainnetMvp();
         DeployVeyraMainnetMvp.OwnerProfile profile = DeployVeyraMainnetMvp.OwnerProfile.EOA_INACTIVE;
         address owner = address(0xE0A);
-        bytes32 original = script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, 17);
-        bytes32 same = script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, 17);
-        bytes32 changedNonce = script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, 18);
+        DeployVeyraMainnetMvp.ReleasePolicy releasePolicy =
+        DeployVeyraMainnetMvp.ReleasePolicy.INDEPENDENT_REVIEW_REQUIRED;
+        bytes32 original =
+            script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, releasePolicy, 17);
+        bytes32 same = script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, releasePolicy, 17);
+        bytes32 changedNonce =
+            script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, owner, ATTESTOR, profile, releasePolicy, 18);
         bytes32 changedOwner =
-            script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, address(0xE0B), ATTESTOR, profile, 17);
+            script.mainnetDeploymentBatchHash(MAINNET_DEPLOYER, address(0xE0B), ATTESTOR, profile, releasePolicy, 17);
 
         require(original == same, "batch hash should be stable for the same script and plan");
         require(original != changedNonce, "batch hash must bind the deployer nonce");
         require(original != changedOwner, "batch hash must bind the owner");
+    }
+
+    function test_deploymentBatchHashBindsTheExplicitReleasePolicy() public {
+        DeployVeyraMainnetMvp script = new DeployVeyraMainnetMvp();
+        address owner = address(0xE0A);
+        bytes32 reviewBatch = script.mainnetDeploymentBatchHash(
+            MAINNET_DEPLOYER,
+            owner,
+            ATTESTOR,
+            DeployVeyraMainnetMvp.OwnerProfile.EOA_INACTIVE,
+            DeployVeyraMainnetMvp.ReleasePolicy.INDEPENDENT_REVIEW_REQUIRED,
+            17
+        );
+        bytes32 ownerRiskBatch = script.mainnetDeploymentBatchHash(
+            MAINNET_DEPLOYER,
+            owner,
+            ATTESTOR,
+            DeployVeyraMainnetMvp.OwnerProfile.EOA_INACTIVE,
+            DeployVeyraMainnetMvp.ReleasePolicy.OWNER_APPROVED_DORMANT,
+            17
+        );
+
+        require(reviewBatch != ownerRiskBatch, "release policy must be bound into the deployment batch hash");
     }
 
     function test_refusesEveryChainOtherThanRobinhoodMainnetBeforeBroadcast() public {
