@@ -517,6 +517,7 @@ test("Networks shows the five-slot MVP separately from future security research 
   assert.match(testnetMarkup, /These contracts are deployed on Robinhood Testnet\. Product integration and security readiness are tracked separately\. Deployment does not imply Mainnet availability or security approval\./);
   assert.match(testnetMarkup, /manifest-verified on-chain records only/i);
   assert.match(mainnetMarkup, /5 deployed · 5 future security-research slots outside MVP scope/);
+  assert.match(mainnetMarkup, /EOA_INACTIVE/);
   assert.match(mainnetMarkup, /Mainnet MVP Deployments/);
   assert.doesNotMatch(mainnetMarkup, /<summary[^>]*><span>MVP Contracts Not Deployed<\/span>/, "Mainnet MVP slots should be visible without expanding a second table");
   assert.equal((mainnetTable.match(/>DEPLOYED<\/span>/g) ?? []).length, 5);

@@ -129,35 +129,35 @@
       "slot": 6,
       "solidityName": "VeyraTokenPolicyRegistry",
       "readiness": "deployed_inactive",
-      "reason": "Deployed on Mainnet with no token policies configured. Deployment does not authorize token listings or swap execution.",
+      "reason": "EOA_INACTIVE deployment; deployed on Mainnet with no token policies configured. Deployment does not authorize token listings or swap execution.",
       "address": ""
     },
     {
       "slot": 7,
       "solidityName": "VeyraRouterRegistry",
       "readiness": "deployed_inactive",
-      "reason": "Deployed on Mainnet with no routers configured. No router address or execution route is approved.",
+      "reason": "EOA_INACTIVE deployment; deployed on Mainnet with no routers configured. No router address or execution route is approved.",
       "address": ""
     },
     {
       "slot": 8,
       "solidityName": "VeyraSwapIntentGuard",
       "readiness": "deployed_inactive",
-      "reason": "Deployed and linked to the Mainnet registries and executor; remains inactive while the registries are empty and no secure account caller is available.",
+      "reason": "EOA_INACTIVE deployment; linked to the Mainnet registries and executor, but remains inactive while the registries are empty and no secure account caller is available.",
       "address": ""
     },
     {
       "slot": 9,
       "solidityName": "VeyraSwapExecutor",
       "readiness": "hard_no_go",
-      "reason": "Deployed inactive; no token policies, routers, or independently reviewed execution integration are configured. Swaps remain disabled.",
+      "reason": "EOA_INACTIVE deployment; no token policies, routers, or independently reviewed execution integration are configured. Swaps remain disabled.",
       "address": ""
     },
     {
       "slot": 10,
       "solidityName": "VeyraResearchAttestationRegistry",
       "readiness": "deployed_inactive",
-      "reason": "Deployed with one configured attestor; attestation publication remains disabled and no records have been published. Privacy and use policy still require approval before activation.",
+      "reason": "EOA_INACTIVE deployment; one attestor is configured, but publication remains disabled and no records have been published. Privacy and use policy still require approval before activation.",
       "address": ""
     }
   ],
