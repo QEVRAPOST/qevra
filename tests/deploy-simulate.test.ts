@@ -93,7 +93,7 @@ test("shows Mainnet deployment readiness through configured chain and RPC reads"
   assert.match(result.output, /ROBINHOOD MAINNET/);
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+4663/);
   assert.match(result.output, /ROBINHOOD MAINNET FIVE-CONTRACT MVP REGISTRY/);
-  assert.match(result.output, /0\/5 MVP contracts deployed/i);
+  assert.match(result.output, /5\/5 MVP contracts deployed/i);
   assert.doesNotMatch(result.output, /TESTNET/);
   assert.doesNotMatch(result.output, /0x10A47a16A6A903574Ed4058B67750073cC992632/);
 });
@@ -112,7 +112,7 @@ test("renders Mainnet in the shared terminal shell and shows chain-pinned extern
   assert.match(result.output, /VEYRA \/ ROBINHOOD NETWORK READINESS/);
   assert.match(result.output, /EXPECTED CHAIN ID\s+│\s+4663/);
   assert.match(result.output, /ROBINHOOD MAINNET FIVE-CONTRACT MVP REGISTRY/);
-  assert.match(result.output, /0\/5 MVP contracts deployed/);
+  assert.match(result.output, /5\/5 MVP contracts deployed/);
   assert.match(result.output, /EXTERNAL MAINNET INFRASTRUCTURE/);
   assert.match(flattenedOutput, /Mainnet firm quotes require live provider and contract validation/);
   assert.match(flattenedOutput, /this terminal does not request quotes or execute swaps/);
@@ -286,15 +286,19 @@ test("renders both registries only for explicit all-network selection", async ()
   assert.ok(calls.some((call) => call.startsWith("https://rpc.mainnet.chain.robinhood.com:")));
 });
 
-test("renders validated Testnet deployments dynamically and keeps Mainnet empty", async () => {
+test("renders validated Testnet and Mainnet deployments dynamically", async () => {
   const testnetDeployments = testnetManifest.contracts.filter((contract) => contract.deploymentStatus === "verified");
-  const mainnetManifestContracts = mainnetManifest.contracts as Array<{ deploymentStatus?: string }>;
+  const mainnetManifestContracts = mainnetManifest.contracts as Array<{
+    deploymentStatus?: string;
+    solidityName: string;
+    address: string;
+  }>;
   const mainnetDeployments = mainnetManifestContracts.filter((contract) => contract.deploymentStatus === "verified");
   const testnetDeploymentCount = testnetDeployments.length;
   const mainnetDeploymentCount = mainnetDeployments.length;
   const slotTen = testnetDeployments.find((contract) => contract.architectureSlot === 10);
   assert.equal(testnetDeploymentCount, 5, "the current Testnet manifest has five verified architecture deployments");
-  assert.equal(mainnetDeploymentCount, 0, "the current Mainnet manifest remains empty");
+  assert.equal(mainnetDeploymentCount, 5, "the current Mainnet manifest has five verified architecture deployments");
   assert.equal(slotTen?.address, "0x61c3DC95B31977e6F3a3373eC5BAb52477E96Ba2");
 
   const result = await simulateDeployment("all", {
@@ -324,6 +328,10 @@ test("renders validated Testnet deployments dynamically and keeps Mainnet empty"
     assert.ok(result.output.includes(contract.solidityName), `${contract.solidityName} should be listed`);
     assert.ok(result.output.includes(contract.address), `${contract.address} should come from the supplied manifest`);
   }
+  for (const contract of mainnetDeployments) {
+    assert.ok(result.output.includes(contract.solidityName), `${contract.solidityName} should be listed`);
+    assert.ok(result.output.includes(contract.address), `${contract.address} should come from the supplied manifest`);
+  }
   assert.match(result.output, /STANDALONE TESTNET EVIDENCE ANCHOR/);
   assert.match(result.output, /STANDALONE MAINNET EVIDENCE ANCHOR/);
 });
@@ -343,7 +351,7 @@ test("reports only slots 6-10 as the MVP and labels slots 1-5 as future research
   });
 
   assert.match(result.output, /5\/5 MVP contracts deployed/);
-  assert.match(result.output, /0\/5 MVP contracts deployed/);
+  assert.match(result.output, /5\/5 MVP contracts deployed/);
   const testnetFutureStart = result.output.indexOf("FUTURE ARCHITECTURE / SECURITY RESEARCH");
   const testnetAnchorStart = result.output.indexOf("STANDALONE TESTNET EVIDENCE ANCHOR");
   assert.ok(testnetFutureStart >= 0 && testnetAnchorStart > testnetFutureStart);
