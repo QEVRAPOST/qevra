@@ -1,5 +1,13 @@
 # Contracts workspace
 
+> **Current Robinhood Mainnet status (2026-10-30):** the five MVP contracts
+> in slots 6–10 are deployed and verified as on-chain records (5/5), with the
+> `EOA_INACTIVE` profile and `OWNER_APPROVED_DORMANT` release policy. They are
+> not source-verified, independently audited, or production-activated. No
+> further Mainnet deployment is needed for this batch. See the
+> [Mainnet deployment handoff](../docs/handoffs/VEYRA-MAINNET-DEPLOYMENT-HANDOFF.md)
+> for receipts, bytecode evidence, roles, restrictions, and activation gates.
+
 This Foundry workspace is reserved for Solidity contracts and local tests.
 The production smart-account architecture, verifier integration, key
 registration, recovery policy, and upgrade policy remain undecided pending the
@@ -19,11 +27,12 @@ on-chain PQ custody and authorization blockers documented here.
 ## Ten-slot architecture and five-contract MVP
 
 Slots 1–5 remain security research and are not implemented. Slots 6–10 are
-implemented and deployed on Robinhood Testnet (5/5); the Mainnet manifest
-currently has no verified deployments. Testnet deployment does not authorize
-Mainnet deployment or active configuration. The Phase 0 ML-DSA key-registration
-forgery remains a hard stop for account authorization, custody, funding,
-recovery, deposits, and withdrawals.
+implemented and deployed on Robinhood Testnet and Mainnet (5/5 on each chain).
+Mainnet records are in `deployments/robinhood-mainnet.json`; they describe an
+inactive EOA-owned deployment, not source verification, independent security
+approval, or activation. The Phase 0 ML-DSA key-registration forgery remains a
+hard stop for account authorization, custody, funding, recovery, deposits, and
+withdrawals.
 
 | # | Proposed Solidity name | Purpose and required dependencies | Source / Foundry coverage | Security gate | Testnet / Mainnet |
 |---:|---|---|---|---|---|
@@ -32,11 +41,11 @@ recovery, deposits, and withdrawals.
 | 3 | `VeyraRecoveryPolicy` | Encodes a reviewed threshold recovery transition without a unilateral EOA bypass; depends on #2 and a product-approved recovery model. | Not implemented; no tests. | **Blocked:** key-loss, guardian, threshold, and delay policies remain undecided. | No / No |
 | 4 | `VeyraAccount` | Non-upgradeable account with ML-DSA-authorized, bounded execution; depends on #1–#3 and #8. | Not implemented; no tests. | **Hard NO-GO:** verifier registration vulnerability and custody policy remain unresolved. | No / No |
 | 5 | `VeyraAccountFactory` | Deterministically creates accounts without initializer front-running or retained factory authority; depends on #2 and #4. | Not implemented; no tests. | **Blocked:** account initialization and deployment authority are not reviewed. | No / No |
-| 6 | `VeyraTokenPolicyRegistry` | Owner-managed token allowlist pins runtime code hash and decimals; accepts only explicitly marked exact-transfer semantics. | Implemented; focused Foundry coverage. | **Dormant only:** no independently reviewed Robinhood token allowlist or transfer-semantics review. Admin entries are assertions, not proofs. | Deployed dormant / Not deployed |
-| 7 | `VeyraRouterRegistry` | Owner-managed allowlist pins exact router runtime code hash; consumed by #8/#9. | Implemented; focused Foundry coverage. | **Dormant only:** no compatible, independently verified Robinhood router established. A code hash alone does not establish safe router behavior. | Deployed dormant / Not deployed |
-| 8 | `VeyraSwapIntentGuard` | Consumes account-originated nonces; checks chain, tokens, router, deadline, quote/minimum output and slippage; locks an exact intent for same-block executor consumption. | Implemented; focused guard/executor integration tests. | **Dormant only:** no verified route or quote source; an account must itself authenticate the lock call. | Deployed dormant / Not deployed |
-| 9 | `VeyraSwapExecutor` | Uses a typed exact-swap interface; input is held only during the atomic call, allowance is reset, output and zero residue are checked. | Implemented; focused tests include replay and caller authorization. | **Not approved for activation:** no verified route or audited Robinhood integration. Test mocks do not establish live-router safety. | Deployed inactive / Not deployed |
-| 10 | `VeyraResearchAttestationRegistry` | Role-gated digest-only run attestations; stores publisher and timestamp, never report text. An attestation records publication, not truth or review. | Implemented; focused Foundry coverage. | **Mainnet publication disabled by default:** owner approval and a reviewed privacy/attestor policy are required before enabling publication. Existing Testnet deployment is unchanged. | Deployed restricted / Not deployed |
+| 6 | `VeyraTokenPolicyRegistry` | Owner-managed token allowlist pins runtime code hash and decimals; accepts only explicitly marked exact-transfer semantics. | Implemented; focused Foundry coverage. | **Deployed dormant:** no independently reviewed Robinhood token allowlist or transfer-semantics review. Admin entries are assertions, not proofs. | Deployed dormant / Deployed dormant |
+| 7 | `VeyraRouterRegistry` | Owner-managed allowlist pins exact router runtime code hash; consumed by #8/#9. | Implemented; focused Foundry coverage. | **Deployed dormant:** no compatible, independently verified Robinhood router is allowlisted. A code hash alone does not establish safe router behavior. | Deployed dormant / Deployed dormant |
+| 8 | `VeyraSwapIntentGuard` | Consumes account-originated nonces; checks chain, tokens, router, deadline, quote/minimum output and slippage; locks an exact intent for same-block executor consumption. | Implemented; focused guard/executor integration tests. | **Deployed dormant:** linked to #6, #7 and #9, but no token or router policy enables a route. An account must itself authenticate the lock call. | Deployed dormant / Deployed dormant |
+| 9 | `VeyraSwapExecutor` | Uses a typed exact-swap interface; input is held only during the atomic call, allowance is reset, output and zero residue are checked. | Implemented; focused tests include replay and caller authorization. | **Deployed inactive:** no verified route or independent Robinhood integration review. Test mocks do not establish live-router safety. | Deployed inactive / Deployed inactive |
+| 10 | `VeyraResearchAttestationRegistry` | Role-gated digest-only run attestations; stores publisher and timestamp, never report text. An attestation records publication, not truth or review. | Implemented; focused Foundry coverage. | **Deployed restricted:** publication is disabled; review the privacy and attestor policy before enabling it. The Testnet deployment is unchanged. | Deployed restricted / Deployed restricted |
 
 The ten-name target is an architecture boundary, not a requirement to create
 placeholder contracts. The current `QevraAuthorizationHarness` is a separate
@@ -71,15 +80,16 @@ hash is
 `0x75145cfa0c4eae7612db613f469eeafbf81ba898e07b3a96e1888378dffa798b`.
 Blockscout reports `is_verified: false`; source code is **not verified**.
 The record is stored in `standaloneResearchEvidenceAnchor`, separate from the
-roadmap `contracts` array. The ten proposed roadmap slots remain empty at 0/10.
-The standalone Evidence Anchor has no Mainnet deployment script; it remains a
+roadmap `contracts` array. Slots 1–5 remain unimplemented and undeployed;
+slots 6–10 are recorded in the separate Testnet and Mainnet manifests. The
+standalone Evidence Anchor has no Mainnet deployment script; it remains a
 separate Testnet-only utility and is not included in the five-contract MVP.
 
 ## Proposed-contract readiness
 
-The Mainnet manifest currently has no verified addresses. The standalone
-Evidence Anchor is tracked separately. Slots 1–5 remain blocked; Mainnet
-deployment and activation status for slots 6–10 is:
+The standalone Evidence Anchor is tracked separately. Slots 1–5 remain blocked.
+Slots 6–10 have completed Mainnet deployment; their operational activation
+status remains restricted as follows:
 
 | Proposed contract | Readiness | Blocking condition |
 |---|---|---|
@@ -88,16 +98,17 @@ deployment and activation status for slots 6–10 is:
 | `VeyraRecoveryPolicy` | **Blocked; no deployment** | Guardian, threshold, delay, and recovery behavior remain undecided. |
 | `VeyraAccount` | **Hard NO-GO; no deployment** | Phase 0B authorization, custody, recovery, deposits, and withdrawals remain disabled. |
 | `VeyraAccountFactory` | **Blocked; no deployment** | Account initialization, front-running resistance, and factory authority are not reviewed. |
-| `VeyraTokenPolicyRegistry` | **Dormant-deployment candidate; not approved** | A reviewed Mainnet owner contract has not been supplied; no token policies may be configured. |
-| `VeyraRouterRegistry` | **Dormant-deployment candidate; not approved** | A reviewed Mainnet owner contract has not been supplied; no router is independently verified. |
-| `VeyraSwapIntentGuard` | **Dormant-deployment candidate; not approved** | No secure account route or Mainnet owner contract has been approved. |
-| `VeyraSwapExecutor` | **No activation; dormant deployment only after approval** | No verified route or independent integration review exists. The application 0x path remains separate. |
+| `VeyraTokenPolicyRegistry` | **Deployed dormant on Testnet and Mainnet** | No independently reviewed Mainnet token policy or transfer-semantics approval; registry remains empty. |
+| `VeyraRouterRegistry` | **Deployed dormant on Testnet and Mainnet** | No independently reviewed Mainnet router/route approval; registry remains empty. |
+| `VeyraSwapIntentGuard` | **Deployed dormant on Testnet and Mainnet** | Guard is linked to the executor and both registries, but an empty policy set prevents a supported route. |
+| `VeyraSwapExecutor` | **Deployed inactive on Testnet and Mainnet** | No verified compatible route or independent integration review exists. The application 0x path remains separate. |
 
 `VeyraResearchAttestationRegistry` (slot 10) has a tested digest-only
-implementation and a restricted Testnet deployment. Mainnet deployment still
-requires an explicitly selected attestor, approved publication/privacy policy,
-and a reviewed owner contract. The narrower Evidence Anchor is not a substitute
-for that contract or a protocol-wide approval.
+implementation and restricted Testnet and Mainnet deployments. The Mainnet
+deployment assigns the configured attestor and starts with publication
+disabled. A reviewed privacy/attestor policy and explicit owner action remain
+required before publication. The narrower Evidence Anchor is not a substitute
+for this contract or a protocol-wide approval.
 
 ## Ten-contract implementation milestone
 
@@ -108,15 +119,15 @@ mock-backed contracts do not resolve the Phase 0B security proof. The Phase 0
 harness is not any of those production implementations.
 
 The Testnet-only `DeployVeyraArchitecture.s.sol` sequence deploys slots 6–9 in
-dependency order. `DeployVeyraMainnetMvp.s.sol` prepares the five Mainnet
-deployments in dependency order, leaves token/router policies empty, transfers
-administrative ownership to a configured contract account, and grants only the
-explicitly configured attestor. The Mainnet script rejects the Testnet deployer
-address, verifies chain ID 4663 and post-deployment wiring, and has not been
-broadcast. It contains 5 contract creations, one executor binding, and 4
-ownership transfers (10 transactions total). Simulation outputs are not
-deployment records. Only actual receipts, runtime code, ownership, attestor,
-and constructor checks may populate Mainnet manifest records.
+dependency order. `DeployVeyraMainnetMvp.s.sol` deployed the five Mainnet
+contracts in dependency order, left token/router policies empty, transferred
+administrative ownership to the configured EOA, and assigned the configured
+attestor while publication remained disabled. The Mainnet batch completed once
+with 5 contract creations, one executor binding, and 4 ownership transfers
+(10 successful transactions). Its verified records are in
+`deployments/robinhood-mainnet.json` and are cross-linked in the final
+[deployment handoff](../docs/handoffs/VEYRA-MAINNET-DEPLOYMENT-HANDOFF.md).
+Do not repeat the batch: no further Mainnet deployment is needed for this MVP.
 
 Current non-broadcast Testnet simulation estimates 4,008,318 gas and maximum
 fee-per-gas 0.020000001 gwei, for an execution-fee estimate of
@@ -124,10 +135,11 @@ fee-per-gas 0.020000001 gwei, for an execution-fee estimate of
 executor-binding transaction. This is not a guaranteed all-in cap; any separate
 Robinhood L1 data-fee surcharge must be included in the final live estimate.
 The live Testnet chain ID was 46630 and the approved deployer balance observed
-for preflight was 0.009996942930000000 ETH. No architecture contract was
-broadcast; only the standalone Evidence Anchor in its separate manifest field
-is deployed. The same sources compile with the Mainnet profile, but Mainnet
-manifests remain address-empty and no Mainnet broadcast is provided.
+for preflight was 0.009996942930000000 ETH. The standalone Evidence Anchor is
+still tracked separately in its Testnet manifest field. Mainnet deployment
+records now exist for slots 6–10; the Mainnet deployment profile is
+`EOA_INACTIVE`, with operational activation left behind separate security and
+privacy gates.
 
 ## Current Foundry tests
 
@@ -144,7 +156,9 @@ change the Phase 0 deployment gate.
 
 `foundry.toml` defines explicit `robinhood_testnet` (46630) and
 `robinhood_mainnet` (4663) profiles and RPC aliases. The corresponding JSON
-manifests contain no contracts or addresses until verified deployments exist.
+manifests are chain-separated; verified records are populated only after
+receipt and runtime-code checks. Mainnet slots 6–10 are populated, and Testnet
+records remain independent.
 
 Read-only preflight (does not read a keystore or construct a transaction):
 
@@ -186,7 +200,12 @@ preflight with `bun scripts/robinhood.ts deploy preflight mainnet
 remove the selected release-policy signature, fee approval, or owner
 authorization gate.
 
-### Release policy and broadcast approval
+### Historical release policy and broadcast approval
+
+> The approved ten-transaction Mainnet batch has already completed. This
+> section records how that release was authorized. Do not rerun its broadcast
+> command or use `--resume`; no further Mainnet deployment is needed for the
+> five-contract MVP.
 
 The Mainnet Foundry script keeps non-broadcast simulation available without
 approval. A direct `forge script --broadcast` fails closed unless the exact
@@ -297,8 +316,11 @@ Verify the returned signature against its final digest with
 `cast wallet verify --address <signer> --no-hash <digest> <signature>`. Never
 pass a private key or keystore password on the command line.
 
-Mainnet deployment simulation (never add `--broadcast` before explicit
-approval):
+Historical Mainnet deployment simulation (the deployment is complete):
+
+The following command is non-broadcast and documents the original release
+preflight only. The broadcast command below is historical; executing it again
+would create another set of contracts and is not a required MVP action.
 
 ```sh
 VEYRA_MAINNET_RELEASE_POLICY=OWNER_APPROVED_DORMANT forge script script/DeployVeyraMainnetMvp.s.sol:DeployVeyraMainnetMvp \
